@@ -1,11 +1,16 @@
 use std::fmt;
 use std::fmt::Display;
 use std::io::{Write, stdout};
+use std::io;
 
 use crossterm::{
-    ExecutableCommand, event, execute,
-    style::{Color, Print, ResetColor, SetBackgroundColor, SetForegroundColor},
+    ExecutableCommand, event, execute, queue, QueueableCommand, cursor,
+    style::{Color, Print, ResetColor, SetBackgroundColor, SetForegroundColor, style, Attribute, Stylize,},
+    terminal::{EnterAlternateScreen, LeaveAlternateScreen, Clear, ClearType,},
+    cursor::{DisableBlinking, EnableBlinking, MoveTo, RestorePosition, SavePosition,},
 };
+
+
 
 struct Thread {
     color: Color,
@@ -18,58 +23,116 @@ impl Display for Thread {
             f,
             "{}",
             match self.status {
-                1 => '_',
-                2 => '二',
-                3 => '三',
-                _ => ' ',
+                1 => '0'.with(self.color),
+                2 => '1'.with(self.color),
+                3 => '2'.with(self.color),
+                _ => '3'.with(self.color),
             }
         )
     }
 }
 
 fn main() -> std::io::Result<()> {
-    let A = [
-        Thread {
-            color: Color::Red,
-            status: 3,
-        },
-        Thread {
-            color: Color::Magenta,
-            status: 2,
-        },
-        Thread {
-            color: Color::Blue,
-            status: 1,
-        },
-        Thread {
-            color: Color::Yellow,
-            status: 3,
-        },
-        Thread {
-            color: Color::Green,
-            status: 3,
-        },
+
+    let mut stdout = stdout();
+
+    //execute!(stdout, EnterAlternateScreen)?;
+
+    
+    let mut active_threads: Vec<Thread> = Vec::new();
+
+
+    let mut game_board: Vec<Vec<Thread>> = vec![
+        vec![
+        Thread {color: Color::Red, status: 0},
+        Thread {color: Color::Magenta, status: 0},
+        Thread {color: Color::Blue, status: 0},
+        Thread {color: Color::Yellow, status: 0},
+        Thread {color: Color::Green, status: 0},
+        ],
+        vec![
+        Thread {color: Color::Red, status: 0},
+        Thread {color: Color::Magenta, status: 0},
+        Thread {color: Color::Blue, status: 0},
+        Thread {color: Color::Yellow, status: 0},
+        Thread {color: Color::Green, status: 0},
+        ],
+        vec![
+        Thread {color: Color::Red, status: 0},
+        Thread {color: Color::Magenta, status: 0},
+        Thread {color: Color::Blue, status: 0},
+        Thread {color: Color::Yellow, status: 0},
+        Thread {color: Color::Green, status: 0},
+        ],
+        vec![
+        Thread {color: Color::Red, status: 0},
+        Thread {color: Color::Magenta, status: 0},
+        Thread {color: Color::Blue, status: 0},
+        Thread {color: Color::Yellow, status: 0},
+        Thread {color: Color::Green, status: 0},
+        ],
+        vec![
+        Thread {color: Color::Red, status: 0},
+        Thread {color: Color::Magenta, status: 0},
+        Thread {color: Color::Blue, status: 0},
+        Thread {color: Color::Yellow, status: 0},
+        Thread {color: Color::Green, status: 0},
+        ],
     ];
 
-    // using the macro
-    /*execute!(
-        stdout(),
-        SetForegroundColor(Color::Blue),
-        SetBackgroundColor(Color::Red),
-        Print("Styled text here."),
-        ResetColor
-    )?;*/
+    /*loop {
+        for thread_row in &game_board {
 
-    // or using functions
-    stdout()
-        //.execute(SetForegroundColor(Color::Blue))?
-        //.execute(SetBackgroundColor(Color::Red))?
-        .execute(Print(&A[0]))?
-        //.execute(Print(A[1]))?
-        //.execute(Print(A[2]))?
-        //.execute(Print(A[3]))?
-        //.execute(Print(A[4]))?
-        .execute(ResetColor)?;
+            stdout.execute(Clear(ClearType::All))?.execute(Clear(ClearType::Purge));
+            for thread in thread_row {
+                stdout.queue(Print(&thread));
+            }
+            stdout.queue(Print('\n'));
+            }
+            stdout.flush();
+    }
+    */
 
+    loop {
+        // `poll()` waits for an `Event` for a given time period
+        if poll(Duration::from_millis(500))? {
+            // It's guaranteed that the `read()` won't block when the `poll()`
+            // function returns `true`
+            match read()? {
+                Event::FocusGained => println!("FocusGained"),
+                Event::FocusLost => println!("FocusLost"),
+                Event::Key(event) => println!("{:?}", event),
+                Event::Mouse(event) => println!("{:?}", event),
+                #[cfg(feature = "bracketed-paste")]
+                Event::Paste(data) => println!("Pasted {:?}", data),
+                Event::Resize(width, height) => println!("New size {}x{}", width, height),
+            }
+        } else {
+            // Timeout expired and no `Event` is available
+        }
+    }
+
+    stdout.execute(Clear(ClearType::All))?.execute(Clear(ClearType::Purge));
+    for thread_row in &game_board {
+
+        for thread in thread_row {
+            stdout.queue(Print(&thread));
+        }
+        stdout.queue(Print('\n'));
+    }
+
+    stdout.queue(MoveTo(19,10));
+    stdout.queue(EnableBlinking);
+    
+    
+    stdout.flush();
+
+    loop {
+        
+    }
+
+
+
+    //execute!(stdout, LeaveAlternateScreen);
     Ok(())
 }
