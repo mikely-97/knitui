@@ -1,14 +1,18 @@
+#![allow(warnings)]
+
 use std::fmt;
 use std::fmt::Display;
 use std::io::{Write, stdout};
 use std::io;
 
 use crossterm::{
-    ExecutableCommand, event, execute, queue, QueueableCommand, cursor,
-    style::{Color, Print, ResetColor, SetBackgroundColor, SetForegroundColor, style, Attribute, Stylize,},
-    terminal::{EnterAlternateScreen, LeaveAlternateScreen, Clear, ClearType,},
-    cursor::{DisableBlinking, EnableBlinking, MoveTo, RestorePosition, SavePosition,},
+    ExecutableCommand, execute, queue, QueueableCommand,
+    style::{Color, Print, ResetColor, SetBackgroundColor, SetForegroundColor, style, Attribute, Stylize},
+    terminal::{EnterAlternateScreen, LeaveAlternateScreen, Clear, ClearType, SetSize},
+    cursor::{DisableBlinking, EnableBlinking, MoveTo, RestorePosition, SavePosition},
+    event::{self, poll, read, Event},
 };
+use std::time::Duration; 
 
 
 
@@ -36,7 +40,7 @@ fn main() -> std::io::Result<()> {
 
     let mut stdout = stdout();
 
-    //execute!(stdout, EnterAlternateScreen)?;
+    execute!(stdout, EnterAlternateScreen)?;
 
     
     let mut active_threads: Vec<Thread> = Vec::new();
@@ -80,18 +84,22 @@ fn main() -> std::io::Result<()> {
         ],
     ];
 
-    /*loop {
-        for thread_row in &game_board {
+    
+    stdout.execute(Clear(ClearType::All))?.execute(Clear(ClearType::Purge));
+    stdout.execute(SetSize(22, 22));
+    for thread_row in &game_board {
 
-            stdout.execute(Clear(ClearType::All))?.execute(Clear(ClearType::Purge));
-            for thread in thread_row {
-                stdout.queue(Print(&thread));
-            }
-            stdout.queue(Print('\n'));
-            }
-            stdout.flush();
+        for thread in thread_row {
+            stdout.queue(Print(&thread));
+        }
+        stdout.queue(Print('\n'));
     }
-    */
+
+    stdout.queue(MoveTo(5,5));
+    stdout.queue(EnableBlinking);
+    
+    
+    stdout.flush();
 
     loop {
         // `poll()` waits for an `Event` for a given time period
@@ -103,7 +111,7 @@ fn main() -> std::io::Result<()> {
                 Event::FocusLost => println!("FocusLost"),
                 Event::Key(event) => println!("{:?}", event),
                 Event::Mouse(event) => println!("{:?}", event),
-                #[cfg(feature = "bracketed-paste")]
+                // #[cfg(feature = "bracketed-paste")]
                 Event::Paste(data) => println!("Pasted {:?}", data),
                 Event::Resize(width, height) => println!("New size {}x{}", width, height),
             }
@@ -112,27 +120,8 @@ fn main() -> std::io::Result<()> {
         }
     }
 
-    stdout.execute(Clear(ClearType::All))?.execute(Clear(ClearType::Purge));
-    for thread_row in &game_board {
-
-        for thread in thread_row {
-            stdout.queue(Print(&thread));
-        }
-        stdout.queue(Print('\n'));
-    }
-
-    stdout.queue(MoveTo(19,10));
-    stdout.queue(EnableBlinking);
-    
-    
-    stdout.flush();
-
-    loop {
-        
-    }
 
 
-
-    //execute!(stdout, LeaveAlternateScreen);
+    execute!(stdout, LeaveAlternateScreen);
     Ok(())
 }
