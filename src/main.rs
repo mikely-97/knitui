@@ -8,11 +8,14 @@ use std::io;
 use crossterm::{
     ExecutableCommand, execute, queue, QueueableCommand,
     style::{Color, Print, ResetColor, SetBackgroundColor, SetForegroundColor, style, Attribute, Stylize},
-    terminal::{EnterAlternateScreen, LeaveAlternateScreen, Clear, ClearType, SetSize},
-    cursor::{DisableBlinking, EnableBlinking, MoveTo, RestorePosition, SavePosition},
-    event::{self, poll, read, Event},
+    terminal::{EnterAlternateScreen, LeaveAlternateScreen, Clear, ClearType, SetSize, enable_raw_mode, disable_raw_mode},
+    cursor::{DisableBlinking, EnableBlinking, MoveTo, RestorePosition, SavePosition, MoveRight, MoveLeft, MoveDown, MoveUp, position},
+    event::{self, poll, read, Event, KeyCode},
 };
 use std::time::Duration; 
+use std::cmp::{
+    min, max,
+};
 
 
 
@@ -27,10 +30,10 @@ impl Display for Thread {
             f,
             "{}",
             match self.status {
-                1 => '0'.with(self.color),
-                2 => '1'.with(self.color),
-                3 => '2'.with(self.color),
-                _ => '3'.with(self.color),
+                1 => '|'.with(self.color),
+                2 => '+'.with(self.color),
+                3 => 'F'.with(self.color),
+                _ => 'B'.with(self.color),
             }
         )
     }
@@ -86,34 +89,41 @@ fn main() -> std::io::Result<()> {
 
     
     stdout.execute(Clear(ClearType::All))?.execute(Clear(ClearType::Purge));
-    stdout.execute(SetSize(22, 22));
+    stdout.execute(SetSize(5, 5));
+    enable_raw_mode()?;
     for thread_row in &game_board {
 
         for thread in thread_row {
             stdout.queue(Print(&thread));
         }
         stdout.queue(Print('\n'));
+        stdout.queue(Print('\r'));
     }
 
-    stdout.queue(MoveTo(5,5));
+    stdout.queue(MoveTo(0,0));
     stdout.queue(EnableBlinking);
     
     
     stdout.flush();
+
+    let (mut x, mut y) = position()?;
 
     loop {
         // `poll()` waits for an `Event` for a given time period
         if poll(Duration::from_millis(500))? {
             // It's guaranteed that the `read()` won't block when the `poll()`
             // function returns `true`
-            match read()? {
-                Event::FocusGained => println!("FocusGained"),
-                Event::FocusLost => println!("FocusLost"),
-                Event::Key(event) => println!("{:?}", event),
-                Event::Mouse(event) => println!("{:?}", event),
-                // #[cfg(feature = "bracketed-paste")]
-                Event::Paste(data) => println!("Pasted {:?}", data),
-                Event::Resize(width, height) => println!("New size {}x{}", width, height),
+            
+            if let Event::Key(event) = read()? {
+                match event.code {
+                    KeyCode::Left => x=max(x-1, 0),
+                    KeyCode::Right => x=min(x+1, 5),
+                    KeyCode::Up => y=max(y-1, 0),
+                    KeyCode::Down => y=min(y+1,5),
+                    KeyCode::Esc => break,
+                    _ => {},
+                };
+                MoveTo(x, y);
             }
         } else {
             // Timeout expired and no `Event` is available
@@ -123,5 +133,6 @@ fn main() -> std::io::Result<()> {
 
 
     execute!(stdout, LeaveAlternateScreen);
+    disable_raw_mode()?;
     Ok(())
 }
