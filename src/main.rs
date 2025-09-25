@@ -39,6 +39,11 @@ impl Display for Thread {
     }
 }
 
+fn decr_if_possible(val: u16) -> u16{
+    if (val == 0) {return val} 
+    else {return val-1};
+}
+
 fn main() -> std::io::Result<()> {
 
     let mut stdout = stdout();
@@ -87,9 +92,9 @@ fn main() -> std::io::Result<()> {
         ],
     ];
 
-    
+    stdout.queue(MoveTo(0,0));
     stdout.execute(Clear(ClearType::All))?.execute(Clear(ClearType::Purge));
-    stdout.execute(SetSize(5, 5));
+    stdout.execute(SetSize(4, 4));
     enable_raw_mode()?;
     for thread_row in &game_board {
 
@@ -116,14 +121,15 @@ fn main() -> std::io::Result<()> {
             
             if let Event::Key(event) = read()? {
                 match event.code {
-                    KeyCode::Left => x=max(x-1, 0),
-                    KeyCode::Right => x=min(x+1, 5),
-                    KeyCode::Up => y=max(y-1, 0),
-                    KeyCode::Down => y=min(y+1,5),
+                    KeyCode::Left => x=decr_if_possible(x),
+                    KeyCode::Right => x=min(x+1, 4),
+                    KeyCode::Up => y=decr_if_possible(y),
+                    KeyCode::Down => y=min(y+1,4),
                     KeyCode::Esc => break,
                     _ => {},
                 };
-                MoveTo(x, y);
+                // println!("{x}, {y}");
+                stdout.execute(MoveTo(x, y));
             }
         } else {
             // Timeout expired and no `Event` is available
