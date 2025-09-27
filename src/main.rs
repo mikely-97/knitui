@@ -30,19 +30,49 @@ impl Display for Thread {
             f,
             "{}",
             match self.status {
-                1 => '|'.with(self.color),
-                2 => '+'.with(self.color),
-                3 => 'F'.with(self.color),
-                _ => 'B'.with(self.color),
+                1 => '1'.with(self.color),
+                2 => '2'.with(self.color),
+                3 => '3'.with(self.color),
+                _ => '?'.with(self.color),
             }
         )
     }
 }
 
-fn decr_if_possible(val: u16) -> u16{
-    if (val == 0) {return val} 
-    else {return val-1};
+struct Patch {
+    color: Color
 }
+
+impl Display for Patch {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "{}",
+            '▦'.with(self.color)
+        )
+    }
+}
+
+enum BoardEntity {
+    Thread(Color),
+    Obstacle,
+    Void,
+}
+
+impl Display for BoardEntity {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "{}",
+            match self {
+                BoardEntity::Thread(color) => 'T'.with(*color),
+                BoardEntity::Obstacle => 'X'.stylize(),
+                BoardEntity::Void => ' '.stylize()
+            }
+        )
+    }
+}
+
 
 fn main() -> std::io::Result<()> {
 
@@ -54,41 +84,41 @@ fn main() -> std::io::Result<()> {
     let mut active_threads: Vec<Thread> = Vec::new();
 
 
-    let mut game_board: Vec<Vec<Thread>> = vec![
+    let mut game_board: Vec<Vec<BoardEntity>> = vec![
         vec![
-        Thread {color: Color::Red, status: 0},
-        Thread {color: Color::Magenta, status: 0},
-        Thread {color: Color::Blue, status: 0},
-        Thread {color: Color::Yellow, status: 0},
-        Thread {color: Color::Green, status: 0},
+        BoardEntity::Thread(Color::Red),
+        BoardEntity::Thread(Color::Magenta),
+        BoardEntity::Thread(Color::Blue),
+        BoardEntity::Thread(Color::Yellow),
+        BoardEntity::Thread(Color::Green),
         ],
         vec![
-        Thread {color: Color::Red, status: 0},
-        Thread {color: Color::Magenta, status: 0},
-        Thread {color: Color::Blue, status: 0},
-        Thread {color: Color::Yellow, status: 0},
-        Thread {color: Color::Green, status: 0},
+        BoardEntity::Thread(Color::Red),
+        BoardEntity::Thread(Color::Magenta),
+        BoardEntity::Obstacle,
+        BoardEntity::Thread(Color::Yellow),
+        BoardEntity::Thread(Color::Green),
         ],
         vec![
-        Thread {color: Color::Red, status: 0},
-        Thread {color: Color::Magenta, status: 0},
-        Thread {color: Color::Blue, status: 0},
-        Thread {color: Color::Yellow, status: 0},
-        Thread {color: Color::Green, status: 0},
+        BoardEntity::Thread(Color::Red),
+        BoardEntity::Thread(Color::Magenta),
+        BoardEntity::Thread(Color::Blue),
+        BoardEntity::Thread(Color::Yellow),
+        BoardEntity::Thread(Color::Green),
         ],
         vec![
-        Thread {color: Color::Red, status: 0},
-        Thread {color: Color::Magenta, status: 0},
-        Thread {color: Color::Blue, status: 0},
-        Thread {color: Color::Yellow, status: 0},
-        Thread {color: Color::Green, status: 0},
+        BoardEntity::Thread(Color::Red),
+        BoardEntity::Thread(Color::Magenta),
+        BoardEntity::Thread(Color::Blue),
+        BoardEntity::Thread(Color::Yellow),
+        BoardEntity::Thread(Color::Green),
         ],
         vec![
-        Thread {color: Color::Red, status: 0},
-        Thread {color: Color::Magenta, status: 0},
-        Thread {color: Color::Blue, status: 0},
-        Thread {color: Color::Yellow, status: 0},
-        Thread {color: Color::Green, status: 0},
+        BoardEntity::Thread(Color::Red),
+        BoardEntity::Thread(Color::Magenta),
+        BoardEntity::Thread(Color::Blue),
+        BoardEntity::Thread(Color::Yellow),
+        BoardEntity::Thread(Color::Green),
         ],
     ];
 
@@ -121,15 +151,32 @@ fn main() -> std::io::Result<()> {
             
             if let Event::Key(event) = read()? {
                 match event.code {
-                    KeyCode::Left => x=decr_if_possible(x),
+                    KeyCode::Left => x=x.saturating_sub(1),
                     KeyCode::Right => x=min(x+1, 4),
-                    KeyCode::Up => y=decr_if_possible(y),
+                    KeyCode::Up => y=y.saturating_sub(1),
                     KeyCode::Down => y=min(y+1,4),
                     KeyCode::Esc => break,
+                    KeyCode::Enter => {
+                        if let BoardEntity::Thread(color) = (game_board[y as usize][x as usize]){
+                            active_threads.push(Thread { color: color, status: 1 });
+                            game_board[y as usize][x as usize] = BoardEntity::Void;
+                        }
+                    }
                     _ => {},
                 };
                 // println!("{x}, {y}");
-                stdout.execute(MoveTo(x, y));
+                //stdout.execute(MoveTo(x, y));
+                stdout.queue(MoveTo(0,0));
+                stdout.queue(Clear(ClearType::All))?.execute(Clear(ClearType::Purge));
+                for thread_row in &game_board {
+                    for thread in thread_row {
+                        stdout.queue(Print(&thread));
+                    }
+                    stdout.queue(Print('\n'));
+                    stdout.queue(Print('\r'));
+                };
+                stdout.queue(MoveTo(x, y));
+                stdout.flush();
             }
         } else {
             // Timeout expired and no `Event` is available
