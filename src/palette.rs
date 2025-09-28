@@ -1,7 +1,6 @@
 // tbh it's vibe palette selection, mb will rework later lol 
 // also i don't know much about color blindness, so i just hope the ai knows what it's talking about 
 use rand::prelude::IndexedRandom;
-use rand::seq::IteratorRandom;
 use crossterm::style::Color;
 
 

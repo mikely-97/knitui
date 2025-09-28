@@ -1,58 +1,38 @@
 // ./src/lib/game_board.rs
 use crossterm::style::Color;
 use crate::board_entity::BoardEntity;
+use rand::prelude::*;
 
 pub struct GameBoard{
-    board: Vec<Vec<BoardEntity>>,
-    height: u16,
-    width: u16
+    pub board: Vec<Vec<BoardEntity>>,
+    pub height: u16,
+    pub width: u16
 }
 
-/* impl GameBoard {
-    fn make_random(height: u16, width: u16,) -> Self {
-
+impl GameBoard {
+    pub fn make_random(
+        height: u16, 
+        width: u16,
+        selected_palette: &Vec<Color>,
+        obstacle_percentage: u16,
+    ) -> Self {
+        let mut rng = rand::rng();
+        let mut board: Vec<Vec<BoardEntity>> = Vec::new();
+        for _ in 0..height{
+            let mut row: Vec<BoardEntity> = Vec::new();
+            for _ in 0..width{
+                if rng.random_range(0..=100) <= obstacle_percentage{
+                    row.push(BoardEntity::Obstacle);
+                }
+                else {
+                    row.push(BoardEntity::Thread(*selected_palette.choose(& mut rng).unwrap()));
+                }
+            }
+            board.push(row);
+        }
+        Self { board: board, height: height, width: width }
     }
-} */
-
-pub fn make_game_board() -> Vec<Vec<BoardEntity>>{
-    // TODO: assert the horizontal size is the same everywhere
-    vec![
-        vec![
-        BoardEntity::Thread(Color::Red),
-        BoardEntity::Thread(Color::Magenta),
-        BoardEntity::Thread(Color::Blue),
-        BoardEntity::Thread(Color::Yellow),
-        BoardEntity::Thread(Color::Green),
-        ],
-        vec![
-        BoardEntity::Thread(Color::Red),
-        BoardEntity::Thread(Color::Magenta),
-        BoardEntity::Obstacle,
-        BoardEntity::Thread(Color::Yellow),
-        BoardEntity::Thread(Color::Green),
-        ],
-        vec![
-        BoardEntity::Thread(Color::Red),
-        BoardEntity::Thread(Color::Magenta),
-        BoardEntity::Thread(Color::Blue),
-        BoardEntity::Thread(Color::Yellow),
-        BoardEntity::Thread(Color::Green),
-        ],
-        vec![
-        BoardEntity::Thread(Color::Red),
-        BoardEntity::Thread(Color::Magenta),
-        BoardEntity::Thread(Color::Blue),
-        BoardEntity::Thread(Color::Yellow),
-        BoardEntity::Thread(Color::Green),
-        ],
-        vec![
-        BoardEntity::Thread(Color::Red),
-        BoardEntity::Thread(Color::Magenta),
-        BoardEntity::Thread(Color::Blue),
-        BoardEntity::Thread(Color::Yellow),
-        BoardEntity::Thread(Color::Green),
-        ],
-    ]
 }
+
 
 
