@@ -49,7 +49,13 @@ pub enum ColorMode{
     Colorblind
 }
 
-fn select_palette(mode: ColorMode, color_number: u16){
+pub fn select_palette(mode: ColorMode, color_number: u16) -> Vec<Color>{
     let mut rng = rand::rng();
-    GREY_PALETTE.choose_multiple(&mut rng, color_number as usize);
+    match mode {
+        ColorMode::Bright =>  LIGHT_PALETTE.choose_multiple(&mut rng, color_number as usize),
+        ColorMode::Dark =>  DARK_PALETTE.choose_multiple(&mut rng, color_number as usize),
+        ColorMode::Colorblind =>  GREY_PALETTE.choose_multiple(&mut rng, color_number as usize),
+    }
+    .cloned()
+    .collect()
 }
