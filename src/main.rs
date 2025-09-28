@@ -20,43 +20,16 @@ use std::cmp::{
 use knitui::game_board::make_game_board;
 use knitui::board_entity::BoardEntity;
 
+use knitui::palette::select_palette;
+use knitui::active_threads::Thread;
+
 const yarn_offset: u16 = 4+1; 
 const active_offset: u16 = 1+1;
 const minimal_y: u16 = yarn_offset+active_offset;
 
-struct Thread {
-    color: Color,
-    status: u8,
-}
 
-impl Display for Thread {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "{}",
-            match self.status {
-                1 => '1'.with(self.color),
-                2 => '2'.with(self.color),
-                3 => '3'.with(self.color),
-                _ => '?'.with(self.color),
-            }
-        )
-    }
-}
 
-struct Patch {
-    color: Color
-}
 
-impl Display for Patch {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "{}",
-            '▦'.with(self.color)
-        )
-    }
-}
 
 
 
