@@ -19,6 +19,7 @@ use std::cmp::{
 
 use knitui::game_board::{GameBoard};
 use knitui::board_entity::BoardEntity;
+use knitui::yarn::{Yarn};
 
 use knitui::palette::{select_palette, ColorMode};
 use knitui::active_threads::Thread;
@@ -26,7 +27,7 @@ use knitui::active_threads::Thread;
 // TODO: remove those after everything's ready for the render
 // these are the constants to support rendering
 
-const yarn_offset: u16 = 4+1; 
+const yarn_offset: u16 = 6; 
 const active_offset: u16 = 1+1;
 const minimal_y: u16 = yarn_offset+active_offset;
 
@@ -41,20 +42,23 @@ const active_threads_limit: u16 = 7;
 const knit_volume: u16 = 3;
 const yarn_lines: u16 = 4;
 const obstacle_percentage: u16 = 5;
+const visible_patches: u16 = 6;
 
 
 
 
 
 
-fn render(mut stdout: &Stdout, game_board: &GameBoard, active_threads: &Vec<Thread>, x: u16, y: u16) -> io::Result<()>
+fn render(mut stdout: &Stdout, game_board: &GameBoard, active_threads: &Vec<Thread>, yarn: &Yarn, x: u16, y: u16) -> io::Result<()>
 {
     stdout.queue(Hide);
     stdout.execute(Clear(ClearType::All))?.execute(Clear(ClearType::Purge));
     let vertical_size = game_board.height;
     let horizontal_size = game_board.width;
     // TODO: render yarn
-    stdout.queue(MoveTo(0, yarn_offset));
+    // stdout.queue(MoveTo(0, yarn_offset));
+    stdout.queue(MoveTo(0, 0));
+    stdout.queue(Print(yarn));
 
     // render active threads
     for thread in active_threads{
@@ -107,11 +111,13 @@ fn main() -> std::io::Result<()> {
         board_width,
         &selected_palette,
         obstacle_percentage,
+        knit_volume,
     );
     // TODO: generate the yarn
+    let mut yarn = Yarn::make_from_color_counter(game_board.count_knits(), yarn_lines, visible_patches);
     // TODO: check if the game is solvable
     // render the game
-    render(&stdout, &game_board, &active_threads, 0, 0);
+    render(&stdout, &game_board, &active_threads, &yarn, 0, 0);
 
     
     
@@ -136,7 +142,7 @@ fn main() -> std::io::Result<()> {
                         if let BoardEntity::Thread(color) = (game_board.board[(y-minimal_y) as usize][x as usize]){
                             active_threads.push(Thread { color: color, status: 1 });
                             game_board.board[(y-minimal_y) as usize][x as usize] = BoardEntity::Void;
-                            render(&stdout, &game_board, &active_threads, x, y);
+                            render(&stdout, &game_board, &active_threads, &yarn, x, y);
                         }
                     }
                     _ => {},

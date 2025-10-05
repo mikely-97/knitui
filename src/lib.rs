@@ -3,3 +3,4 @@ pub mod game_board;
 pub mod yarn;
 pub mod palette;
 pub mod active_threads;
+pub mod color_counter;
