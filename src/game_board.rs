@@ -1,7 +1,9 @@
 // ./src/lib/game_board.rs
 use crossterm::style::Color;
 use crate::board_entity::BoardEntity;
+use crate::yarn::Yarn;
 use rand::prelude::*;
+use std::collections::HashMap;
 
 pub struct GameBoard{
     pub board: Vec<Vec<BoardEntity>>,
@@ -32,7 +34,17 @@ impl GameBoard {
         }
         Self { board: board, height: height, width: width }
     }
-}
-
+    pub fn count_knits(self: &Self) -> HashMap<&Color, u16>{
+        let mut counter = HashMap::new();
+        for row in &self.board{
+            for knit in row{
+                if let BoardEntity::Thread(color) = knit{
+                    counter.entry(color).and_modify(|e| {*e+=1}).or_insert(1);
+                }
+            }
+        }
+        return counter;
+    }
+    }
 
 
