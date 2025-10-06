@@ -144,7 +144,11 @@ fn main() -> std::io::Result<()> {
                             game_board.board[(y-minimal_y) as usize][x as usize] = BoardEntity::Void;
                             render(&stdout, &game_board, &active_threads, &yarn, x, y);
                         }
-                    }
+                    },
+                    KeyCode::Backspace => {
+                        yarn.process_sequence(&mut active_threads);
+                        render(&stdout, &game_board, &active_threads, &yarn, x, y);
+                    },
                     _ => {},
                 };
                 // println!("{x}, {y}");

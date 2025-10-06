@@ -12,6 +12,12 @@ pub struct Thread {
     pub status: u8,
 }
 
+impl Thread{
+    pub fn knit_on(&mut self){
+        self.status += 1;
+    }
+}
+
 impl fmt::Display for Thread {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(

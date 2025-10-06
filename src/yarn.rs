@@ -6,6 +6,7 @@ use crossterm::style::{
 use std::fmt;
 use std::collections::HashMap;
 use crate::color_counter::ColorCounter;
+use crate::active_threads::Thread;
 
 use rand::prelude::*;
 
@@ -46,6 +47,23 @@ impl Yarn {
         }
         Self { board: board, yarn_lines: yarn_lines, visible_patches: visible_patches }
     }
+
+    pub fn process_one(&mut self, thread: &mut Thread){
+        for column in &mut self.board {
+            let closure = |x: &mut Patch| x.color == thread.color;
+            if let _ = column.pop_if(closure){
+                thread.knit_on();
+                break;
+            }
+        }
+    }
+
+    pub fn process_sequence(&mut self, threads: &mut Vec<Thread>){
+        for thread in threads{
+            self.process_one(thread);
+        }
+    }
+
 }
 
 impl fmt::Display for Yarn {
