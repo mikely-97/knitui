@@ -68,10 +68,11 @@ impl Yarn {
 
 impl fmt::Display for Yarn {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        for offset in 1..=(self.visible_patches as usize){
+        for offset in 0..(self.visible_patches as usize){
+            let true_offset: usize = (self.visible_patches as usize)-offset;
             for column in &self.board{
-                if !(offset > column.len()){
-                    let pos_to_print = column.len() - offset;
+                if !(true_offset > column.len()){
+                    let pos_to_print = column.len() - true_offset;
                     write!(
                         f,
                         "{}",
