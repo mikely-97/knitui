@@ -147,6 +147,7 @@ fn main() -> std::io::Result<()> {
                     },
                     KeyCode::Backspace => {
                         yarn.process_sequence(&mut active_threads);
+                        active_threads.retain(|x| x.status <= knit_volume);
                         render(&stdout, &game_board, &active_threads, &yarn, x, y);
                     },
                     _ => {},

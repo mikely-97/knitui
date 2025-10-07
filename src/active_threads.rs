@@ -9,7 +9,7 @@ use std::fmt;
 
 pub struct Thread {
     pub color: Color,
-    pub status: u8,
+    pub status: u16,
 }
 
 impl Thread{
@@ -24,9 +24,9 @@ impl fmt::Display for Thread {
             f,
             "{}",
             match self.status {
-                1 => '1'.with(self.color),
-                2 => '2'.with(self.color),
-                3 => '3'.with(self.color),
+                1 => '0'.with(self.color),
+                2 => '1'.with(self.color),
+                3 => '2'.with(self.color),
                 _ => '?'.with(self.color),
             }
         )
