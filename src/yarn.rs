@@ -51,7 +51,7 @@ impl Yarn {
     pub fn process_one(&mut self, thread: &mut Thread){
         for column in &mut self.board {
             let closure = |x: &mut Patch| x.color == thread.color;
-            if let _ = column.pop_if(closure){
+            if let Some(_) = column.pop_if(closure){
                 thread.knit_on();
                 break;
             }
