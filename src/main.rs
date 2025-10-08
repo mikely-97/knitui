@@ -38,7 +38,7 @@ const board_height: u16 = 6;
 const board_width: u16 = 6;
 const color_number: u16 = 6;
 const color_mode: ColorMode = ColorMode::Dark;
-const active_threads_limit: u16 = 7;
+const active_threads_limit: usize = 7;
 const knit_volume: u16 = 3;
 const yarn_lines: u16 = 4;
 const obstacle_percentage: u16 = 5;
@@ -140,9 +140,11 @@ fn main() -> std::io::Result<()> {
                     KeyCode::Esc => break,
                     KeyCode::Enter => {
                         if let BoardEntity::Thread(color) = (game_board.board[(y-minimal_y) as usize][x as usize]){
-                            active_threads.push(Thread { color: color, status: 1 });
-                            game_board.board[(y-minimal_y) as usize][x as usize] = BoardEntity::Void;
-                            render(&stdout, &game_board, &active_threads, &yarn, x, y);
+                            if active_threads.len() < active_threads_limit{
+                                active_threads.push(Thread { color: color, status: 1 });
+                                game_board.board[(y-minimal_y) as usize][x as usize] = BoardEntity::Void;
+                                render(&stdout, &game_board, &active_threads, &yarn, x, y);
+                            }
                         }
                     },
                     KeyCode::Backspace => {
