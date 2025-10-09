@@ -55,8 +55,7 @@ fn render(mut stdout: &Stdout, game_board: &GameBoard, active_threads: &Vec<Thre
     stdout.execute(Clear(ClearType::All))?.execute(Clear(ClearType::Purge));
     let vertical_size = game_board.height;
     let horizontal_size = game_board.width;
-    // TODO: render yarn
-    // stdout.queue(MoveTo(0, yarn_offset));
+
     stdout.queue(MoveTo(0, 0));
     stdout.queue(Print(yarn));
 
