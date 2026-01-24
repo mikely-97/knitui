@@ -58,3 +58,93 @@ pub fn select_palette(mode: ColorMode, color_number: u16) -> Vec<Color>{
     .cloned()
     .collect()
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_select_palette_dark_returns_correct_count() {
+        let colors = select_palette(ColorMode::Dark, 3);
+        assert_eq!(colors.len(), 3);
+    }
+
+    #[test]
+    fn test_select_palette_bright_returns_correct_count() {
+        let colors = select_palette(ColorMode::Bright, 5);
+        assert_eq!(colors.len(), 5);
+    }
+
+    #[test]
+    fn test_select_palette_colorblind_returns_correct_count() {
+        let colors = select_palette(ColorMode::Colorblind, 4);
+        assert_eq!(colors.len(), 4);
+    }
+
+    #[test]
+    fn test_select_palette_single_color() {
+        let colors = select_palette(ColorMode::Dark, 1);
+        assert_eq!(colors.len(), 1);
+    }
+
+    #[test]
+    fn test_select_palette_max_colors() {
+        let colors = select_palette(ColorMode::Dark, 8);
+        assert_eq!(colors.len(), 8);
+    }
+
+    #[test]
+    fn test_select_palette_dark_contains_valid_colors() {
+        let colors = select_palette(ColorMode::Dark, 8);
+
+        // All colors should be from DARK_PALETTE
+        for color in &colors {
+            assert!(DARK_PALETTE.contains(color));
+        }
+    }
+
+    #[test]
+    fn test_select_palette_bright_contains_valid_colors() {
+        let colors = select_palette(ColorMode::Bright, 8);
+
+        // All colors should be from LIGHT_PALETTE
+        for color in &colors {
+            assert!(LIGHT_PALETTE.contains(color));
+        }
+    }
+
+    #[test]
+    fn test_select_palette_colorblind_contains_valid_colors() {
+        let colors = select_palette(ColorMode::Colorblind, 8);
+
+        // All colors should be from GREY_PALETTE
+        for color in &colors {
+            assert!(GREY_PALETTE.contains(color));
+        }
+    }
+
+    #[test]
+    fn test_select_palette_no_duplicates() {
+        let colors = select_palette(ColorMode::Dark, 5);
+
+        // Since we're choosing from a palette, there should be no duplicates
+        let mut unique_colors = colors.clone();
+        unique_colors.sort_by_key(|c| format!("{:?}", c));
+        unique_colors.dedup();
+
+        assert_eq!(colors.len(), unique_colors.len());
+    }
+
+    #[test]
+    fn test_palette_constants_have_8_colors() {
+        assert_eq!(DARK_PALETTE.len(), 8);
+        assert_eq!(LIGHT_PALETTE.len(), 8);
+        assert_eq!(GREY_PALETTE.len(), 8);
+    }
+
+    #[test]
+    fn test_select_palette_zero_colors() {
+        let colors = select_palette(ColorMode::Dark, 0);
+        assert_eq!(colors.len(), 0);
+    }
+}
