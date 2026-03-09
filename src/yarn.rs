@@ -54,6 +54,7 @@ impl Yarn {
     /// - A locked patch is only clearable by a thread with `has_key == true`
     ///   and a matching color. Clearing it consumes the key.
     pub fn process_one(&mut self, thread: &mut Thread) {
+        // Check regular columns first
         for column in &mut self.board {
             let Some(last) = column.last() else { continue };
 
@@ -62,7 +63,7 @@ impl Yarn {
                     column.pop();
                     thread.knit_on();
                     thread.has_key = false;
-                    break;
+                    return;
                 }
                 // Locked patch blocks the column — skip it entirely.
                 continue;
@@ -71,9 +72,24 @@ impl Yarn {
             if last.color == thread.color {
                 column.pop();
                 thread.knit_on();
-                break;
+                return;
             }
         }
+
+        // Then check balloon columns (same logic, but no locked patches expected)
+        for column in &mut self.balloon_columns {
+            let Some(last) = column.last() else { continue };
+            if last.color == thread.color {
+                column.pop();
+                thread.knit_on();
+                return;
+            }
+        }
+    }
+
+    /// Remove empty balloon columns.
+    pub fn cleanup_balloon_columns(&mut self) {
+        self.balloon_columns.retain(|col| !col.is_empty());
     }
 
     pub fn process_sequence(&mut self, threads: &mut Vec<Thread>) {
@@ -361,5 +377,49 @@ mod tests {
         let yarn = Yarn::make_from_color_counter(counter, 2, 3);
 
         let _ = format!("{}", yarn);
+    }
+
+    #[test]
+    fn test_process_one_checks_balloon_columns() {
+        let mut yarn = Yarn {
+            board: vec![vec![
+                Patch { color: Color::Red, locked: false },
+            ]],
+            yarn_lines: 1,
+            visible_patches: 3,
+            balloon_columns: vec![vec![
+                Patch { color: Color::Blue, locked: false },
+            ]],
+        };
+
+        let mut thread = Thread { color: Color::Blue, status: 1, has_key: false };
+        yarn.process_one(&mut thread);
+
+        // Should match against balloon column, not regular column
+        assert_eq!(thread.status, 2);
+        assert_eq!(yarn.balloon_columns[0].len(), 0);
+        assert_eq!(yarn.board[0].len(), 1); // regular column unchanged
+    }
+
+    #[test]
+    fn test_process_one_prefers_regular_over_balloon() {
+        let mut yarn = Yarn {
+            board: vec![vec![
+                Patch { color: Color::Red, locked: false },
+            ]],
+            yarn_lines: 1,
+            visible_patches: 3,
+            balloon_columns: vec![vec![
+                Patch { color: Color::Red, locked: false },
+            ]],
+        };
+
+        let mut thread = Thread { color: Color::Red, status: 1, has_key: false };
+        yarn.process_one(&mut thread);
+
+        // Regular columns checked first
+        assert_eq!(thread.status, 2);
+        assert_eq!(yarn.board[0].len(), 0); // regular consumed
+        assert_eq!(yarn.balloon_columns[0].len(), 1); // balloon untouched
     }
 }

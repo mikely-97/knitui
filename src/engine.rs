@@ -195,6 +195,7 @@ impl GameEngine {
         if self.active_threads[0].status > self.knit_volume {
             self.active_threads.remove(0);
         }
+        self.yarn.cleanup_balloon_columns();
         true
     }
 
@@ -211,6 +212,7 @@ impl GameEngine {
                 i += 1;
             }
         }
+        self.yarn.cleanup_balloon_columns();
     }
 
     pub fn is_won(&self) -> bool {
@@ -339,6 +341,36 @@ impl GameEngine {
             self.cursor_col = saved_col;
             self.bonus_state = BonusState::None;
         }
+    }
+
+    /// Balloons: lift the front N patches from each yarn column into
+    /// separate pseudo-columns, exposing the patches behind them.
+    pub fn use_balloons(&mut self) -> Result<(), BonusError> {
+        if self.bonuses.balloons == 0 {
+            return Err(BonusError::NoneLeft);
+        }
+        if !self.yarn.balloon_columns.is_empty() {
+            return Err(BonusError::BalloonColumnsNotEmpty);
+        }
+        if self.bonus_state != BonusState::None {
+            return Err(BonusError::BonusActive);
+        }
+
+        self.bonuses.balloons -= 1;
+
+        for column in &mut self.yarn.board {
+            let mut lifted = Vec::new();
+            for _ in 0..self.bonuses.balloon_count {
+                if let Some(patch) = column.pop() {
+                    lifted.push(patch);
+                }
+            }
+            if !lifted.is_empty() {
+                self.yarn.balloon_columns.push(lifted);
+            }
+        }
+
+        Ok(())
     }
 
     // ── Serialisation ──────────────────────────────────────────────────────
@@ -1339,5 +1371,43 @@ mod tests {
         assert_eq!(e.bonus_state, BonusState::None);
         // Bonus NOT consumed on cancel
         assert_eq!(e.bonuses.tweezers, 1);
+    }
+
+    // ── Task 6: balloons bonus tests ──────────────────────────────────
+
+    #[test]
+    fn use_balloons_lifts_patches() {
+        let mut e = default_engine();
+        e.bonuses.balloons = 1;
+        e.bonuses.balloon_count = 1;
+        // default_engine yarn: col0=[Red, Blue], col1=[Red, Red]
+        // Lifting 1 patch from front (top/last) of each column
+        let total_before: usize = e.yarn.board.iter().map(|c| c.len()).sum();
+        let result = e.use_balloons();
+        assert!(result.is_ok());
+        assert_eq!(e.bonuses.balloons, 0);
+        // Balloon columns should have been created
+        assert!(!e.yarn.balloon_columns.is_empty());
+        // Total patches should be conserved (moved, not destroyed)
+        let total_regular: usize = e.yarn.board.iter().map(|c| c.len()).sum();
+        let total_balloon: usize = e.yarn.balloon_columns.iter().map(|c| c.len()).sum();
+        assert_eq!(total_before, total_regular + total_balloon);
+    }
+
+    #[test]
+    fn use_balloons_none_left_fails() {
+        let mut e = default_engine();
+        e.bonuses.balloons = 0;
+        assert_eq!(e.use_balloons(), Err(BonusError::NoneLeft));
+    }
+
+    #[test]
+    fn use_balloons_while_columns_exist_fails() {
+        let mut e = default_engine();
+        e.bonuses.balloons = 2;
+        e.bonuses.balloon_count = 1;
+        e.use_balloons().unwrap();
+        // Balloon columns are non-empty now
+        assert_eq!(e.use_balloons(), Err(BonusError::BalloonColumnsNotEmpty));
     }
 }
