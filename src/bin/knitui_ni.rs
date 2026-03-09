@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 use clap::{Parser, Subcommand, ValueEnum};
-use knitui::engine::GameEngine;
+use knitui::engine::{GameEngine, GameStatus};
 use knitui::config::Config;
 use knitui::board_entity::Direction;
 
@@ -86,10 +86,16 @@ fn save_engine(hash: &str, engine: &GameEngine) -> Result<(), String> {
 fn ok_response(hash: &str, engine: &GameEngine) {
     let state_json = engine.to_json();
     let state_val: serde_json::Value = serde_json::from_str(&state_json).unwrap();
+    let game_status = match engine.status() {
+        GameStatus::Playing => "playing",
+        GameStatus::Won     => "won",
+        GameStatus::Stuck   => "stuck",
+    };
     let response = serde_json::json!({
         "status": "ok",
         "game": hash,
         "won": engine.is_won(),
+        "game_status": game_status,
         "state": state_val,
     });
     println!("{}", serde_json::to_string(&response).unwrap());
