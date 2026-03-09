@@ -2,16 +2,20 @@
 
 A terminal-based puzzle game inspired by mobile yarn/knitting games. Match colored threads on the board against a scrolling yarn queue to clear the board.
 
+Two binaries:
+- **knitui** — interactive TUI (crossterm)
+- **knitui-ni** — non-interactive CLI driver (JSON in/out, for scripting and AI agents)
+
 Clone and run:
 
 ```
-cargo run
+cargo run --bin knitui
 ```
 
 Pass `--help` to see all options:
 
 ```
-cargo run -- --help
+cargo run --bin knitui -- --help
 ```
 
 ## How to Play
@@ -60,9 +64,42 @@ A locked yarn patch (`▣`) blocks its entire column — nothing behind it can b
 
 Pressing Backspace queues all active threads for sequential processing. Each thread is processed against the yarn one at a time (150 ms per step) so you can see what matches and what doesn't. Input is paused during the animation.
 
+## Non-interactive mode (knitui-ni)
+
+`knitui-ni` drives the same game engine via CLI commands. Game state persists as JSON files in `~/.local/share/knitui/`.
+
+### Create a game
+
+```bash
+cargo run --bin knitui-ni                    # default options
+cargo run --bin knitui-ni -- --board-height 3 --board-width 4  # custom
+```
+
+Output: JSON with `"status": "ok"`, `"game": "<8-char hash>"`, and full `"state"`.
+
+### Execute commands
+
+```bash
+cargo run --bin knitui-ni -- --game <HASH> move <up|down|left|right>
+cargo run --bin knitui-ni -- --game <HASH> pick
+cargo run --bin knitui-ni -- --game <HASH> process
+```
+
+Success response:
+```json
+{"status":"ok","game":"abc123xy","won":false,"state":{...}}
+```
+
+Error response (to stderr, exit code 1):
+```json
+{"status":"error","code":"not_selectable","message":"thread is not exposed"}
+```
+
+Error codes: `out_of_bounds`, `not_selectable`, `not_a_thread`, `active_full`, `load_failed`, `save_failed`, `no_command`.
+
 ## Configuration
 
-All parameters are settable via CLI flags. Defaults:
+All parameters are settable via CLI flags (both binaries). Defaults:
 
 | Flag | Default | Description |
 |------|---------|-------------|
@@ -80,15 +117,19 @@ All parameters are settable via CLI flags. Defaults:
 Example — a bigger, harder board:
 
 ```
-cargo run -- --board-height 8 --board-width 10 --knit-volume 5 --color-mode bright
+cargo run --bin knitui -- --board-height 8 --board-width 10 --knit-volume 5 --color-mode bright
 ```
 
 ## Architecture
 
 ```
 src/
-├── main.rs           — game loop, rendering, input, animation state machine
+├── main.rs           — TUI binary: rendering, input, animation state machine
+├── bin/
+│   └── knitui_ni.rs  — NI binary: CLI arg parsing, JSON I/O, XDG persistence
 ├── lib.rs            — module declarations
+├── engine.rs         — GameEngine: owns all game state, action methods,
+│                       JSON snapshot serialisation, generator helpers
 ├── config.rs         — CLI config (clap)
 ├── game_board.rs     — board generation, is_selectable, count_knits
 ├── board_entity.rs   — BoardEntity enum: Thread | KeyThread | Obstacle | Void
@@ -97,6 +138,7 @@ src/
 ├── yarn.rs           — Patch (with locked flag), Yarn, process_one with lock logic
 ├── active_threads.rs — Thread: color, status, has_key
 ├── color_counter.rs  — ColorCounter: HashMap of Color → count, shuffled queue
+├── color_serde.rs    — serialize/deserialize crossterm::Color as strings
 ├── palette.rs        — color palettes: Dark | Bright | Colorblind (8 colors each)
 └── solvability.rs    — board solvability checks (count balance, BFS reachability,
                         active headroom, key-lock pairing)
@@ -105,12 +147,16 @@ src/
 ### Key data flow
 
 ```
-Config::parse()
-    → select_palette()
-        → GameBoard::make_random()               (retry loop until is_solvable)
-            → game_board.count_knits()           (color → threads × knit_volume,
-                                                  includes generator queues)
-                → Yarn::make_from_color_counter() (shuffled patches across columns)
+Config
+  → GameEngine::new()
+      → select_palette()
+      → GameBoard::make_random()               (retry loop until is_solvable)
+          → game_board.count_knits()           (color → threads × knit_volume,
+                                                includes generator queues)
+              → Yarn::make_from_color_counter() (shuffled patches across columns)
+
+TUI (main.rs):   GameEngine + crossterm rendering + ProcessingState animation
+NI  (knitui_ni): GameEngine + JSON snapshot ↔ ~/.local/share/knitui/<hash>.json
 ```
 
 ### Solvability checks (run on every generated board)
@@ -125,12 +171,13 @@ Boards that fail any check are regenerated (up to 100 retries).
 ## Development
 
 ```bash
-cargo run          # play the game
-cargo test         # 76 tests (60 unit + 16 integration)
-cargo build        # build binary
+cargo run --bin knitui     # play the interactive game
+cargo run --bin knitui-ni  # create a non-interactive game
+cargo test                 # 125 tests (96 unit + 29 integration)
+cargo build --release      # build both binaries
 ```
 
-**Dependencies**: `crossterm 0.27`, `rand 0.9.2`, `clap 4`
+**Dependencies**: `crossterm 0.27`, `rand 0.9.2`, `clap 4`, `serde 1`, `serde_json 1`, `dirs 5`
 
 ## TODO
 
