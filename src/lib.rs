@@ -6,3 +6,4 @@ pub mod active_threads;
 pub mod color_counter;
 pub mod config;
 pub mod solvability;
+pub mod color_serde;
