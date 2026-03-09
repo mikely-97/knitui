@@ -7,3 +7,4 @@ pub mod color_counter;
 pub mod config;
 pub mod solvability;
 pub mod color_serde;
+pub mod engine;
