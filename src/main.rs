@@ -141,7 +141,7 @@ fn main() -> std::io::Result<()> {
                 }
             }
         } else if matches!(tui_state, TuiState::Playing) && !engine.active_threads.is_empty() {
-            engine.process_one_active();
+            engine.process_all_active();
             match engine.status() {
                 GameStatus::Playing => render(&mut stdout, &engine, minimal_y)?,
                 s => {

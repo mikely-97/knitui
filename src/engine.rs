@@ -177,7 +177,7 @@ impl GameEngine {
             return GameStatus::Won;
         }
         if !self.active_threads.is_empty() {
-            if !self.can_front_thread_progress() {
+            if !self.can_any_thread_progress() {
                 return GameStatus::Stuck;
             }
         } else if !self.board.has_selectable_thread() {
@@ -186,19 +186,20 @@ impl GameEngine {
         GameStatus::Playing
     }
 
-    /// Check if active_threads[0] can match any yarn column's last patch.
-    fn can_front_thread_progress(&self) -> bool {
-        let front = &self.active_threads[0];
-        for column in &self.yarn.board {
-            let Some(last) = column.last() else { continue };
-            if last.locked {
-                if last.color == front.color && front.has_key {
+    /// Check if any active thread can match any yarn column's last patch.
+    fn can_any_thread_progress(&self) -> bool {
+        for thread in &self.active_threads {
+            for column in &self.yarn.board {
+                let Some(last) = column.last() else { continue };
+                if last.locked {
+                    if last.color == thread.color && thread.has_key {
+                        return true;
+                    }
+                    continue;
+                }
+                if last.color == thread.color {
                     return true;
                 }
-                continue;
-            }
-            if last.color == front.color {
-                return true;
             }
         }
         false
@@ -911,5 +912,49 @@ mod tests {
             knit_volume: 3, active_threads_limit: 5,
         };
         assert_eq!(e.status(), GameStatus::Playing);
+    }
+
+    #[test]
+    fn status_playing_when_other_thread_can_match() {
+        // active_threads[0] is Green (blocked), but [1] is Red which CAN match → not stuck
+        let e = GameEngine {
+            board: GameBoard {
+                board: vec![vec![BoardEntity::Void]],
+                height: 1, width: 1, knit_volume: 1,
+            },
+            yarn: Yarn {
+                board: vec![vec![Patch { color: Color::Red, locked: false }]],
+                yarn_lines: 1, visible_patches: 3,
+            },
+            active_threads: vec![
+                Thread { color: Color::Green, status: 1, has_key: false },
+                Thread { color: Color::Red, status: 1, has_key: false },
+            ],
+            cursor_row: 0, cursor_col: 0,
+            knit_volume: 3, active_threads_limit: 5,
+        };
+        assert_eq!(e.status(), GameStatus::Playing);
+    }
+
+    #[test]
+    fn status_stuck_when_no_thread_can_match() {
+        // Two active threads, neither color matches any yarn top → stuck
+        let e = GameEngine {
+            board: GameBoard {
+                board: vec![vec![BoardEntity::Void]],
+                height: 1, width: 1, knit_volume: 1,
+            },
+            yarn: Yarn {
+                board: vec![vec![Patch { color: Color::Red, locked: false }]],
+                yarn_lines: 1, visible_patches: 3,
+            },
+            active_threads: vec![
+                Thread { color: Color::Green, status: 1, has_key: false },
+                Thread { color: Color::Blue, status: 1, has_key: false },
+            ],
+            cursor_row: 0, cursor_col: 0,
+            knit_volume: 3, active_threads_limit: 5,
+        };
+        assert_eq!(e.status(), GameStatus::Stuck);
     }
 }
