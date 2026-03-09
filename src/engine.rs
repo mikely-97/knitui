@@ -32,6 +32,28 @@ pub enum GameStatus {
     Stuck,
 }
 
+#[derive(Debug, PartialEq)]
+pub enum BonusError {
+    NoneLeft,
+    BonusActive,
+    NoActiveThreads,
+    BalloonColumnsNotEmpty,
+}
+
+#[derive(Debug, PartialEq, Clone)]
+pub enum BonusState {
+    None,
+    TweezersActive { saved_row: u16, saved_col: u16 },
+}
+
+pub struct BonusInventory {
+    pub scissors: u16,
+    pub tweezers: u16,
+    pub balloons: u16,
+    pub scissors_threads: u16,
+    pub balloon_count: u16,
+}
+
 // ── GameEngine ─────────────────────────────────────────────────────────────
 
 pub struct GameEngine {
@@ -42,6 +64,8 @@ pub struct GameEngine {
     pub cursor_col: u16,
     pub knit_volume: u16,
     pub active_threads_limit: usize,
+    pub bonuses: BonusInventory,
+    pub bonus_state: BonusState,
 }
 
 impl GameEngine {
@@ -90,6 +114,14 @@ impl GameEngine {
             cursor_col: init_col,
             knit_volume: config.knit_volume,
             active_threads_limit: config.active_threads_limit,
+            bonuses: BonusInventory {
+                scissors: config.scissors,
+                tweezers: config.tweezers,
+                balloons: config.balloons,
+                scissors_threads: config.scissors_threads,
+                balloon_count: config.balloon_count,
+            },
+            bonus_state: BonusState::None,
         }
     }
 
@@ -380,6 +412,11 @@ impl GameStateSnapshot {
             cursor_col: self.cursor_col,
             knit_volume: self.knit_volume,
             active_threads_limit: self.active_threads_limit,
+            bonuses: BonusInventory {
+                scissors: 0, tweezers: 0, balloons: 0,
+                scissors_threads: 1, balloon_count: 2,
+            },
+            bonus_state: BonusState::None,
         })
     }
 }
@@ -476,6 +513,11 @@ mod tests {
             cursor_col: 0,
             knit_volume: 1,
             active_threads_limit: 5,
+            bonuses: BonusInventory {
+                scissors: 0, tweezers: 0, balloons: 0,
+                scissors_threads: 1, balloon_count: 2,
+            },
+            bonus_state: BonusState::None,
         }
     }
 
@@ -667,6 +709,11 @@ mod tests {
             active_threads: vec![],
             cursor_row: 0, cursor_col: 0,
             knit_volume: 1, active_threads_limit: 5,
+            bonuses: BonusInventory {
+                scissors: 0, tweezers: 0, balloons: 0,
+                scissors_threads: 1, balloon_count: 2,
+            },
+            bonus_state: BonusState::None,
         };
         assert!(e.is_won());
     }
@@ -714,6 +761,8 @@ mod tests {
             visible_patches: 4, generator_capacity: 3,
             layout: "auto".into(),
             scale: 1,
+            scissors: 0, tweezers: 0, balloons: 0,
+            scissors_threads: 1, balloon_count: 2,
         };
         let e = GameEngine::new(&config);
         assert_eq!(e.board.height, 4);
@@ -828,6 +877,11 @@ mod tests {
             active_threads: vec![],
             cursor_row: 0, cursor_col: 0,
             knit_volume: 1, active_threads_limit: 5,
+            bonuses: BonusInventory {
+                scissors: 0, tweezers: 0, balloons: 0,
+                scissors_threads: 1, balloon_count: 2,
+            },
+            bonus_state: BonusState::None,
         };
         assert_eq!(e.status(), GameStatus::Won);
     }
@@ -847,6 +901,11 @@ mod tests {
             active_threads: vec![Thread { color: Color::Green, status: 1, has_key: false }],
             cursor_row: 0, cursor_col: 0,
             knit_volume: 3, active_threads_limit: 5,
+            bonuses: BonusInventory {
+                scissors: 0, tweezers: 0, balloons: 0,
+                scissors_threads: 1, balloon_count: 2,
+            },
+            bonus_state: BonusState::None,
         };
         assert_eq!(e.status(), GameStatus::Stuck);
     }
@@ -869,6 +928,11 @@ mod tests {
             active_threads: vec![],
             cursor_row: 0, cursor_col: 0,
             knit_volume: 1, active_threads_limit: 5,
+            bonuses: BonusInventory {
+                scissors: 0, tweezers: 0, balloons: 0,
+                scissors_threads: 1, balloon_count: 2,
+            },
+            bonus_state: BonusState::None,
         };
         assert_eq!(e.status(), GameStatus::Stuck);
     }
@@ -888,6 +952,11 @@ mod tests {
             active_threads: vec![Thread { color: Color::Red, status: 1, has_key: false }],
             cursor_row: 0, cursor_col: 0,
             knit_volume: 3, active_threads_limit: 5,
+            bonuses: BonusInventory {
+                scissors: 0, tweezers: 0, balloons: 0,
+                scissors_threads: 1, balloon_count: 2,
+            },
+            bonus_state: BonusState::None,
         };
         assert_eq!(e.status(), GameStatus::Playing);
     }
@@ -907,6 +976,11 @@ mod tests {
             active_threads: vec![Thread { color: Color::Red, status: 1, has_key: false }],
             cursor_row: 0, cursor_col: 0,
             knit_volume: 3, active_threads_limit: 5,
+            bonuses: BonusInventory {
+                scissors: 0, tweezers: 0, balloons: 0,
+                scissors_threads: 1, balloon_count: 2,
+            },
+            bonus_state: BonusState::None,
         };
         assert_eq!(e.status(), GameStatus::Stuck);
     }
@@ -926,6 +1000,11 @@ mod tests {
             active_threads: vec![Thread { color: Color::Red, status: 1, has_key: true }],
             cursor_row: 0, cursor_col: 0,
             knit_volume: 3, active_threads_limit: 5,
+            bonuses: BonusInventory {
+                scissors: 0, tweezers: 0, balloons: 0,
+                scissors_threads: 1, balloon_count: 2,
+            },
+            bonus_state: BonusState::None,
         };
         assert_eq!(e.status(), GameStatus::Playing);
     }
@@ -948,6 +1027,11 @@ mod tests {
             ],
             cursor_row: 0, cursor_col: 0,
             knit_volume: 3, active_threads_limit: 5,
+            bonuses: BonusInventory {
+                scissors: 0, tweezers: 0, balloons: 0,
+                scissors_threads: 1, balloon_count: 2,
+            },
+            bonus_state: BonusState::None,
         };
         assert_eq!(e.status(), GameStatus::Playing);
     }
@@ -970,6 +1054,11 @@ mod tests {
             ],
             cursor_row: 0, cursor_col: 0,
             knit_volume: 3, active_threads_limit: 5,
+            bonuses: BonusInventory {
+                scissors: 0, tweezers: 0, balloons: 0,
+                scissors_threads: 1, balloon_count: 2,
+            },
+            bonus_state: BonusState::None,
         };
         assert_eq!(e.status(), GameStatus::Stuck);
     }
@@ -992,6 +1081,11 @@ mod tests {
             active_threads: vec![Thread { color: Color::Green, status: 1, has_key: false }],
             cursor_row: 0, cursor_col: 0,
             knit_volume: 3, active_threads_limit: 5,
+            bonuses: BonusInventory {
+                scissors: 0, tweezers: 0, balloons: 0,
+                scissors_threads: 1, balloon_count: 2,
+            },
+            bonus_state: BonusState::None,
         };
         assert_eq!(e.status(), GameStatus::Playing);
     }
@@ -1013,6 +1107,11 @@ mod tests {
             active_threads: vec![Thread { color: Color::Green, status: 1, has_key: false }],
             cursor_row: 0, cursor_col: 0,
             knit_volume: 3, active_threads_limit: 1,
+            bonuses: BonusInventory {
+                scissors: 0, tweezers: 0, balloons: 0,
+                scissors_threads: 1, balloon_count: 2,
+            },
+            bonus_state: BonusState::None,
         };
         assert_eq!(e.status(), GameStatus::Stuck);
     }

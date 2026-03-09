@@ -1,5 +1,5 @@
 /// Integration tests for game flow — exercising GameEngine end-to-end.
-use knitui::engine::GameEngine;
+use knitui::engine::{GameEngine, BonusInventory, BonusState};
 use knitui::config::Config;
 use knitui::board_entity::{BoardEntity, Direction};
 use knitui::game_board::GameBoard;
@@ -23,6 +23,8 @@ fn make_config(
         generator_capacity: 3,
         layout: "auto".into(),
         scale: 1,
+        scissors: 0, tweezers: 0, balloons: 0,
+        scissors_threads: 1, balloon_count: 2,
     }
 }
 
@@ -136,6 +138,11 @@ fn test_engine_cursor_traversal() {
         active_threads: vec![],
         cursor_row: 0, cursor_col: 0,
         knit_volume: 2, active_threads_limit: 7,
+        bonuses: BonusInventory {
+            scissors: 0, tweezers: 0, balloons: 0,
+            scissors_threads: 1, balloon_count: 2,
+        },
+        bonus_state: BonusState::None,
     };
 
     // Traverse to bottom-right corner
@@ -172,6 +179,11 @@ fn test_engine_json_roundtrip_preserves_game_state() {
         active_threads: vec![],
         cursor_row: 0, cursor_col: 0,
         knit_volume: 2, active_threads_limit: 7,
+        bonuses: BonusInventory {
+            scissors: 0, tweezers: 0, balloons: 0,
+            scissors_threads: 1, balloon_count: 2,
+        },
+        bonus_state: BonusState::None,
     };
 
     // Make some moves
@@ -246,6 +258,11 @@ fn test_input_during_processing() {
         active_threads: vec![],
         cursor_row: 0, cursor_col: 0,
         knit_volume: 2, active_threads_limit: 7,
+        bonuses: BonusInventory {
+            scissors: 0, tweezers: 0, balloons: 0,
+            scissors_threads: 1, balloon_count: 2,
+        },
+        bonus_state: BonusState::None,
     };
 
     // Pick up a thread
