@@ -34,7 +34,14 @@ The screen shows three sections (top-to-bottom in vertical layout, left-to-right
 |-----|--------|
 | Arrow keys | Move cursor across the board |
 | Enter | Pick up the thread under the cursor |
-| Esc | Quit |
+| H | Show help overlay |
+| Z | Use Scissors bonus |
+| X | Use Tweezers bonus |
+| C | Use Balloons bonus |
+| R | Restart (on game over) |
+| Esc | Cancel active bonus / Quit |
+
+A key bar at the bottom of the screen shows all available controls and current bonus counts.
 
 ### Selectability rule
 
@@ -59,6 +66,18 @@ Cells become Void when their thread is picked up. Clearing a thread exposes its 
 
 A locked yarn patch (`▣`) blocks its entire column — nothing behind it can be processed until the lock is cleared. To clear it, pick up the matching **Key thread** (`K`) from the board. The key is consumed on contact and the lock is removed as a normal knit stage.
 
+### Bonuses
+
+Bonuses are optional power-ups activated by hotkeys. Their counts are set at launch via CLI flags (default: 0). The bonus display shows icons, hotkeys, and remaining counts below the board (vertical layout) or to the right (horizontal layout). Bonuses with 0 remaining are greyed out.
+
+| Bonus | Key | Icon | Effect |
+|-------|-----|------|--------|
+| **Scissors** | Z | ✂ | Instantly auto-knits the least-progressed active thread by deep-scanning ALL patches in the yarn (not just the front). Ignores queue order. |
+| **Tweezers** | X | ⊹ | Enter free-cursor mode: move to any cell and pick up any thread regardless of selectability. Cursor shows `{ }` brackets. Press Esc to cancel without consuming. |
+| **Balloons** | C | ⊛ | Lifts the front N patches from each yarn column into separate pseudo-columns, exposing the patches behind them. Pseudo-columns are also matchable. |
+
+Guards: only one bonus can be active at a time. Scissors requires active threads. Balloons requires previous balloon columns to be fully consumed first.
+
 ### Background processing
 
 Active threads are processed automatically in the background (one step every 150 ms). You can continue moving and picking up threads while processing runs. Each thread is matched against the yarn one at a time so you can see what matches and what doesn't.
@@ -82,6 +101,9 @@ Output: JSON with `"status": "ok"`, `"game": "<8-char hash>"`, and full `"state"
 cargo run --bin knitui-ni -- --game <HASH> move <up|down|left|right>
 cargo run --bin knitui-ni -- --game <HASH> pick
 cargo run --bin knitui-ni -- --game <HASH> process
+cargo run --bin knitui-ni -- --game <HASH> scissors
+cargo run --bin knitui-ni -- --game <HASH> tweezers
+cargo run --bin knitui-ni -- --game <HASH> balloons
 ```
 
 Success response:
@@ -94,7 +116,7 @@ Error response (to stderr, exit code 1):
 {"status":"error","code":"not_selectable","message":"thread is not exposed"}
 ```
 
-Error codes: `out_of_bounds`, `not_selectable`, `not_a_thread`, `active_full`, `load_failed`, `save_failed`, `no_command`.
+Error codes: `out_of_bounds`, `not_selectable`, `not_a_thread`, `active_full`, `bonus_failed`, `load_failed`, `save_failed`, `no_command`.
 
 ## Configuration
 
@@ -114,10 +136,21 @@ All parameters are settable via CLI flags (both binaries). Defaults:
 | `--generator-capacity` | 3 | Threads each generator produces |
 | `--layout` | `auto` | Layout: `auto` \| `horizontal` \| `vertical` |
 | `--scale` | 1 | Cell scale factor (1–3): render each entity as N×N characters |
+| `--scissors` | 0 | Starting scissors bonus count |
+| `--tweezers` | 0 | Starting tweezers bonus count |
+| `--balloons` | 0 | Starting balloons bonus count |
+| `--scissors-threads` | 1 | Threads processed per scissors use |
+| `--balloon-count` | 2 | Patches lifted per yarn column per balloons use |
 
 The `-rgb` color modes use 24-bit true color escapes, which are immune to terminal theme overrides (useful for kitty, alacritty, etc. that remap ANSI palette slots).
 
 `--layout auto` picks vertical if the terminal is tall enough, otherwise horizontal. At `--scale 2` or `3`, each cell is rendered as a 2×2 or 3×3 block inside a box-drawing grid.
+
+Example — play with bonuses:
+
+```
+cargo run --bin knitui -- --scissors 3 --tweezers 2 --balloons 2
+```
 
 Example — a bigger, harder board:
 
@@ -195,7 +228,7 @@ cargo build --release      # build both binaries
 ## TODO
 
 - [ ] Puzzle editor / non-random board generation (needed to actually place generators and locks)
-- [ ] Bonuses and power-ups (wildcard patches, double-knit, etc.)
+- [x] Bonuses: scissors, tweezers, balloons (hotkey-activated, configurable counts)
 - [ ] In-game pseudo-ads between rounds
 
 See [PLAN.md](PLAN.md) for design notes on remaining features.
