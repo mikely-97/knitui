@@ -17,7 +17,12 @@ use clap::Parser;
 
 use knitui::board_entity::Direction;
 use knitui::config::Config;
-use knitui::engine::GameEngine;
+use knitui::engine::{GameEngine, GameStatus};
+
+enum TuiState {
+    Playing,
+    GameOver(GameStatus),
+}
 
 // ── Rendering ─────────────────────────────────────────────────────────────────
 
@@ -55,6 +60,23 @@ fn render(
     stdout.flush()
 }
 
+fn render_overlay(
+    stdout: &mut Stdout,
+    engine: &GameEngine,
+    minimal_y: u16,
+    status: &GameStatus,
+) -> io::Result<()> {
+    render(stdout, engine, minimal_y)?;
+    let message = match status {
+        GameStatus::Stuck => "You're lost! Press R to restart, Q to quit",
+        GameStatus::Won   => "You won! Press R to play again, Q to quit",
+        _ => return Ok(()),
+    };
+    stdout.queue(MoveTo(0, 0))?;
+    stdout.queue(Print(message))?;
+    stdout.flush()
+}
+
 // ── Main ──────────────────────────────────────────────────────────────────────
 
 fn main() -> std::io::Result<()> {
@@ -69,35 +91,64 @@ fn main() -> std::io::Result<()> {
     let minimal_y: u16 = yarn_offset + active_offset;
 
     let mut engine = GameEngine::new(&config);
+    let mut tui_state = TuiState::Playing;
 
     render(&mut stdout, &engine, minimal_y)?;
 
     loop {
         if poll(Duration::from_millis(150))? {
             if let Event::Key(event) = read()? {
-                match event.code {
-                    KeyCode::Left  => { let _ = engine.move_cursor(Direction::Left);  }
-                    KeyCode::Right => { let _ = engine.move_cursor(Direction::Right); }
-                    KeyCode::Up    => { let _ = engine.move_cursor(Direction::Up);    }
-                    KeyCode::Down  => { let _ = engine.move_cursor(Direction::Down);  }
-                    KeyCode::Esc   => break,
-
-                    KeyCode::Enter => {
-                        if engine.pick_up().is_ok() {
-                            render(&mut stdout, &engine, minimal_y)?;
+                match tui_state {
+                    TuiState::GameOver(_) => {
+                        match event.code {
+                            KeyCode::Char('r') | KeyCode::Char('R') => {
+                                engine = GameEngine::new(&config);
+                                tui_state = TuiState::Playing;
+                                render(&mut stdout, &engine, minimal_y)?;
+                            }
+                            KeyCode::Char('q') | KeyCode::Char('Q') | KeyCode::Esc => break,
+                            _ => {}
                         }
                     }
+                    TuiState::Playing => {
+                        match event.code {
+                            KeyCode::Left  => { let _ = engine.move_cursor(Direction::Left);  }
+                            KeyCode::Right => { let _ = engine.move_cursor(Direction::Right); }
+                            KeyCode::Up    => { let _ = engine.move_cursor(Direction::Up);    }
+                            KeyCode::Down  => { let _ = engine.move_cursor(Direction::Down);  }
+                            KeyCode::Esc   => break,
 
-                    _ => {}
+                            KeyCode::Enter => {
+                                if engine.pick_up().is_ok() {
+                                    match engine.status() {
+                                        GameStatus::Playing => render(&mut stdout, &engine, minimal_y)?,
+                                        s => {
+                                            render_overlay(&mut stdout, &engine, minimal_y, &s)?;
+                                            tui_state = TuiState::GameOver(s);
+                                            continue;
+                                        }
+                                    };
+                                }
+                            }
+
+                            _ => {}
+                        }
+
+                        let x = engine.cursor_col;
+                        let y = max(engine.cursor_row + minimal_y, minimal_y);
+                        stdout.execute(MoveTo(x, y));
+                    }
                 }
-
-                let x = engine.cursor_col;
-                let y = max(engine.cursor_row + minimal_y, minimal_y);
-                stdout.execute(MoveTo(x, y));
             }
-        } else if !engine.active_threads.is_empty() {
+        } else if matches!(tui_state, TuiState::Playing) && !engine.active_threads.is_empty() {
             engine.process_one_active();
-            render(&mut stdout, &engine, minimal_y)?;
+            match engine.status() {
+                GameStatus::Playing => render(&mut stdout, &engine, minimal_y)?,
+                s => {
+                    render_overlay(&mut stdout, &engine, minimal_y, &s)?;
+                    tui_state = TuiState::GameOver(s);
+                }
+            };
         }
     }
 
