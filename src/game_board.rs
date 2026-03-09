@@ -76,6 +76,18 @@ impl GameBoard {
         }
     }
 
+    /// Returns true if at least one Thread or KeyThread on the board is selectable.
+    pub fn has_selectable_thread(&self) -> bool {
+        for row in 0..self.height as usize {
+            for col in 0..self.width as usize {
+                if self.is_selectable(row, col) {
+                    return true;
+                }
+            }
+        }
+        false
+    }
+
     /// A cell is selectable when:
     ///   - it contains a Thread or KeyThread, AND
     ///   - it is in the top row (row 0), OR at least one orthogonal neighbor is Void.
@@ -261,5 +273,41 @@ mod tests {
         };
         assert!(board.is_focusable(0, 0));  // obstacle → focusable
         assert!(board.is_focusable(0, 1));  // void → focusable
+    }
+
+    #[test]
+    fn has_selectable_thread_true_when_exposed() {
+        let board = GameBoard {
+            board: vec![
+                vec![BoardEntity::Thread(Color::Red), BoardEntity::Void],
+                vec![BoardEntity::Thread(Color::Blue), BoardEntity::Obstacle],
+            ],
+            height: 2, width: 2, knit_volume: 1,
+        };
+        assert!(board.has_selectable_thread());
+    }
+
+    #[test]
+    fn has_selectable_thread_false_when_all_buried() {
+        let board = GameBoard {
+            board: vec![
+                vec![BoardEntity::Obstacle, BoardEntity::Obstacle],
+                vec![BoardEntity::Thread(Color::Red), BoardEntity::Thread(Color::Blue)],
+                vec![BoardEntity::Thread(Color::Red), BoardEntity::Thread(Color::Blue)],
+            ],
+            height: 3, width: 2, knit_volume: 1,
+        };
+        assert!(!board.has_selectable_thread());
+    }
+
+    #[test]
+    fn has_selectable_thread_false_when_no_threads() {
+        let board = GameBoard {
+            board: vec![
+                vec![BoardEntity::Void, BoardEntity::Obstacle],
+            ],
+            height: 1, width: 2, knit_volume: 1,
+        };
+        assert!(!board.has_selectable_thread());
     }
 }
