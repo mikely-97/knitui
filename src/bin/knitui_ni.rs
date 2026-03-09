@@ -174,6 +174,8 @@ fn main() {
                 obstacle_percentage:  args.obstacle_percentage.unwrap_or(5),
                 visible_patches:      args.visible_patches.unwrap_or(6),
                 generator_capacity:   args.generator_capacity.unwrap_or(3),
+                layout:               "auto".into(),
+                scale:                1,
             };
 
             let engine = GameEngine::new(&config);

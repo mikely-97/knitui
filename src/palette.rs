@@ -5,7 +5,7 @@ use crossterm::style::Color;
 
 
 // <VIBE_CODE>
-// dark terminal palette
+// dark terminal palette (ANSI — terminal theme can remap these)
 const DARK_PALETTE: [Color; 8] = [
     Color::White,
     Color::Cyan,
@@ -17,7 +17,7 @@ const DARK_PALETTE: [Color; 8] = [
     Color::DarkGrey,
 ];
 
-// light terminal palette
+// light terminal palette (ANSI)
 const LIGHT_PALETTE: [Color; 8] = [
     Color::Black,
     Color::Blue,
@@ -29,7 +29,7 @@ const LIGHT_PALETTE: [Color; 8] = [
     Color::Grey,
 ];
 
-// "colorblind" greyscale palette
+// "colorblind" greyscale palette (ANSI)
 const GREY_PALETTE: [Color; 8] = [
     Color::Black,
     Color::DarkGrey,
@@ -40,12 +40,49 @@ const GREY_PALETTE: [Color; 8] = [
     Color::AnsiValue(15), // bright white
     Color::AnsiValue(0),  // darkest black
 ];
+
+// RGB palettes — exact colors immune to terminal theme overrides
+const DARK_RGB_PALETTE: [Color; 8] = [
+    Color::Rgb { r: 255, g: 255, b: 255 }, // white
+    Color::Rgb { r:   0, g: 200, b: 200 }, // cyan
+    Color::Rgb { r:   0, g: 200, b:   0 }, // green
+    Color::Rgb { r: 200, g: 200, b:   0 }, // yellow
+    Color::Rgb { r: 200, g:   0, b: 200 }, // magenta
+    Color::Rgb { r: 200, g:   0, b:   0 }, // red
+    Color::Rgb { r:  80, g:  80, b: 255 }, // blue
+    Color::Rgb { r: 100, g: 100, b: 100 }, // dark grey
+];
+
+const LIGHT_RGB_PALETTE: [Color; 8] = [
+    Color::Rgb { r:   0, g:   0, b:   0 }, // black
+    Color::Rgb { r:   0, g:   0, b: 200 }, // blue
+    Color::Rgb { r: 150, g:   0, b:   0 }, // dark red
+    Color::Rgb { r:   0, g: 150, b:   0 }, // dark green
+    Color::Rgb { r: 150, g:   0, b: 150 }, // dark magenta
+    Color::Rgb { r:   0, g: 150, b: 150 }, // dark cyan
+    Color::Rgb { r: 150, g: 150, b:   0 }, // dark yellow
+    Color::Rgb { r: 180, g: 180, b: 180 }, // grey
+];
+
+const GREY_RGB_PALETTE: [Color; 8] = [
+    Color::Rgb { r:   0, g:   0, b:   0 }, // black
+    Color::Rgb { r:  85, g:  85, b:  85 }, // dark grey
+    Color::Rgb { r: 170, g: 170, b: 170 }, // grey
+    Color::Rgb { r: 255, g: 255, b: 255 }, // white
+    Color::Rgb { r:  50, g:  50, b:  50 }, // dim grey
+    Color::Rgb { r: 192, g: 192, b: 192 }, // light grey
+    Color::Rgb { r: 240, g: 240, b: 240 }, // bright white
+    Color::Rgb { r:  20, g:  20, b:  20 }, // near black
+];
 // </VIBE_CODE>
 
-pub enum ColorMode{
+pub enum ColorMode {
     Bright,
     Dark,
-    Colorblind
+    Colorblind,
+    DarkRgb,
+    BrightRgb,
+    ColorblindRgb,
 }
 
 pub fn select_palette(mode: ColorMode, color_number: u16) -> Vec<Color>{
@@ -54,6 +91,9 @@ pub fn select_palette(mode: ColorMode, color_number: u16) -> Vec<Color>{
         ColorMode::Bright =>  LIGHT_PALETTE.choose_multiple(&mut rng, color_number as usize),
         ColorMode::Dark =>  DARK_PALETTE.choose_multiple(&mut rng, color_number as usize),
         ColorMode::Colorblind =>  GREY_PALETTE.choose_multiple(&mut rng, color_number as usize),
+        ColorMode::DarkRgb =>  DARK_RGB_PALETTE.choose_multiple(&mut rng, color_number as usize),
+        ColorMode::BrightRgb =>  LIGHT_RGB_PALETTE.choose_multiple(&mut rng, color_number as usize),
+        ColorMode::ColorblindRgb =>  GREY_RGB_PALETTE.choose_multiple(&mut rng, color_number as usize),
     }
     .cloned()
     .collect()

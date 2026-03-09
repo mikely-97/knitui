@@ -33,6 +33,12 @@ pub struct Config {
 
     #[arg(long, default_value_t = 3, help = "Threads each generator produces before depleting")]
     pub generator_capacity: u16,
+
+    #[arg(long, default_value = "auto", help = "Layout: auto | horizontal | vertical")]
+    pub layout: String,
+
+    #[arg(long, default_value_t = 1, help = "Cell scale factor (1-3): render each entity as NxN characters")]
+    pub scale: u16,
 }
 
 impl Config {
@@ -40,6 +46,9 @@ impl Config {
         match self.color_mode.to_lowercase().as_str() {
             "bright" | "light" => ColorMode::Bright,
             "colorblind" | "grey" | "gray" => ColorMode::Colorblind,
+            "dark-rgb" => ColorMode::DarkRgb,
+            "bright-rgb" | "light-rgb" => ColorMode::BrightRgb,
+            "colorblind-rgb" | "grey-rgb" | "gray-rgb" => ColorMode::ColorblindRgb,
             _ => ColorMode::Dark,
         }
     }

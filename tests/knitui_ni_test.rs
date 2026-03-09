@@ -82,7 +82,7 @@ fn test_create_game_custom_options() {
 
 #[test]
 fn test_move_cursor_right() {
-    let (hash, _) = create_game(&[]);
+    let (hash, _) = create_game(&["--obstacle-percentage", "0"]);
     let (stdout, _, code) = run(&["--game", &hash, "move", "right"]);
     assert_eq!(code, 0);
     let v = parse_ok(&stdout);
@@ -92,7 +92,7 @@ fn test_move_cursor_right() {
 
 #[test]
 fn test_move_cursor_boundary() {
-    let (hash, _) = create_game(&[]);
+    let (hash, _) = create_game(&["--obstacle-percentage", "0"]);
     // Cursor starts at (0,0), moving left should fail
     let (_, stderr, code) = run(&["--game", &hash, "move", "left"]);
     assert_ne!(code, 0);
@@ -142,7 +142,7 @@ fn test_process_threads() {
 
 #[test]
 fn test_game_persistence() {
-    let (hash, _) = create_game(&[]);
+    let (hash, _) = create_game(&["--obstacle-percentage", "0"]);
     // Move right
     let (_, _, code) = run(&["--game", &hash, "move", "right"]);
     assert_eq!(code, 0);

@@ -20,11 +20,11 @@ cargo run --bin knitui -- --help
 
 ## How to Play
 
-The screen is divided into three sections from top to bottom:
+The screen shows three sections (top-to-bottom in vertical layout, left-to-right in horizontal):
 
 1. **Yarn queue** — rows of colored patches (`▦`) showing upcoming knitting work, split into columns. Locked patches show as `▣` and block their column until cleared with a key.
 2. **Active threads** — threads you've selected from the board, waiting to be processed
-3. **Game board** — the grid of cells to clear
+3. **Game board** — a bordered grid of cells to clear. The selected cell is marked with `[` `]` bracket markers.
 
 **Goal**: Clear all threads from the board by picking them up and processing them against the yarn queue. Each thread must be processed `--knit-volume` times (default: 3) to complete and be discarded.
 
@@ -86,7 +86,7 @@ cargo run --bin knitui-ni -- --game <HASH> process
 
 Success response:
 ```json
-{"status":"ok","game":"abc123xy","won":false,"state":{...}}
+{"status":"ok","game":"abc123xy","won":false,"game_status":"playing","state":{...}}
 ```
 
 Error response (to stderr, exit code 1):
@@ -105,13 +105,19 @@ All parameters are settable via CLI flags (both binaries). Defaults:
 | `--board-height` | 6 | Grid rows |
 | `--board-width` | 6 | Grid columns |
 | `--color-number` | 6 | Distinct colors used |
-| `--color-mode` | `dark` | Palette: `dark` \| `bright` \| `colorblind` |
+| `--color-mode` | `dark` | Palette: `dark` \| `bright` \| `colorblind` \| `dark-rgb` \| `bright-rgb` \| `colorblind-rgb` |
 | `--active-threads-limit` | 7 | Max threads held at once |
 | `--knit-volume` | 3 | Times each thread must be processed |
 | `--yarn-lines` | 4 | Yarn columns |
 | `--obstacle-percentage` | 5 | % chance each cell is an obstacle |
 | `--visible-patches` | 6 | Yarn rows shown on screen |
 | `--generator-capacity` | 3 | Threads each generator produces |
+| `--layout` | `auto` | Layout: `auto` \| `horizontal` \| `vertical` |
+| `--scale` | 1 | Cell scale factor (1–3): render each entity as N×N characters |
+
+The `-rgb` color modes use 24-bit true color escapes, which are immune to terminal theme overrides (useful for kitty, alacritty, etc. that remap ANSI palette slots).
+
+`--layout auto` picks vertical if the terminal is tall enough, otherwise horizontal. At `--scale 2` or `3`, each cell is rendered as a 2×2 or 3×3 block inside a box-drawing grid.
 
 Example — a bigger, harder board:
 
@@ -119,11 +125,18 @@ Example — a bigger, harder board:
 cargo run --bin knitui -- --board-height 8 --board-width 10 --knit-volume 5 --color-mode bright
 ```
 
+Example — scaled cells with RGB colors in horizontal layout:
+
+```
+cargo run --bin knitui -- --scale 2 --color-mode dark-rgb --layout horizontal
+```
+
 ## Architecture
 
 ```
 src/
-├── main.rs           — TUI binary: rendering, input, animation state machine
+├── main.rs           — TUI binary: rendering (vertical/horizontal layout,
+│                       scaled cells, box-drawn grid, bracket cursor), input
 ├── bin/
 │   └── knitui_ni.rs  — NI binary: CLI arg parsing, JSON I/O, XDG persistence
 ├── lib.rs            — module declarations
@@ -138,7 +151,8 @@ src/
 ├── active_threads.rs — Thread: color, status, has_key
 ├── color_counter.rs  — ColorCounter: HashMap of Color → count, shuffled queue
 ├── color_serde.rs    — serialize/deserialize crossterm::Color as strings
-├── palette.rs        — color palettes: Dark | Bright | Colorblind (8 colors each)
+├── palette.rs        — color palettes: Dark | Bright | Colorblind, each with
+│                       ANSI and RGB variants (8 colors each)
 └── solvability.rs    — board solvability checks (count balance, BFS reachability,
                         active headroom, key-lock pairing)
 ```
@@ -172,7 +186,7 @@ Boards that fail any check are regenerated (up to 100 retries).
 ```bash
 cargo run --bin knitui     # play the interactive game
 cargo run --bin knitui-ni  # create a non-interactive game
-cargo test                 # 125 tests (96 unit + 29 integration)
+cargo test                 # 145 tests (114 unit + 31 integration)
 cargo build --release      # build both binaries
 ```
 
@@ -180,7 +194,6 @@ cargo build --release      # build both binaries
 
 ## TODO
 
-- [ ] Horizontal layout option
 - [ ] Puzzle editor / non-random board generation (needed to actually place generators and locks)
 - [ ] Bonuses and power-ups (wildcard patches, double-knit, etc.)
 - [ ] In-game pseudo-ads between rounds

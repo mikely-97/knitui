@@ -21,6 +21,8 @@ fn make_config(
         obstacle_percentage,
         visible_patches: 6,
         generator_capacity: 3,
+        layout: "auto".into(),
+        scale: 1,
     }
 }
 

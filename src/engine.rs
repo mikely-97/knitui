@@ -71,12 +71,23 @@ impl GameEngine {
             attempts += 1;
             if attempts >= 100 { break; }
         }
+        // Find first focusable cell for initial cursor position
+        let (mut init_row, mut init_col) = (0u16, 0u16);
+        'find_cursor: for r in 0..board.height {
+            for c in 0..board.width {
+                if board.is_focusable(r as usize, c as usize) {
+                    init_row = r;
+                    init_col = c;
+                    break 'find_cursor;
+                }
+            }
+        }
         Self {
             board,
             yarn,
             active_threads: Vec::new(),
-            cursor_row: 0,
-            cursor_col: 0,
+            cursor_row: init_row,
+            cursor_col: init_col,
             knit_volume: config.knit_volume,
             active_threads_limit: config.active_threads_limit,
         }
@@ -701,6 +712,8 @@ mod tests {
             color_mode: "dark".into(), active_threads_limit: 7,
             knit_volume: 2, yarn_lines: 3, obstacle_percentage: 5,
             visible_patches: 4, generator_capacity: 3,
+            layout: "auto".into(),
+            scale: 1,
         };
         let e = GameEngine::new(&config);
         assert_eq!(e.board.height, 4);
