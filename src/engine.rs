@@ -131,13 +131,14 @@ impl GameEngine {
         let (dr, dc) = dir.offset();
         let mut new_row = self.cursor_row as i32 + dr;
         let mut new_col = self.cursor_col as i32 + dc;
+        let tweezers = matches!(self.bonus_state, BonusState::TweezersActive { .. });
         loop {
             if new_row < 0 || new_row >= self.board.height as i32
                 || new_col < 0 || new_col >= self.board.width as i32
             {
                 return Err(MoveError::OutOfBounds);
             }
-            if self.board.is_focusable(new_row as usize, new_col as usize) {
+            if tweezers || self.board.is_focusable(new_row as usize, new_col as usize) {
                 self.cursor_row = new_row as u16;
                 self.cursor_col = new_col as u16;
                 return Ok(());
@@ -150,6 +151,7 @@ impl GameEngine {
     pub fn pick_up(&mut self) -> Result<(), PickError> {
         let row = self.cursor_row as usize;
         let col = self.cursor_col as usize;
+        let tweezers = matches!(self.bonus_state, BonusState::TweezersActive { .. });
 
         let thread = match &self.board.board[row][col] {
             BoardEntity::Thread(c)    => Thread { color: *c, status: 1, has_key: false },
@@ -157,7 +159,7 @@ impl GameEngine {
             _ => return Err(PickError::NotAThread),
         };
 
-        if !self.board.is_selectable(row, col) {
+        if !tweezers && !self.board.is_selectable(row, col) {
             return Err(PickError::NotSelectable);
         }
         if self.active_threads.len() >= self.active_threads_limit {
@@ -169,6 +171,14 @@ impl GameEngine {
 
         if let Some((gr, gc)) = find_generator_for_output(&self.board.board, row, col) {
             advance_generator(&mut self.board.board, gr, gc, row, col);
+        }
+
+        // Exit tweezers mode after successful pick
+        if let BonusState::TweezersActive { saved_row, saved_col } = self.bonus_state {
+            self.cursor_row = saved_row;
+            self.cursor_col = saved_col;
+            self.bonus_state = BonusState::None;
+            self.bonuses.tweezers -= 1;
         }
 
         Ok(())
@@ -302,6 +312,33 @@ impl GameEngine {
         }
 
         Ok(())
+    }
+
+    /// Tweezers: enter free-cursor mode. Cursor can move to any cell
+    /// and pick up any thread regardless of selectability.
+    pub fn use_tweezers(&mut self) -> Result<(), BonusError> {
+        if self.bonuses.tweezers == 0 {
+            return Err(BonusError::NoneLeft);
+        }
+        if self.is_bonus_active() {
+            return Err(BonusError::BonusActive);
+        }
+
+        self.bonus_state = BonusState::TweezersActive {
+            saved_row: self.cursor_row,
+            saved_col: self.cursor_col,
+        };
+        // Don't decrement yet — only on successful pick
+        Ok(())
+    }
+
+    /// Cancel tweezers mode without consuming the bonus.
+    pub fn cancel_tweezers(&mut self) {
+        if let BonusState::TweezersActive { saved_row, saved_col } = self.bonus_state {
+            self.cursor_row = saved_row;
+            self.cursor_col = saved_col;
+            self.bonus_state = BonusState::None;
+        }
     }
 
     // ── Serialisation ──────────────────────────────────────────────────────
@@ -1231,5 +1268,76 @@ mod tests {
         // It had status 1, knit_volume=1, so after 1 knit → status 2 > 1 → removed
         assert_eq!(e.active_threads.len(), 1);
         assert_eq!(e.active_threads[0].color, Color::Red);
+    }
+
+    // ── Task 5: tweezers bonus tests ───────────────────────────────────
+
+    #[test]
+    fn use_tweezers_enters_mode() {
+        let mut e = default_engine();
+        e.bonuses.tweezers = 1;
+        e.cursor_row = 0;
+        e.cursor_col = 0;
+        let result = e.use_tweezers();
+        assert!(result.is_ok());
+        assert_eq!(e.bonus_state, BonusState::TweezersActive { saved_row: 0, saved_col: 0 });
+        // Count not decremented until pick completes
+        assert_eq!(e.bonuses.tweezers, 1);
+    }
+
+    #[test]
+    fn use_tweezers_none_left_fails() {
+        let mut e = default_engine();
+        e.bonuses.tweezers = 0;
+        assert_eq!(e.use_tweezers(), Err(BonusError::NoneLeft));
+    }
+
+    #[test]
+    fn tweezers_mode_cursor_moves_anywhere() {
+        let mut e = default_engine();
+        e.bonuses.tweezers = 1;
+        e.use_tweezers().unwrap();
+        // In the default board, row 1 col 0 is a buried Thread (normally not focusable)
+        // but tweezers mode should let cursor move there
+        let result = e.move_cursor(Direction::Down);
+        assert!(result.is_ok());
+        // In tweezers mode, cursor moves to immediately adjacent cell (row 1)
+        // instead of skipping to the next focusable cell
+        assert_eq!(e.cursor_row, 1);
+    }
+
+    #[test]
+    fn tweezers_pick_up_ignores_selectability() {
+        let mut e = default_engine();
+        e.bonuses.tweezers = 1;
+        e.use_tweezers().unwrap();
+        // Move cursor directly to buried thread at (2, 0)
+        e.cursor_row = 2;
+        e.cursor_col = 0;
+        // Normally this would fail with NotSelectable, but tweezers overrides
+        let result = e.pick_up();
+        assert!(result.is_ok());
+        assert_eq!(e.active_threads.len(), 1);
+        // Cursor restored to saved position
+        assert_eq!(e.cursor_row, 0);
+        assert_eq!(e.cursor_col, 0);
+        // Bonus consumed
+        assert_eq!(e.bonuses.tweezers, 0);
+        assert_eq!(e.bonus_state, BonusState::None);
+    }
+
+    #[test]
+    fn cancel_tweezers_restores_cursor() {
+        let mut e = default_engine();
+        e.bonuses.tweezers = 1;
+        e.use_tweezers().unwrap();
+        e.cursor_row = 2;
+        e.cursor_col = 1;
+        e.cancel_tweezers();
+        assert_eq!(e.cursor_row, 0);
+        assert_eq!(e.cursor_col, 0);
+        assert_eq!(e.bonus_state, BonusState::None);
+        // Bonus NOT consumed on cancel
+        assert_eq!(e.bonuses.tweezers, 1);
     }
 }
