@@ -39,6 +39,21 @@ pub struct Config {
 
     #[arg(long, default_value_t = 1, help = "Cell scale factor (1-3): render each entity as NxN characters")]
     pub scale: u16,
+
+    #[arg(long, default_value_t = 0, help = "Starting scissors bonus count")]
+    pub scissors: u16,
+
+    #[arg(long, default_value_t = 0, help = "Starting tweezers bonus count")]
+    pub tweezers: u16,
+
+    #[arg(long, default_value_t = 0, help = "Starting balloons bonus count")]
+    pub balloons: u16,
+
+    #[arg(long, default_value_t = 1, help = "Threads processed per scissors use")]
+    pub scissors_threads: u16,
+
+    #[arg(long, default_value_t = 2, help = "Patches lifted per yarn column per balloons use")]
+    pub balloon_count: u16,
 }
 
 impl Config {

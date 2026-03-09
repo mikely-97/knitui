@@ -176,6 +176,11 @@ fn main() {
                 generator_capacity:   args.generator_capacity.unwrap_or(3),
                 layout:               "auto".into(),
                 scale:                1,
+                scissors:             0,
+                tweezers:             0,
+                balloons:             0,
+                scissors_threads:     1,
+                balloon_count:        2,
             };
 
             let engine = GameEngine::new(&config);
