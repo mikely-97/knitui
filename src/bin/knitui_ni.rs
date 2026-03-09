@@ -27,6 +27,11 @@ struct Args {
     #[arg(long)] obstacle_percentage:  Option<u16>,
     #[arg(long)] visible_patches:      Option<u16>,
     #[arg(long)] generator_capacity:   Option<u16>,
+    #[arg(long)] scissors:          Option<u16>,
+    #[arg(long)] tweezers:          Option<u16>,
+    #[arg(long)] balloons:          Option<u16>,
+    #[arg(long)] scissors_threads:  Option<u16>,
+    #[arg(long)] balloon_count:     Option<u16>,
 }
 
 #[derive(Subcommand)]
@@ -37,6 +42,12 @@ enum NiCommand {
     Pick,
     /// Process all active threads one yarn step each
     Process,
+    /// Use scissors bonus
+    Scissors,
+    /// Use tweezers bonus (enters tweezers mode)
+    Tweezers,
+    /// Use balloons bonus
+    Balloons,
 }
 
 #[derive(Clone, ValueEnum)]
@@ -148,6 +159,27 @@ fn main() {
                 Some(NiCommand::Process) => {
                     engine.process_all_active();
                 }
+                Some(NiCommand::Scissors) => {
+                    if let Err(e) = engine.use_scissors() {
+                        let msg = format!("{:?}", e);
+                        err_response("bonus_failed", &msg);
+                        return;
+                    }
+                }
+                Some(NiCommand::Tweezers) => {
+                    if let Err(e) = engine.use_tweezers() {
+                        let msg = format!("{:?}", e);
+                        err_response("bonus_failed", &msg);
+                        return;
+                    }
+                }
+                Some(NiCommand::Balloons) => {
+                    if let Err(e) = engine.use_balloons() {
+                        let msg = format!("{:?}", e);
+                        err_response("bonus_failed", &msg);
+                        return;
+                    }
+                }
                 None => {
                     err_response("no_command", "provide a subcommand: move, pick, or process");
                     return;
@@ -176,11 +208,11 @@ fn main() {
                 generator_capacity:   args.generator_capacity.unwrap_or(3),
                 layout:               "auto".into(),
                 scale:                1,
-                scissors:             0,
-                tweezers:             0,
-                balloons:             0,
-                scissors_threads:     1,
-                balloon_count:        2,
+                scissors:             args.scissors.unwrap_or(0),
+                tweezers:             args.tweezers.unwrap_or(0),
+                balloons:             args.balloons.unwrap_or(0),
+                scissors_threads:     args.scissors_threads.unwrap_or(1),
+                balloon_count:        args.balloon_count.unwrap_or(2),
             };
 
             let engine = GameEngine::new(&config);

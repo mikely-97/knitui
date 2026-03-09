@@ -455,6 +455,18 @@ pub struct GameStateSnapshot {
     pub visible_patches: u16,
     pub yarn: Vec<Vec<YarnPatchSnap>>,
     pub active_threads: Vec<ThreadSnap>,
+    #[serde(default)]
+    pub scissors: u16,
+    #[serde(default)]
+    pub tweezers: u16,
+    #[serde(default)]
+    pub balloons: u16,
+    #[serde(default)]
+    pub scissors_threads: u16,
+    #[serde(default)]
+    pub balloon_count: u16,
+    #[serde(default)]
+    pub balloon_columns: Vec<Vec<YarnPatchSnap>>,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -490,6 +502,17 @@ impl GameStateSnapshot {
                     has_key: t.has_key,
                 })
                 .collect(),
+            scissors: e.bonuses.scissors,
+            tweezers: e.bonuses.tweezers,
+            balloons: e.bonuses.balloons,
+            scissors_threads: e.bonuses.scissors_threads,
+            balloon_count: e.bonuses.balloon_count,
+            balloon_columns: e.yarn.balloon_columns.iter()
+                .map(|col| col.iter().map(|p| YarnPatchSnap {
+                    color: color_serde::color_to_str(&p.color),
+                    locked: p.locked,
+                }).collect())
+                .collect(),
         }
     }
 
@@ -517,6 +540,15 @@ impl GameStateSnapshot {
             .collect();
         let threads = threads?;
 
+        let balloon_cols: Result<Vec<Vec<Patch>>, String> = self.balloon_columns.iter()
+            .map(|col| col.iter().map(|p| {
+                let color = color_serde::str_to_color(&p.color)
+                    .ok_or_else(|| format!("bad color: {}", p.color))?;
+                Ok(Patch { color, locked: p.locked })
+            }).collect())
+            .collect();
+        let balloon_cols = balloon_cols?;
+
         Ok(GameEngine {
             board: GameBoard {
                 board: board_cells,
@@ -528,7 +560,7 @@ impl GameStateSnapshot {
                 board: yarn_cols,
                 yarn_lines: self.yarn_lines,
                 visible_patches: self.visible_patches,
-                balloon_columns: Vec::new(),
+                balloon_columns: balloon_cols,
             },
             active_threads: threads,
             cursor_row: self.cursor_row,
@@ -536,8 +568,11 @@ impl GameStateSnapshot {
             knit_volume: self.knit_volume,
             active_threads_limit: self.active_threads_limit,
             bonuses: BonusInventory {
-                scissors: 0, tweezers: 0, balloons: 0,
-                scissors_threads: 1, balloon_count: 2,
+                scissors: self.scissors,
+                tweezers: self.tweezers,
+                balloons: self.balloons,
+                scissors_threads: if self.scissors_threads == 0 { 1 } else { self.scissors_threads },
+                balloon_count: if self.balloon_count == 0 { 2 } else { self.balloon_count },
             },
             bonus_state: BonusState::None,
         })
@@ -1409,5 +1444,23 @@ mod tests {
         e.use_balloons().unwrap();
         // Balloon columns are non-empty now
         assert_eq!(e.use_balloons(), Err(BonusError::BalloonColumnsNotEmpty));
+    }
+
+    // ── Task 7: snapshot roundtrip with bonuses ─────────────────────────
+
+    #[test]
+    fn snapshot_roundtrip_with_bonuses() {
+        let mut e = default_engine();
+        e.bonuses.scissors = 3;
+        e.bonuses.tweezers = 2;
+        e.bonuses.balloons = 1;
+        e.yarn.balloon_columns = vec![vec![Patch { color: Color::Red, locked: false }]];
+        let json = e.to_json();
+        let e2 = GameEngine::from_json(&json).expect("roundtrip");
+        assert_eq!(e2.bonuses.scissors, 3);
+        assert_eq!(e2.bonuses.tweezers, 2);
+        assert_eq!(e2.bonuses.balloons, 1);
+        assert_eq!(e2.yarn.balloon_columns.len(), 1);
+        assert_eq!(e2.yarn.balloon_columns[0][0].color, Color::Red);
     }
 }
