@@ -34,7 +34,6 @@ The screen is divided into three sections from top to bottom:
 |-----|--------|
 | Arrow keys | Move cursor across the board |
 | Enter | Pick up the thread under the cursor |
-| Backspace | Process active threads (animated, one at a time) |
 | Esc | Quit |
 
 ### Selectability rule
@@ -58,11 +57,11 @@ Cells become Void when their thread is picked up. Clearing a thread exposes its 
 
 ### Lock / Key mechanic
 
-A locked yarn patch (`▣`) blocks its entire column — nothing behind it can be processed until the lock is cleared. To clear it, pick up the matching **Key thread** (`K`) from the board and press Backspace. The key is consumed on contact and the lock is removed as a normal knit stage.
+A locked yarn patch (`▣`) blocks its entire column — nothing behind it can be processed until the lock is cleared. To clear it, pick up the matching **Key thread** (`K`) from the board. The key is consumed on contact and the lock is removed as a normal knit stage.
 
-### Processing animation
+### Background processing
 
-Pressing Backspace queues all active threads for sequential processing. Each thread is processed against the yarn one at a time (150 ms per step) so you can see what matches and what doesn't. Input is paused during the animation.
+Active threads are processed automatically in the background (one step every 150 ms). You can continue moving and picking up threads while processing runs. Each thread is matched against the yarn one at a time so you can see what matches and what doesn't.
 
 ## Non-interactive mode (knitui-ni)
 

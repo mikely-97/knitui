@@ -19,13 +19,6 @@ use knitui::board_entity::Direction;
 use knitui::config::Config;
 use knitui::engine::GameEngine;
 
-// ── Animation state ───────────────────────────────────────────────────────────
-
-enum ProcessingState {
-    Idle,
-    Processing { remaining_count: usize },
-}
-
 // ── Rendering ─────────────────────────────────────────────────────────────────
 
 fn render(
@@ -76,62 +69,35 @@ fn main() -> std::io::Result<()> {
     let minimal_y: u16 = yarn_offset + active_offset;
 
     let mut engine = GameEngine::new(&config);
-    let mut state = ProcessingState::Idle;
 
     render(&mut stdout, &engine, minimal_y)?;
 
     loop {
-        let timeout = match &state {
-            ProcessingState::Idle              => Duration::from_millis(500),
-            ProcessingState::Processing { .. } => Duration::from_millis(150),
-        };
-
-        if poll(timeout)? {
+        if poll(Duration::from_millis(150))? {
             if let Event::Key(event) = read()? {
-                match state {
-                    ProcessingState::Processing { .. } => {}
+                match event.code {
+                    KeyCode::Left  => { let _ = engine.move_cursor(Direction::Left);  }
+                    KeyCode::Right => { let _ = engine.move_cursor(Direction::Right); }
+                    KeyCode::Up    => { let _ = engine.move_cursor(Direction::Up);    }
+                    KeyCode::Down  => { let _ = engine.move_cursor(Direction::Down);  }
+                    KeyCode::Esc   => break,
 
-                    ProcessingState::Idle => {
-                        match event.code {
-                            KeyCode::Left  => { let _ = engine.move_cursor(Direction::Left);  }
-                            KeyCode::Right => { let _ = engine.move_cursor(Direction::Right); }
-                            KeyCode::Up    => { let _ = engine.move_cursor(Direction::Up);    }
-                            KeyCode::Down  => { let _ = engine.move_cursor(Direction::Down);  }
-                            KeyCode::Esc   => break,
-
-                            KeyCode::Enter => {
-                                if engine.pick_up().is_ok() {
-                                    render(&mut stdout, &engine, minimal_y)?;
-                                }
-                            }
-
-                            KeyCode::Backspace => {
-                                let count = engine.active_threads.len();
-                                if count > 0 {
-                                    state = ProcessingState::Processing { remaining_count: count };
-                                }
-                            }
-
-                            _ => {}
+                    KeyCode::Enter => {
+                        if engine.pick_up().is_ok() {
+                            render(&mut stdout, &engine, minimal_y)?;
                         }
-
-                        let x = engine.cursor_col;
-                        let y = max(engine.cursor_row + minimal_y, minimal_y);
-                        stdout.execute(MoveTo(x, y));
                     }
+
+                    _ => {}
                 }
+
+                let x = engine.cursor_col;
+                let y = max(engine.cursor_row + minimal_y, minimal_y);
+                stdout.execute(MoveTo(x, y));
             }
-        } else {
-            if let ProcessingState::Processing { ref mut remaining_count } = state {
-                if *remaining_count > 0 {
-                    engine.process_one_active();
-                    *remaining_count -= 1;
-                    render(&mut stdout, &engine, minimal_y)?;
-                }
-                if *remaining_count == 0 {
-                    state = ProcessingState::Idle;
-                }
-            }
+        } else if !engine.active_threads.is_empty() {
+            engine.process_one_active();
+            render(&mut stdout, &engine, minimal_y)?;
         }
     }
 

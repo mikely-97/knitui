@@ -124,26 +124,32 @@ impl GameEngine {
         Ok(())
     }
 
-    /// Process the first active thread one yarn step.
-    /// Removes the thread if it has completed `knit_volume` steps.
+    /// Process the first active thread one yarn step in place.
+    /// Removes the thread only if it has completed `knit_volume` steps.
     /// Returns true if a thread was processed, false if active list was empty.
     pub fn process_one_active(&mut self) -> bool {
         if self.active_threads.is_empty() {
             return false;
         }
-        let mut thread = self.active_threads.remove(0);
-        self.yarn.process_one(&mut thread);
-        if thread.status <= self.knit_volume {
-            self.active_threads.push(thread);
+        self.yarn.process_one(&mut self.active_threads[0]);
+        if self.active_threads[0].status > self.knit_volume {
+            self.active_threads.remove(0);
         }
         true
     }
 
     /// Process all active threads one yarn step each (for NI binary).
     pub fn process_all_active(&mut self) {
+        let mut i = 0;
         let count = self.active_threads.len();
         for _ in 0..count {
-            self.process_one_active();
+            if i >= self.active_threads.len() { break; }
+            self.yarn.process_one(&mut self.active_threads[i]);
+            if self.active_threads[i].status > self.knit_volume {
+                self.active_threads.remove(i);
+            } else {
+                i += 1;
+            }
         }
     }
 

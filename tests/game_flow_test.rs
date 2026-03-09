@@ -188,6 +188,80 @@ fn test_engine_json_roundtrip_preserves_game_state() {
     assert_eq!(restored.knit_volume, engine.knit_volume);
 }
 
+// ── Background processing (no manual trigger needed) ────────────────────────
+
+#[test]
+fn test_auto_processing_after_pick_up() {
+    // Simulate the TUI loop's auto-processing: after pick_up, calling
+    // process_one_active on each tick drains threads without any manual trigger.
+    let config = make_config(3, 3, 1, "dark", 1, 0);
+    let mut engine = GameEngine::new(&config);
+
+    // Pick up a thread from the top row
+    let mut picked = false;
+    for col in 0..3u16 {
+        engine.cursor_col = col;
+        if engine.pick_up().is_ok() { picked = true; break; }
+    }
+    assert!(picked);
+    assert_eq!(engine.active_threads.len(), 1);
+
+    // Simulate background ticks — thread should be processed and removed
+    // without any explicit "start processing" step.
+    let mut ticks = 0;
+    while !engine.active_threads.is_empty() && ticks < 20 {
+        engine.process_one_active();
+        ticks += 1;
+    }
+    assert!(engine.active_threads.is_empty(),
+        "thread should auto-drain via background ticks");
+}
+
+#[test]
+fn test_input_during_processing() {
+    // Verify that cursor movement works while threads are being processed —
+    // the engine does not block actions during processing.
+    let void_row = || vec![BoardEntity::Void, BoardEntity::Void, BoardEntity::Void, BoardEntity::Void];
+    let mut engine = GameEngine {
+        board: GameBoard {
+            board: vec![
+                vec![BoardEntity::Thread(Color::Red), BoardEntity::Thread(Color::Blue),
+                     BoardEntity::Void, BoardEntity::Void],
+                void_row(), void_row(), void_row(),
+            ],
+            height: 4, width: 4, knit_volume: 2,
+        },
+        yarn: Yarn {
+            board: vec![
+                vec![knitui::yarn::Patch { color: Color::Red, locked: false },
+                     knitui::yarn::Patch { color: Color::Blue, locked: false }],
+                vec![knitui::yarn::Patch { color: Color::Red, locked: false },
+                     knitui::yarn::Patch { color: Color::Blue, locked: false }],
+                vec![], vec![],
+            ],
+            yarn_lines: 4, visible_patches: 6,
+        },
+        active_threads: vec![],
+        cursor_row: 0, cursor_col: 0,
+        knit_volume: 2, active_threads_limit: 7,
+    };
+
+    // Pick up a thread
+    engine.pick_up().unwrap();
+    assert_eq!(engine.active_threads.len(), 1);
+
+    // Simulate one background tick
+    engine.process_one_active();
+
+    // Move cursor while thread is still processing (status 2 <= knit_volume 2)
+    assert!(engine.move_cursor(Direction::Right).is_ok());
+    assert_eq!(engine.cursor_col, 1);
+
+    // Pick up another thread while first is still active
+    engine.pick_up().unwrap();
+    assert_eq!(engine.active_threads.len(), 2);
+}
+
 // ── Preserved direct-module tests (still valid for module-level coverage) ───
 
 #[test]
