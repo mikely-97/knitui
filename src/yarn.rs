@@ -27,6 +27,7 @@ pub struct Yarn {
     pub board: Vec<Vec<Patch>>,
     pub yarn_lines: u16,
     pub visible_patches: u16,
+    pub balloon_columns: Vec<Vec<Patch>>,
 }
 
 impl Yarn {
@@ -40,7 +41,7 @@ impl Yarn {
             let column_number = rand::random::<u16>() % yarn_lines;
             board[column_number as usize].push(Patch { color: *color, locked: false });
         }
-        Self { board, yarn_lines, visible_patches }
+        Self { board, yarn_lines, visible_patches, balloon_columns: Vec::new() }
     }
 
     /// Process one thread against the yarn.
@@ -182,6 +183,7 @@ mod tests {
             board: vec![vec![Patch { color: Color::Red, locked: true }]],
             yarn_lines: 1,
             visible_patches: 3,
+            balloon_columns: Vec::new(),
         };
 
         let mut thread = Thread { color: Color::Red, status: 1, has_key: false };
@@ -199,6 +201,7 @@ mod tests {
             board: vec![vec![Patch { color: Color::Red, locked: true }]],
             yarn_lines: 1,
             visible_patches: 3,
+            balloon_columns: Vec::new(),
         };
 
         let mut thread = Thread { color: Color::Red, status: 1, has_key: true };
@@ -216,6 +219,7 @@ mod tests {
             board: vec![vec![Patch { color: Color::Blue, locked: true }]],
             yarn_lines: 1,
             visible_patches: 3,
+            balloon_columns: Vec::new(),
         };
 
         let mut thread = Thread { color: Color::Red, status: 1, has_key: true };
@@ -241,6 +245,7 @@ mod tests {
             ],
             yarn_lines: 2,
             visible_patches: 5,
+            balloon_columns: Vec::new(),
         };
 
         let mut threads = vec![

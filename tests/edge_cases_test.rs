@@ -120,6 +120,7 @@ fn test_mixed_thread_colors() {
         ],
         yarn_lines: 3,
         visible_patches: 5,
+        balloon_columns: Vec::new(),
     };
 
     let mut threads = vec![

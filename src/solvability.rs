@@ -261,6 +261,7 @@ mod tests {
             board: vec![vec![Patch { color: Color::Red, locked: true }]],
             yarn_lines: 1,
             visible_patches: 3,
+            balloon_columns: Vec::new(),
         };
         assert!(keys_and_locks_valid(&board, &yarn));
     }
@@ -280,6 +281,7 @@ mod tests {
             board: vec![vec![Patch { color: Color::Red, locked: true }]],
             yarn_lines: 1,
             visible_patches: 3,
+            balloon_columns: Vec::new(),
         };
         assert!(!keys_and_locks_valid(&board, &yarn));
     }

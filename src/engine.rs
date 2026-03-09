@@ -406,6 +406,7 @@ impl GameStateSnapshot {
                 board: yarn_cols,
                 yarn_lines: self.yarn_lines,
                 visible_patches: self.visible_patches,
+                balloon_columns: Vec::new(),
             },
             active_threads: threads,
             cursor_row: self.cursor_row,
@@ -504,6 +505,7 @@ mod tests {
             ],
             yarn_lines: 2,
             visible_patches: 3,
+            balloon_columns: Vec::new(),
         };
         GameEngine {
             board,
@@ -705,7 +707,7 @@ mod tests {
                 ],
                 height: 2, width: 2, knit_volume: 1,
             },
-            yarn: Yarn { board: vec![vec![], vec![]], yarn_lines: 2, visible_patches: 3 },
+            yarn: Yarn { board: vec![vec![], vec![]], yarn_lines: 2, visible_patches: 3, balloon_columns: Vec::new() },
             active_threads: vec![],
             cursor_row: 0, cursor_col: 0,
             knit_volume: 1, active_threads_limit: 5,
@@ -873,7 +875,7 @@ mod tests {
                 board: vec![vec![BoardEntity::Void, BoardEntity::Obstacle]],
                 height: 1, width: 2, knit_volume: 1,
             },
-            yarn: Yarn { board: vec![vec![], vec![]], yarn_lines: 2, visible_patches: 3 },
+            yarn: Yarn { board: vec![vec![], vec![]], yarn_lines: 2, visible_patches: 3, balloon_columns: Vec::new() },
             active_threads: vec![],
             cursor_row: 0, cursor_col: 0,
             knit_volume: 1, active_threads_limit: 5,
@@ -897,6 +899,7 @@ mod tests {
             yarn: Yarn {
                 board: vec![vec![Patch { color: Color::Red, locked: false }]],
                 yarn_lines: 1, visible_patches: 3,
+                balloon_columns: Vec::new(),
             },
             active_threads: vec![Thread { color: Color::Green, status: 1, has_key: false }],
             cursor_row: 0, cursor_col: 0,
@@ -924,6 +927,7 @@ mod tests {
             yarn: Yarn {
                 board: vec![vec![Patch { color: Color::Red, locked: false }]],
                 yarn_lines: 1, visible_patches: 3,
+                balloon_columns: Vec::new(),
             },
             active_threads: vec![],
             cursor_row: 0, cursor_col: 0,
@@ -948,6 +952,7 @@ mod tests {
             yarn: Yarn {
                 board: vec![vec![Patch { color: Color::Red, locked: false }]],
                 yarn_lines: 1, visible_patches: 3,
+                balloon_columns: Vec::new(),
             },
             active_threads: vec![Thread { color: Color::Red, status: 1, has_key: false }],
             cursor_row: 0, cursor_col: 0,
@@ -972,6 +977,7 @@ mod tests {
             yarn: Yarn {
                 board: vec![vec![Patch { color: Color::Red, locked: true }]],
                 yarn_lines: 1, visible_patches: 3,
+                balloon_columns: Vec::new(),
             },
             active_threads: vec![Thread { color: Color::Red, status: 1, has_key: false }],
             cursor_row: 0, cursor_col: 0,
@@ -996,6 +1002,7 @@ mod tests {
             yarn: Yarn {
                 board: vec![vec![Patch { color: Color::Red, locked: true }]],
                 yarn_lines: 1, visible_patches: 3,
+                balloon_columns: Vec::new(),
             },
             active_threads: vec![Thread { color: Color::Red, status: 1, has_key: true }],
             cursor_row: 0, cursor_col: 0,
@@ -1020,6 +1027,7 @@ mod tests {
             yarn: Yarn {
                 board: vec![vec![Patch { color: Color::Red, locked: false }]],
                 yarn_lines: 1, visible_patches: 3,
+                balloon_columns: Vec::new(),
             },
             active_threads: vec![
                 Thread { color: Color::Green, status: 1, has_key: false },
@@ -1047,6 +1055,7 @@ mod tests {
             yarn: Yarn {
                 board: vec![vec![Patch { color: Color::Red, locked: false }]],
                 yarn_lines: 1, visible_patches: 3,
+                balloon_columns: Vec::new(),
             },
             active_threads: vec![
                 Thread { color: Color::Green, status: 1, has_key: false },
@@ -1077,6 +1086,7 @@ mod tests {
             yarn: Yarn {
                 board: vec![vec![Patch { color: Color::Red, locked: false }]],
                 yarn_lines: 1, visible_patches: 3,
+                balloon_columns: Vec::new(),
             },
             active_threads: vec![Thread { color: Color::Green, status: 1, has_key: false }],
             cursor_row: 0, cursor_col: 0,
@@ -1103,6 +1113,7 @@ mod tests {
             yarn: Yarn {
                 board: vec![vec![Patch { color: Color::Red, locked: false }]],
                 yarn_lines: 1, visible_patches: 3,
+                balloon_columns: Vec::new(),
             },
             active_threads: vec![Thread { color: Color::Green, status: 1, has_key: false }],
             cursor_row: 0, cursor_col: 0,
