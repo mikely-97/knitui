@@ -177,7 +177,10 @@ impl GameEngine {
             return GameStatus::Won;
         }
         if !self.active_threads.is_empty() {
-            if !self.can_any_thread_progress() {
+            if !self.can_any_thread_progress()
+                && (self.active_threads.len() >= self.active_threads_limit
+                    || !self.board.has_selectable_thread())
+            {
                 return GameStatus::Stuck;
             }
         } else if !self.board.has_selectable_thread() {
@@ -954,6 +957,49 @@ mod tests {
             ],
             cursor_row: 0, cursor_col: 0,
             knit_volume: 3, active_threads_limit: 5,
+        };
+        assert_eq!(e.status(), GameStatus::Stuck);
+    }
+
+    #[test]
+    fn status_playing_when_blocked_but_can_pick_up_more() {
+        // Active thread can't match yarn, but board has selectable threads
+        // and active_threads_limit not reached → player can pick up helpers
+        let e = GameEngine {
+            board: GameBoard {
+                board: vec![
+                    vec![BoardEntity::Thread(Color::Red), BoardEntity::Void],
+                ],
+                height: 1, width: 2, knit_volume: 1,
+            },
+            yarn: Yarn {
+                board: vec![vec![Patch { color: Color::Red, locked: false }]],
+                yarn_lines: 1, visible_patches: 3,
+            },
+            active_threads: vec![Thread { color: Color::Green, status: 1, has_key: false }],
+            cursor_row: 0, cursor_col: 0,
+            knit_volume: 3, active_threads_limit: 5,
+        };
+        assert_eq!(e.status(), GameStatus::Playing);
+    }
+
+    #[test]
+    fn status_stuck_when_blocked_and_active_full() {
+        // Active thread can't match, AND active_threads is full → truly stuck
+        let e = GameEngine {
+            board: GameBoard {
+                board: vec![
+                    vec![BoardEntity::Thread(Color::Red), BoardEntity::Void],
+                ],
+                height: 1, width: 2, knit_volume: 1,
+            },
+            yarn: Yarn {
+                board: vec![vec![Patch { color: Color::Red, locked: false }]],
+                yarn_lines: 1, visible_patches: 3,
+            },
+            active_threads: vec![Thread { color: Color::Green, status: 1, has_key: false }],
+            cursor_row: 0, cursor_col: 0,
+            knit_volume: 3, active_threads_limit: 1,
         };
         assert_eq!(e.status(), GameStatus::Stuck);
     }
