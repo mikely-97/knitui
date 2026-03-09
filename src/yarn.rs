@@ -81,6 +81,21 @@ impl Yarn {
             self.process_one(thread);
         }
     }
+
+    /// Deep-scan all yarn columns (and balloon columns) for a matching patch.
+    /// Unlike process_one, this ignores queue order — it searches ALL patches
+    /// in each column, not just the front. Removes the first match found.
+    /// Locked patches are skipped entirely.
+    pub fn deep_scan_process(&mut self, thread: &mut Thread) {
+        // Search regular columns first, then balloon columns
+        for column in self.board.iter_mut().chain(self.balloon_columns.iter_mut()) {
+            if let Some(pos) = column.iter().position(|p| !p.locked && p.color == thread.color) {
+                column.remove(pos);
+                thread.knit_on();
+                return;
+            }
+        }
+    }
 }
 
 impl fmt::Display for Yarn {
@@ -275,6 +290,66 @@ mod tests {
 
         let final_total: usize = yarn.board.iter().map(|col| col.len()).sum();
         assert_eq!(final_total, initial_total);
+    }
+
+    #[test]
+    fn test_deep_scan_process_finds_match_behind_front() {
+        // Col 0: [Blue(bottom), Red(top)] — front is Red, but thread is Blue
+        // Deep scan should find Blue behind Red and remove it
+        let mut yarn = Yarn {
+            board: vec![vec![
+                Patch { color: Color::Blue, locked: false },  // bottom (index 0)
+                Patch { color: Color::Red, locked: false },   // top (index 1, front)
+            ]],
+            yarn_lines: 1,
+            visible_patches: 3,
+            balloon_columns: Vec::new(),
+        };
+
+        let mut thread = Thread { color: Color::Blue, status: 1, has_key: false };
+        yarn.deep_scan_process(&mut thread);
+
+        assert_eq!(thread.status, 2); // knitted once
+        assert_eq!(yarn.board[0].len(), 1); // Blue removed, Red remains
+        assert_eq!(yarn.board[0][0].color, Color::Red); // Red is still there
+    }
+
+    #[test]
+    fn test_deep_scan_process_no_match() {
+        let mut yarn = Yarn {
+            board: vec![vec![
+                Patch { color: Color::Red, locked: false },
+            ]],
+            yarn_lines: 1,
+            visible_patches: 3,
+            balloon_columns: Vec::new(),
+        };
+
+        let mut thread = Thread { color: Color::Green, status: 1, has_key: false };
+        yarn.deep_scan_process(&mut thread);
+
+        assert_eq!(thread.status, 1); // no change
+        assert_eq!(yarn.board[0].len(), 1);
+    }
+
+    #[test]
+    fn test_deep_scan_checks_balloon_columns() {
+        let mut yarn = Yarn {
+            board: vec![vec![
+                Patch { color: Color::Red, locked: false },
+            ]],
+            yarn_lines: 1,
+            visible_patches: 3,
+            balloon_columns: vec![vec![
+                Patch { color: Color::Blue, locked: false },
+            ]],
+        };
+
+        let mut thread = Thread { color: Color::Blue, status: 1, has_key: false };
+        yarn.deep_scan_process(&mut thread);
+
+        assert_eq!(thread.status, 2);
+        assert_eq!(yarn.balloon_columns[0].len(), 0);
     }
 
     #[test]

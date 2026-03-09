@@ -251,6 +251,59 @@ impl GameEngine {
         false
     }
 
+    // ── Bonuses ─────────────────────────────────────────────────────────
+
+    /// Check if any bonus is currently active.
+    pub fn is_bonus_active(&self) -> bool {
+        self.bonus_state != BonusState::None || !self.yarn.balloon_columns.is_empty()
+    }
+
+    /// Scissors: deep-scan auto-knit the least-progressed thread(s).
+    pub fn use_scissors(&mut self) -> Result<(), BonusError> {
+        if self.bonuses.scissors == 0 {
+            return Err(BonusError::NoneLeft);
+        }
+        if self.active_threads.is_empty() {
+            return Err(BonusError::NoActiveThreads);
+        }
+        if self.is_bonus_active() {
+            return Err(BonusError::BonusActive);
+        }
+
+        self.bonuses.scissors -= 1;
+
+        // Process up to scissors_threads threads, picking lowest status each time
+        for _ in 0..self.bonuses.scissors_threads {
+            if self.active_threads.is_empty() { break; }
+
+            // Find the thread with the lowest status
+            let min_idx = self.active_threads.iter()
+                .enumerate()
+                .min_by_key(|(_, t)| t.status)
+                .map(|(i, _)| i)
+                .unwrap();
+
+            // Deep-scan knit until complete or no more matches
+            loop {
+                if self.active_threads[min_idx].status > self.knit_volume {
+                    break;
+                }
+                let prev_status = self.active_threads[min_idx].status;
+                self.yarn.deep_scan_process(&mut self.active_threads[min_idx]);
+                if self.active_threads[min_idx].status == prev_status {
+                    break; // no match found anywhere
+                }
+            }
+
+            // Remove if completed
+            if self.active_threads[min_idx].status > self.knit_volume {
+                self.active_threads.remove(min_idx);
+            }
+        }
+
+        Ok(())
+    }
+
     // ── Serialisation ──────────────────────────────────────────────────────
 
     pub fn to_json(&self) -> String {
@@ -1125,5 +1178,58 @@ mod tests {
             bonus_state: BonusState::None,
         };
         assert_eq!(e.status(), GameStatus::Stuck);
+    }
+
+    // ── Task 4: scissors bonus tests ────────────────────────────────────
+
+    #[test]
+    fn use_scissors_completes_thread() {
+        let mut e = default_engine();
+        e.bonuses.scissors = 1;
+        e.bonuses.scissors_threads = 1;
+        e.knit_volume = 2;
+        // Active thread: Red, status 1 (needs 2 total knits to complete, since done when status > knit_volume)
+        e.active_threads = vec![
+            Thread { color: Color::Red, status: 1, has_key: false },
+        ];
+        // default_engine yarn has Red patches in both columns — deep scan will find them
+        let result = e.use_scissors();
+        assert!(result.is_ok());
+        assert_eq!(e.bonuses.scissors, 0);
+        // Thread should be fully knitted and removed (status went past knit_volume=2)
+        assert_eq!(e.active_threads.len(), 0);
+    }
+
+    #[test]
+    fn use_scissors_none_left_fails() {
+        let mut e = default_engine();
+        e.bonuses.scissors = 0;
+        e.active_threads = vec![Thread { color: Color::Red, status: 1, has_key: false }];
+        assert_eq!(e.use_scissors(), Err(BonusError::NoneLeft));
+    }
+
+    #[test]
+    fn use_scissors_no_active_threads_fails() {
+        let mut e = default_engine();
+        e.bonuses.scissors = 1;
+        assert_eq!(e.use_scissors(), Err(BonusError::NoActiveThreads));
+    }
+
+    #[test]
+    fn use_scissors_picks_least_progress_thread() {
+        let mut e = default_engine();
+        e.bonuses.scissors = 1;
+        e.bonuses.scissors_threads = 1;
+        e.knit_volume = 1;
+        e.active_threads = vec![
+            Thread { color: Color::Red,  status: 2, has_key: false }, // more progress
+            Thread { color: Color::Blue, status: 1, has_key: false }, // least progress
+        ];
+        // default_engine yarn has Blue patches — deep scan should find one
+        let _ = e.use_scissors();
+        // The Blue thread (status 1) should have been selected and completed
+        // It had status 1, knit_volume=1, so after 1 knit → status 2 > 1 → removed
+        assert_eq!(e.active_threads.len(), 1);
+        assert_eq!(e.active_threads[0].color, Color::Red);
     }
 }
