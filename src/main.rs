@@ -22,11 +22,12 @@ const COMP_GAP: u16 = 3;    // gap between components (> all inner gaps)
 
 use knitui::board_entity::Direction;
 use knitui::config::Config;
-use knitui::engine::{GameEngine, GameStatus};
+use knitui::engine::{GameEngine, GameStatus, BonusState};
 
 enum TuiState {
     Playing,
     GameOver(GameStatus),
+    Help,
 }
 
 #[derive(Clone, Copy)]
@@ -78,6 +79,33 @@ fn render_yarn(stdout: &mut Stdout, engine: &GameEngine, x0: u16, y0: u16, scale
             }
         }
     }
+
+    // Render balloon columns (if any) to the right with a separator
+    if !engine.yarn.balloon_columns.is_empty() {
+        let regular_w = engine.yarn.yarn_lines * sw
+            + engine.yarn.yarn_lines.saturating_sub(1) * YARN_HGAP;
+        let balloon_x0 = x0 + regular_w + COMP_GAP;
+
+        for offset in 0..(engine.yarn.visible_patches as usize) {
+            let true_offset = (engine.yarn.visible_patches as usize) - offset;
+            let row_y = y0 + (offset as u16) * (sh + YARN_VGAP);
+            for sy in 0..sh {
+                stdout.queue(MoveTo(balloon_x0, row_y + sy))?;
+                for (ci, column) in engine.yarn.balloon_columns.iter().enumerate() {
+                    if ci > 0 {
+                        for _ in 0..YARN_HGAP { stdout.queue(Print(' '))?; }
+                    }
+                    if true_offset <= column.len() {
+                        let pos = column.len() - true_offset;
+                        for _ in 0..sw { stdout.queue(Print(&column[pos]))?; }
+                    } else {
+                        for _ in 0..sw { stdout.queue(Print(' '))?; }
+                    }
+                }
+            }
+        }
+    }
+
     Ok(())
 }
 
@@ -138,6 +166,9 @@ fn render_board(stdout: &mut Stdout, engine: &GameEngine, x0: u16, y0: u16, scal
     let cur_r = engine.cursor_row as usize;
     let cur_c = engine.cursor_col as usize;
 
+    let tweezers = matches!(engine.bonus_state, BonusState::TweezersActive { .. });
+    let (open_bracket, close_bracket) = if tweezers { ('{', '}') } else { ('[', ']') };
+
     // Top border
     draw_hline(stdout, x0, y0, cols, sw, 0)?;
 
@@ -153,9 +184,9 @@ fn render_board(stdout: &mut Stdout, engine: &GameEngine, x0: u16, y0: u16, scal
 
                 // Left border: bright brackets for cursor edges, normal │ otherwise
                 if is_cursor {
-                    stdout.queue(Print('['.bold().white()))?;
+                    stdout.queue(Print(open_bracket.bold().white()))?;
                 } else if is_after_cursor {
-                    stdout.queue(Print(']'.bold().white()))?;
+                    stdout.queue(Print(close_bracket.bold().white()))?;
                 } else {
                     stdout.queue(Print('│'))?;
                 }
@@ -171,7 +202,7 @@ fn render_board(stdout: &mut Stdout, engine: &GameEngine, x0: u16, y0: u16, scal
             }
             // Right border
             if is_cur_row && cols - 1 == cur_c {
-                stdout.queue(Print(']'.bold().white()))?;
+                stdout.queue(Print(close_bracket.bold().white()))?;
             } else {
                 stdout.queue(Print('│'))?;
             }
@@ -185,6 +216,110 @@ fn render_board(stdout: &mut Stdout, engine: &GameEngine, x0: u16, y0: u16, scal
         }
     }
 
+    Ok(())
+}
+
+fn render_help(stdout: &mut Stdout) -> io::Result<()> {
+    stdout.queue(BeginSynchronizedUpdate)?;
+    stdout.queue(Hide)?;
+    stdout.queue(Clear(ClearType::All))?;
+
+    let lines = [
+        "",
+        "                    ═══ HELP ═══",
+        "",
+        "  Movement:   ← → ↑ ↓   Move cursor",
+        "  Pick up:    Enter       Pick up thread at cursor",
+        "  Quit:       Esc / Q     Exit game",
+        "  Restart:    R           New game",
+        "  Help:       H           Show this screen",
+        "",
+        "  ─── Bonuses ───",
+        "  [Z] ✂ Scissors    Auto-knit thread by deep-scanning yarn",
+        "  [X] ⊹ Tweezers    Pick any thread from the board",
+        "  [C] ⊛ Balloons    Lift front patches, expose patches behind",
+        "",
+        "              Press any key to close",
+    ];
+
+    for (i, line) in lines.iter().enumerate() {
+        stdout.queue(MoveTo(0, i as u16))?;
+        stdout.queue(Print(line))?;
+    }
+
+    stdout.queue(EndSynchronizedUpdate)?;
+    stdout.flush()
+}
+
+fn render_keybar(stdout: &mut Stdout, engine: &GameEngine, y: u16) -> io::Result<()> {
+    stdout.queue(MoveTo(0, y))?;
+    let (term_w, _) = terminal::size().unwrap_or((80, 24));
+    for _ in 0..term_w { stdout.queue(Print(' '))?; }
+    stdout.queue(MoveTo(0, y))?;
+
+    stdout.queue(Print("←→↑↓ ".dark_grey()))?;
+    stdout.queue(Print("Move  ".white()))?;
+    stdout.queue(Print("Enter ".dark_grey()))?;
+    stdout.queue(Print("Pick  ".white()))?;
+    stdout.queue(Print("H ".dark_grey()))?;
+    stdout.queue(Print("Help  ".white()))?;
+
+    if engine.bonuses.scissors > 0 {
+        stdout.queue(Print("Z ".dark_grey()))?;
+        stdout.queue(Print(format!("✂x{} ", engine.bonuses.scissors).white()))?;
+    } else {
+        stdout.queue(Print("Z ✂x0 ".dark_grey()))?;
+    }
+    if engine.bonuses.tweezers > 0 {
+        stdout.queue(Print("X ".dark_grey()))?;
+        stdout.queue(Print(format!("⊹x{} ", engine.bonuses.tweezers).white()))?;
+    } else {
+        stdout.queue(Print("X ⊹x0 ".dark_grey()))?;
+    }
+    if engine.bonuses.balloons > 0 {
+        stdout.queue(Print("C ".dark_grey()))?;
+        stdout.queue(Print(format!("⊛x{} ", engine.bonuses.balloons).white()))?;
+    } else {
+        stdout.queue(Print("C ⊛x0 ".dark_grey()))?;
+    }
+
+    stdout.queue(Print("Esc ".dark_grey()))?;
+    stdout.queue(Print("Quit".white()))?;
+    Ok(())
+}
+
+fn render_bonus_display_h(stdout: &mut Stdout, engine: &GameEngine, x: u16, y: u16) -> io::Result<()> {
+    stdout.queue(MoveTo(x, y))?;
+    let bonuses = [
+        ("Z", "✂", engine.bonuses.scissors),
+        ("X", "⊹", engine.bonuses.tweezers),
+        ("C", "⊛", engine.bonuses.balloons),
+    ];
+    for (i, (key, icon, count)) in bonuses.iter().enumerate() {
+        if i > 0 { stdout.queue(Print("  "))?; }
+        if *count > 0 {
+            stdout.queue(Print(format!("[{}] {} x{}", key, icon, count).white()))?;
+        } else {
+            stdout.queue(Print(format!("[{}] {} x{}", key, icon, count).dark_grey()))?;
+        }
+    }
+    Ok(())
+}
+
+fn render_bonus_panel(stdout: &mut Stdout, engine: &GameEngine, x: u16, y: u16) -> io::Result<()> {
+    let bonuses = [
+        ("Z", "✂", engine.bonuses.scissors),
+        ("X", "⊹", engine.bonuses.tweezers),
+        ("C", "⊛", engine.bonuses.balloons),
+    ];
+    for (i, (key, icon, count)) in bonuses.iter().enumerate() {
+        stdout.queue(MoveTo(x, y + i as u16))?;
+        if *count > 0 {
+            stdout.queue(Print(format!("[{}] {} x{}", key, icon, count).white()))?;
+        } else {
+            stdout.queue(Print(format!("[{}] {} x{}", key, icon, count).dark_grey()))?;
+        }
+    }
     Ok(())
 }
 
@@ -208,6 +343,13 @@ fn render(
     render_yarn(stdout, engine, 0, 0, scale)?;
     render_active_h(stdout, engine, 0, active_y, scale)?;
     render_board(stdout, engine, 0, board_y, scale)?;
+
+    let board_h = 1 + engine.board.height * (sh + 1);
+    let bonus_y = board_y + board_h + 1;
+    render_bonus_display_h(stdout, engine, 0, bonus_y)?;
+
+    let (_, term_h) = terminal::size().unwrap_or((80, 24));
+    render_keybar(stdout, engine, term_h.saturating_sub(1))?;
 
     stdout.queue(EndSynchronizedUpdate)?;
     stdout.flush()
@@ -249,6 +391,13 @@ fn render_horizontal(
     render_yarn(stdout, engine, 0, 0, scale)?;
     render_active_v(stdout, engine, active_x, 0, scale)?;
     render_board(stdout, engine, board_x, 0, scale)?;
+
+    let board_w = 1 + engine.board.width * (sw + 1);
+    let panel_x = board_x + board_w + 2;
+    render_bonus_panel(stdout, engine, panel_x, 0)?;
+
+    let (_, term_h) = terminal::size().unwrap_or((80, 24));
+    render_keybar(stdout, engine, term_h.saturating_sub(1))?;
 
     stdout.queue(EndSynchronizedUpdate)?;
     stdout.flush()
@@ -344,13 +493,23 @@ fn main() -> std::io::Result<()> {
                             _ => {}
                         }
                     }
+                    TuiState::Help => {
+                        tui_state = TuiState::Playing;
+                        do_render(&mut stdout, &engine, layout, board_x, board_y, scale)?;
+                    }
                     TuiState::Playing => {
                         match event.code {
                             KeyCode::Left  => { let _ = engine.move_cursor(Direction::Left);  }
                             KeyCode::Right => { let _ = engine.move_cursor(Direction::Right); }
                             KeyCode::Up    => { let _ = engine.move_cursor(Direction::Up);    }
                             KeyCode::Down  => { let _ = engine.move_cursor(Direction::Down);  }
-                            KeyCode::Esc   => break,
+                            KeyCode::Esc => {
+                                if engine.bonus_state != BonusState::None {
+                                    engine.cancel_tweezers();
+                                } else {
+                                    break;
+                                }
+                            }
 
                             KeyCode::Enter => {
                                 if engine.pick_up().is_ok() {
@@ -363,6 +522,21 @@ fn main() -> std::io::Result<()> {
                                         }
                                     };
                                 }
+                            }
+
+                            KeyCode::Char('h') | KeyCode::Char('H') => {
+                                render_help(&mut stdout)?;
+                                tui_state = TuiState::Help;
+                                continue;
+                            }
+                            KeyCode::Char('z') | KeyCode::Char('Z') => {
+                                let _ = engine.use_scissors();
+                            }
+                            KeyCode::Char('x') | KeyCode::Char('X') => {
+                                let _ = engine.use_tweezers();
+                            }
+                            KeyCode::Char('c') | KeyCode::Char('C') => {
+                                let _ = engine.use_balloons();
                             }
 
                             _ => { continue; }
