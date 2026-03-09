@@ -494,4 +494,229 @@ mod tests {
             str_to_cell(&s).unwrap_or_else(|_| panic!("failed to parse: {s}"));
         }
     }
+
+    // ── Task 2: missing engine unit tests ──────────────────────────────────
+
+    #[test]
+    fn move_cursor_down_succeeds() {
+        let mut e = default_engine();
+        assert!(e.move_cursor(Direction::Down).is_ok());
+        assert_eq!(e.cursor_row, 1);
+    }
+    #[test]
+    fn move_cursor_down_at_edge_fails() {
+        let mut e = default_engine();
+        e.cursor_row = 2; // bottom edge of 3-row board
+        assert_eq!(e.move_cursor(Direction::Down), Err(MoveError::OutOfBounds));
+    }
+    #[test]
+    fn move_cursor_right_at_edge_fails() {
+        let mut e = default_engine();
+        e.cursor_col = 2; // right edge of 3-col board
+        assert_eq!(e.move_cursor(Direction::Right), Err(MoveError::OutOfBounds));
+    }
+
+    #[test]
+    fn pick_up_makes_cell_void() {
+        let mut e = default_engine();
+        e.pick_up().unwrap();
+        assert!(matches!(e.board.board[0][0], BoardEntity::Void));
+    }
+    #[test]
+    fn pick_up_key_thread_sets_has_key() {
+        let mut e = default_engine();
+        e.board.board[0][0] = BoardEntity::KeyThread(Color::Red);
+        e.pick_up().unwrap();
+        assert!(e.active_threads[0].has_key);
+        assert_eq!(e.active_threads[0].color, Color::Red);
+    }
+
+    #[test]
+    fn process_all_active_processes_each_thread() {
+        // knit_volume=2 so threads need 2 hits to complete (status starts at 1, done when > 2)
+        let mut e = default_engine();
+        e.knit_volume = 2;
+        // Yarn: col0=[Red, Blue], col1=[Red, Red] — plenty of Red and Blue patches
+        e.active_threads = vec![
+            Thread { color: Color::Red,  status: 1, has_key: false },
+            Thread { color: Color::Blue, status: 1, has_key: false },
+            Thread { color: Color::Red,  status: 1, has_key: false },
+        ];
+        e.process_all_active();
+        // Each thread gets one step: Red→2, Blue→2, Red→2 (all still <= knit_volume=2)
+        assert_eq!(e.active_threads.len(), 3);
+        for t in &e.active_threads {
+            assert_eq!(t.status, 2);
+        }
+    }
+    #[test]
+    fn process_all_active_removes_completed() {
+        let mut e = default_engine(); // knit_volume=1
+        e.active_threads = vec![
+            Thread { color: Color::Red, status: 1, has_key: false },
+            Thread { color: Color::Red, status: 1, has_key: false },
+        ];
+        // knit_volume=1: after one process, status=2 > 1, thread is discarded
+        e.process_all_active();
+        assert_eq!(e.active_threads.len(), 0);
+    }
+    #[test]
+    fn process_one_active_returns_false_when_empty() {
+        let mut e = default_engine();
+        assert!(!e.process_one_active());
+    }
+
+    #[test]
+    fn is_won_true_when_board_cleared() {
+        let e = GameEngine {
+            board: GameBoard {
+                board: vec![
+                    vec![BoardEntity::Void, BoardEntity::Obstacle],
+                    vec![BoardEntity::DepletedGenerator, BoardEntity::Void],
+                ],
+                height: 2, width: 2, knit_volume: 1,
+            },
+            yarn: Yarn { board: vec![vec![], vec![]], yarn_lines: 2, visible_patches: 3 },
+            active_threads: vec![],
+            cursor_row: 0, cursor_col: 0,
+            knit_volume: 1, active_threads_limit: 5,
+        };
+        assert!(e.is_won());
+    }
+    #[test]
+    fn is_won_false_with_active_threads() {
+        let mut e = default_engine();
+        // Clear board and yarn but leave an active thread
+        e.board.board = vec![vec![BoardEntity::Void]];
+        e.board.height = 1; e.board.width = 1;
+        e.yarn.board = vec![vec![]];
+        e.active_threads = vec![Thread { color: Color::Red, status: 1, has_key: false }];
+        assert!(!e.is_won());
+    }
+    #[test]
+    fn is_won_false_with_remaining_yarn() {
+        let mut e = default_engine();
+        e.board.board = vec![vec![BoardEntity::Void]];
+        e.board.height = 1; e.board.width = 1;
+        e.active_threads = vec![];
+        // yarn still has patches
+        assert!(!e.is_won());
+    }
+
+    #[test]
+    fn generate_hash_format() {
+        let h = GameEngine::generate_hash();
+        assert_eq!(h.len(), 8);
+        assert!(h.chars().all(|c| c.is_ascii_alphanumeric()));
+    }
+    #[test]
+    fn generate_hash_uniqueness() {
+        let hashes: Vec<String> = (0..100).map(|_| GameEngine::generate_hash()).collect();
+        let mut deduped = hashes.clone();
+        deduped.sort();
+        deduped.dedup();
+        assert_eq!(hashes.len(), deduped.len());
+    }
+
+    #[test]
+    fn new_from_config_produces_solvable_game() {
+        let config = Config {
+            board_height: 4, board_width: 4, color_number: 3,
+            color_mode: "dark".into(), active_threads_limit: 7,
+            knit_volume: 2, yarn_lines: 3, obstacle_percentage: 5,
+            visible_patches: 4, generator_capacity: 3,
+        };
+        let e = GameEngine::new(&config);
+        assert_eq!(e.board.height, 4);
+        assert_eq!(e.board.width, 4);
+        assert_eq!(e.knit_volume, 2);
+        assert!(e.active_threads.is_empty());
+        // yarn should have patches
+        let total_patches: usize = e.yarn.board.iter().map(|c| c.len()).sum();
+        assert!(total_patches > 0);
+    }
+
+    // ── Task 3: snapshot edge case tests ───────────────────────────────────
+
+    #[test]
+    fn snapshot_roundtrip_with_generator() {
+        let mut e = default_engine();
+        e.board.board[1][0] = BoardEntity::Generator(GeneratorData {
+            color: Color::Cyan,
+            output_dir: Direction::Right,
+            queue: vec![Color::Red, Color::Blue, Color::Green],
+        });
+        let json = e.to_json();
+        let e2 = GameEngine::from_json(&json).expect("roundtrip");
+        match &e2.board.board[1][0] {
+            BoardEntity::Generator(d) => {
+                assert_eq!(d.color, Color::Cyan);
+                assert_eq!(d.output_dir, Direction::Right);
+                assert_eq!(d.queue, vec![Color::Red, Color::Blue, Color::Green]);
+            }
+            other => panic!("expected Generator, got {:?}", cell_to_str(other)),
+        }
+    }
+    #[test]
+    fn snapshot_roundtrip_with_locked_patches() {
+        let mut e = default_engine();
+        e.yarn.board[0].push(Patch { color: Color::Magenta, locked: true });
+        let json = e.to_json();
+        let e2 = GameEngine::from_json(&json).expect("roundtrip");
+        let last = e2.yarn.board[0].last().unwrap();
+        assert!(last.locked);
+        assert_eq!(last.color, Color::Magenta);
+    }
+    #[test]
+    fn snapshot_roundtrip_with_key_threads() {
+        let mut e = default_engine();
+        e.board.board[0][1] = BoardEntity::KeyThread(Color::Yellow);
+        e.active_threads.push(Thread { color: Color::Yellow, status: 2, has_key: true });
+        let json = e.to_json();
+        let e2 = GameEngine::from_json(&json).expect("roundtrip");
+        match &e2.board.board[0][1] {
+            BoardEntity::KeyThread(c) => assert_eq!(*c, Color::Yellow),
+            other => panic!("expected KeyThread, got {:?}", cell_to_str(other)),
+        }
+        assert!(e2.active_threads[0].has_key);
+        assert_eq!(e2.active_threads[0].status, 2);
+    }
+    #[test]
+    fn snapshot_roundtrip_with_active_threads() {
+        let mut e = default_engine();
+        e.active_threads = vec![
+            Thread { color: Color::Red,  status: 1, has_key: false },
+            Thread { color: Color::Blue, status: 3, has_key: true },
+        ];
+        let json = e.to_json();
+        let e2 = GameEngine::from_json(&json).expect("roundtrip");
+        assert_eq!(e2.active_threads.len(), 2);
+        assert_eq!(e2.active_threads[0].color, Color::Red);
+        assert_eq!(e2.active_threads[0].status, 1);
+        assert!(!e2.active_threads[0].has_key);
+        assert_eq!(e2.active_threads[1].color, Color::Blue);
+        assert_eq!(e2.active_threads[1].status, 3);
+        assert!(e2.active_threads[1].has_key);
+    }
+
+    #[test]
+    fn from_json_rejects_bad_json() {
+        assert!(GameEngine::from_json("not json at all").is_err());
+    }
+    #[test]
+    fn from_json_rejects_bad_color() {
+        let mut e = default_engine();
+        let mut json = e.to_json();
+        // Corrupt a color name in the JSON
+        json = json.replace("\"red\"", "\"neonpink\"");
+        assert!(GameEngine::from_json(&json).is_err());
+    }
+    #[test]
+    fn from_json_rejects_bad_cell() {
+        let mut e = default_engine();
+        let mut json = e.to_json();
+        // Corrupt a cell encoding
+        json = json.replace("\"T:red\"", "\"Z:invalid\"");
+        assert!(GameEngine::from_json(&json).is_err());
+    }
 }

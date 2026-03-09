@@ -99,13 +99,28 @@ fn test_many_threads_same_color() {
 
 #[test]
 fn test_mixed_thread_colors() {
-    let mut map = HashMap::new();
-    map.insert(Color::Red, 3);
-    map.insert(Color::Blue, 3);
-    map.insert(Color::Green, 3);
-
-    let counter = ColorCounter { color_hashmap: map };
-    let mut yarn = Yarn::make_from_color_counter(counter, 3, 5);
+    // Deterministic yarn: col0=[Red,Blue,Red], col1=[Green,Blue,Green], col2=[Red]
+    // (last element = top of stack, processed first)
+    use knitui::yarn::Patch;
+    let mut yarn = Yarn {
+        board: vec![
+            vec![
+                Patch { color: Color::Red,  locked: false },
+                Patch { color: Color::Blue, locked: false },
+                Patch { color: Color::Red,  locked: false },
+            ],
+            vec![
+                Patch { color: Color::Green, locked: false },
+                Patch { color: Color::Blue,  locked: false },
+                Patch { color: Color::Green, locked: false },
+            ],
+            vec![
+                Patch { color: Color::Red, locked: false },
+            ],
+        ],
+        yarn_lines: 3,
+        visible_patches: 5,
+    };
 
     let mut threads = vec![
         Thread { color: Color::Red,   status: 1, has_key: false },
@@ -114,13 +129,20 @@ fn test_mixed_thread_colors() {
         Thread { color: Color::Red,   status: 1, has_key: false },
     ];
 
-    let initial_patches: usize = yarn.board.iter().map(|col| col.len()).sum();
     yarn.process_sequence(&mut threads);
 
-    let final_patches: usize = yarn.board.iter().map(|col| col.len()).sum();
-    let patches_removed = initial_patches - final_patches;
-
-    assert!(patches_removed >= 3 && patches_removed <= 4);
+    // Each thread matches exactly once (left-to-right scan):
+    // Red  → pops col0 top (Red)
+    // Blue → pops col0 top (Blue, was under Red)
+    // Green→ pops col1 top (Green)
+    // Red  → pops col1 top (Blue? no — col0 top is now Red, pops col0)
+    // Total removed: 4
+    let remaining: usize = yarn.board.iter().map(|col| col.len()).sum();
+    assert_eq!(remaining, 7 - 4);
+    assert_eq!(threads[0].status, 2);
+    assert_eq!(threads[1].status, 2);
+    assert_eq!(threads[2].status, 2);
+    assert_eq!(threads[3].status, 2);
 }
 
 #[test]

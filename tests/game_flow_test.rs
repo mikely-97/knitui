@@ -1,125 +1,183 @@
-// Integration test for game flow
+/// Integration tests for game flow — exercising GameEngine end-to-end.
+use knitui::engine::GameEngine;
+use knitui::config::Config;
+use knitui::board_entity::{BoardEntity, Direction};
 use knitui::game_board::GameBoard;
 use knitui::palette::{select_palette, ColorMode};
-use knitui::active_threads::Thread;
 use knitui::yarn::Yarn;
+use knitui::active_threads::Thread;
 use crossterm::style::Color;
 
+fn make_config(
+    board_height: u16, board_width: u16, color_number: u16,
+    color_mode: &str, knit_volume: u16, obstacle_percentage: u16,
+) -> Config {
+    Config {
+        board_height, board_width, color_number,
+        color_mode: color_mode.into(),
+        active_threads_limit: 7,
+        knit_volume,
+        yarn_lines: 4,
+        obstacle_percentage,
+        visible_patches: 6,
+        generator_capacity: 3,
+    }
+}
+
+// ── Engine creation ─────────────────────────────────────────────────────────
+
 #[test]
-fn test_full_game_flow() {
-    let palette = select_palette(ColorMode::Dark, 3);
-    assert_eq!(palette.len(), 3);
+fn test_engine_full_game_flow() {
+    let config = make_config(4, 4, 3, "dark", 2, 5);
+    let mut engine = GameEngine::new(&config);
 
-    let board = GameBoard::make_random(4, 4, &palette, 20, 2);
-    assert_eq!(board.height, 4);
-    assert_eq!(board.width, 4);
+    assert_eq!(engine.board.height, 4);
+    assert_eq!(engine.board.width, 4);
+    assert!(engine.active_threads.is_empty());
+    assert!(!engine.is_won());
 
-    let counter = board.count_knits();
-    let mut yarn = Yarn::make_from_color_counter(counter, 3, 5);
-    assert_eq!(yarn.yarn_lines, 3);
+    // Pick up thread at (0,0) — top row is always selectable (if it's a Thread)
+    // Move to a thread if (0,0) is an obstacle
+    let mut picked = false;
+    for col in 0..4u16 {
+        engine.cursor_col = col;
+        if engine.pick_up().is_ok() {
+            picked = true;
+            break;
+        }
+    }
+    assert!(picked, "should be able to pick up at least one top-row thread");
+    assert_eq!(engine.active_threads.len(), 1);
 
-    let mut threads = vec![
-        Thread { color: palette[0], status: 1, has_key: false },
-        Thread { color: palette[1], status: 1, has_key: false },
-    ];
+    // Process the thread
+    engine.process_all_active();
+    // With knit_volume=2, thread needs 2 yarn hits. After one round it may or may not be done.
+    // Just verify no crash and state is consistent.
+    assert!(engine.active_threads.len() <= 1);
+}
 
-    yarn.process_sequence(&mut threads);
+#[test]
+fn test_engine_board_and_yarn_consistency() {
+    let config = make_config(3, 3, 1, "dark", 1, 0);
+    let engine = GameEngine::new(&config);
 
-    for thread in &threads {
-        assert!(thread.status >= 1);
+    // With 1 color, 0 obstacles, 3x3 board, knit_volume=1: should have 9 yarn patches
+    let total_patches: usize = engine.yarn.board.iter().map(|c| c.len()).sum();
+    let counter = engine.board.count_knits();
+    let expected: u16 = counter.color_hashmap.values().sum();
+    assert_eq!(total_patches as u16, expected);
+}
+
+#[test]
+fn test_engine_multiple_palettes() {
+    for mode in ["dark", "bright", "colorblind"] {
+        let config = make_config(3, 3, 4, mode, 2, 10);
+        let engine = GameEngine::new(&config);
+        // Just verify creation doesn't panic and board is populated
+        assert_eq!(engine.board.height, 3);
+        assert_eq!(engine.board.width, 3);
+        let total_patches: usize = engine.yarn.board.iter().map(|c| c.len()).sum();
+        assert!(total_patches > 0);
     }
 }
 
 #[test]
-fn test_board_and_yarn_consistency() {
-    let palette = vec![Color::Red];
-    let board = GameBoard::make_random(3, 3, &palette, 0, 1);
-
-    let counter = board.count_knits();
-    let red_count = *counter.color_hashmap.get(&Color::Red).unwrap_or(&0);
-    assert!(red_count >= 8 && red_count <= 9);
-
-    let yarn = Yarn::make_from_color_counter(counter, 3, 5);
-    let total_patches: usize = yarn.board.iter().map(|col| col.len()).sum();
-    assert_eq!(total_patches as u16, red_count);
+fn test_engine_high_obstacle_board() {
+    // High obstacle % — engine should still produce a game (solvability retry loop)
+    let config = make_config(5, 5, 2, "dark", 2, 80);
+    let engine = GameEngine::new(&config);
+    assert_eq!(engine.board.height, 5);
+    // Board should exist even if mostly obstacles
+    assert!(engine.yarn.board.len() > 0);
 }
 
 #[test]
-fn test_complete_thread_processing_workflow() {
-    let palette = vec![Color::Blue];
-    let board = GameBoard::make_random(2, 2, &palette, 0, 3);
+fn test_engine_knit_volume_affects_yarn() {
+    // Compare engines with different knit_volume on same-shape boards
+    let config1 = make_config(3, 3, 1, "dark", 1, 0);
+    let config3 = make_config(3, 3, 1, "dark", 3, 0);
+    let e1 = GameEngine::new(&config1);
+    let e3 = GameEngine::new(&config3);
 
-    let counter = board.count_knits();
-    let mut yarn = Yarn::make_from_color_counter(counter, 2, 4);
+    let patches1: usize = e1.yarn.board.iter().map(|c| c.len()).sum();
+    let patches3: usize = e3.yarn.board.iter().map(|c| c.len()).sum();
+    // With same number of threads, knit_volume=3 should have ~3x the patches
+    assert!(patches3 > patches1);
+}
 
-    let mut thread = Thread {
-        color: Color::Blue,
-        status: 1,
-        has_key: false,
-    };
+// ── Engine actions ──────────────────────────────────────────────────────────
 
-    let initial_patches: usize = yarn.board.iter().map(|col| col.len()).sum();
+#[test]
+fn test_engine_pick_exposes_neighbors() {
+    let config = make_config(3, 3, 1, "dark", 1, 0);
+    let mut engine = GameEngine::new(&config);
 
-    yarn.process_one(&mut thread);
-    assert_eq!(thread.status, 2);
-
-    yarn.process_one(&mut thread);
-    assert_eq!(thread.status, 3);
-
-    yarn.process_one(&mut thread);
-    assert_eq!(thread.status, 4);
-
-    let final_patches: usize = yarn.board.iter().map(|col| col.len()).sum();
-    assert_eq!(initial_patches - final_patches, 3);
+    // Pick up (0,0) — should succeed (top row)
+    engine.cursor_row = 0; engine.cursor_col = 0;
+    assert!(engine.pick_up().is_ok());
+    // (0,0) is now Void
+    assert!(matches!(engine.board.board[0][0], BoardEntity::Void));
+    // (1,0) should now be selectable (Void neighbor above)
+    assert!(engine.board.is_selectable(1, 0));
 }
 
 #[test]
-fn test_multiple_palettes_work() {
-    for mode in [ColorMode::Dark, ColorMode::Bright, ColorMode::Colorblind] {
-        let palette = select_palette(mode, 4);
-        let board = GameBoard::make_random(3, 3, &palette, 10, 2);
-        let counter = board.count_knits();
-        let yarn = Yarn::make_from_color_counter(counter, 3, 4);
+fn test_engine_cursor_traversal() {
+    let config = make_config(4, 4, 3, "dark", 2, 5);
+    let mut engine = GameEngine::new(&config);
 
-        assert_eq!(yarn.yarn_lines, 3);
-    }
+    // Traverse to bottom-right corner
+    for _ in 0..3 { engine.move_cursor(Direction::Right).unwrap(); }
+    for _ in 0..3 { engine.move_cursor(Direction::Down).unwrap(); }
+    assert_eq!(engine.cursor_row, 3);
+    assert_eq!(engine.cursor_col, 3);
+
+    // Further right/down should fail
+    assert!(engine.move_cursor(Direction::Right).is_err());
+    assert!(engine.move_cursor(Direction::Down).is_err());
+
+    // Traverse back to origin
+    for _ in 0..3 { engine.move_cursor(Direction::Left).unwrap(); }
+    for _ in 0..3 { engine.move_cursor(Direction::Up).unwrap(); }
+    assert_eq!(engine.cursor_row, 0);
+    assert_eq!(engine.cursor_col, 0);
 }
 
 #[test]
-fn test_high_obstacle_board_still_works() {
-    let palette = vec![Color::Green, Color::Yellow];
-    let board = GameBoard::make_random(5, 5, &palette, 80, 2);
+fn test_engine_json_roundtrip_preserves_game_state() {
+    let config = make_config(4, 4, 3, "dark", 2, 5);
+    let mut engine = GameEngine::new(&config);
 
-    let counter = board.count_knits();
-    let yarn = Yarn::make_from_color_counter(counter, 2, 3);
+    // Make some moves
+    engine.move_cursor(Direction::Right).unwrap();
+    engine.move_cursor(Direction::Down).unwrap();
+    let _ = engine.pick_up(); // may or may not succeed depending on board
 
-    assert!(yarn.board.len() > 0);
+    // Serialize and deserialize
+    let json = engine.to_json();
+    let restored = GameEngine::from_json(&json).unwrap();
+
+    assert_eq!(restored.cursor_row, engine.cursor_row);
+    assert_eq!(restored.cursor_col, engine.cursor_col);
+    assert_eq!(restored.active_threads.len(), engine.active_threads.len());
+    assert_eq!(restored.board.height, engine.board.height);
+    assert_eq!(restored.knit_volume, engine.knit_volume);
 }
+
+// ── Preserved direct-module tests (still valid for module-level coverage) ───
 
 #[test]
 fn test_knit_volume_affects_total_yarn_patches() {
-    use knitui::board_entity::BoardEntity;
-
-    // Use two identical deterministic boards differing only in knit_volume so
-    // that thread-count variance from random generation can't affect the ratio.
+    // Deterministic boards — no randomness
     let make_board = |knit_volume: u16| GameBoard {
         board: vec![
             vec![BoardEntity::Thread(Color::Magenta), BoardEntity::Thread(Color::Magenta)],
             vec![BoardEntity::Thread(Color::Magenta), BoardEntity::Thread(Color::Magenta)],
         ],
-        height: 2,
-        width: 2,
-        knit_volume,
+        height: 2, width: 2, knit_volume,
     };
-
-    let board1 = make_board(1);
-    let board3 = make_board(3);
-
-    let total1: u16 = board1.count_knits().color_hashmap.values().sum();
-    let total3: u16 = board3.count_knits().color_hashmap.values().sum();
-
-    // 4 threads × 1 = 4,  4 threads × 3 = 12, ratio exactly 3.
+    let total1: u16 = make_board(1).count_knits().color_hashmap.values().sum();
+    let total3: u16 = make_board(3).count_knits().color_hashmap.values().sum();
     assert_eq!(total1, 4);
     assert_eq!(total3, 12);
-    assert_eq!(total3 / total1, 3);
 }
