@@ -79,16 +79,22 @@ impl GameEngine {
 
     pub fn move_cursor(&mut self, dir: Direction) -> Result<(), MoveError> {
         let (dr, dc) = dir.offset();
-        let new_row = self.cursor_row as i32 + dr;
-        let new_col = self.cursor_col as i32 + dc;
-        if new_row < 0 || new_row >= self.board.height as i32
-            || new_col < 0 || new_col >= self.board.width as i32
-        {
-            return Err(MoveError::OutOfBounds);
+        let mut new_row = self.cursor_row as i32 + dr;
+        let mut new_col = self.cursor_col as i32 + dc;
+        loop {
+            if new_row < 0 || new_row >= self.board.height as i32
+                || new_col < 0 || new_col >= self.board.width as i32
+            {
+                return Err(MoveError::OutOfBounds);
+            }
+            if self.board.is_focusable(new_row as usize, new_col as usize) {
+                self.cursor_row = new_row as u16;
+                self.cursor_col = new_col as u16;
+                return Ok(());
+            }
+            new_row += dr;
+            new_col += dc;
         }
-        self.cursor_row = new_row as u16;
-        self.cursor_col = new_col as u16;
-        Ok(())
     }
 
     pub fn pick_up(&mut self) -> Result<(), PickError> {
@@ -500,6 +506,8 @@ mod tests {
     #[test]
     fn move_cursor_down_succeeds() {
         let mut e = default_engine();
+        // Place a Void at (2,0) so Thread at (1,0) becomes selectable → focusable
+        e.board.board[2][0] = BoardEntity::Void;
         assert!(e.move_cursor(Direction::Down).is_ok());
         assert_eq!(e.cursor_row, 1);
     }
@@ -514,6 +522,25 @@ mod tests {
         let mut e = default_engine();
         e.cursor_col = 2; // right edge of 3-col board
         assert_eq!(e.move_cursor(Direction::Right), Err(MoveError::OutOfBounds));
+    }
+    #[test]
+    fn move_cursor_skips_non_focusable_knits() {
+        let mut e = default_engine();
+        // Row 1 col 0 is a buried Thread (not selectable → not focusable).
+        // Place a Void at (2,0) so (1,0) gains a void neighbor → becomes focusable.
+        // But first verify skipping: put void only at (2,1) so (1,0) stays buried.
+        e.board.board[2][1] = BoardEntity::Void;
+        // Now (2,0) is Thread(Red) with void neighbor at (2,1) → selectable → focusable.
+        // (1,0) is Thread(Blue) with no void neighbor → NOT focusable. Cursor skips it.
+        assert!(e.move_cursor(Direction::Down).is_ok());
+        assert_eq!(e.cursor_row, 2); // skipped row 1
+        assert_eq!(e.cursor_col, 0);
+    }
+    #[test]
+    fn move_cursor_down_into_all_buried_fails() {
+        let mut e = default_engine();
+        // Default board: rows 1 and 2 are all buried threads → not focusable
+        assert_eq!(e.move_cursor(Direction::Down), Err(MoveError::OutOfBounds));
     }
 
     #[test]

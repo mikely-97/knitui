@@ -66,6 +66,16 @@ impl GameBoard {
         ColorCounter { color_hashmap: counter }
     }
 
+    /// A cell is focusable (cursor can land on it) when it is NOT a buried knit.
+    /// Threads / KeyThreads that fail `is_selectable` are non-focusable.
+    /// All other cell types (Void, Obstacle, Generator, …) remain focusable.
+    pub fn is_focusable(&self, row: usize, col: usize) -> bool {
+        match &self.board[row][col] {
+            BoardEntity::Thread(_) | BoardEntity::KeyThread(_) => self.is_selectable(row, col),
+            _ => true,
+        }
+    }
+
     /// A cell is selectable when:
     ///   - it contains a Thread or KeyThread, AND
     ///   - it is in the top row (row 0), OR at least one orthogonal neighbor is Void.
@@ -220,5 +230,36 @@ mod tests {
         };
         assert!(board.is_selectable(1, 0));  // borders Void above
         assert!(!board.is_selectable(2, 0)); // no Void neighbor
+    }
+
+    #[test]
+    fn test_is_focusable_buried_thread() {
+        let board = GameBoard {
+            board: vec![
+                vec![BoardEntity::Thread(Color::Red)],
+                vec![BoardEntity::Thread(Color::Blue)],
+                vec![BoardEntity::Thread(Color::Green)],
+            ],
+            height: 3,
+            width: 1,
+            knit_volume: 1,
+        };
+        assert!(board.is_focusable(0, 0));   // top row → selectable → focusable
+        assert!(!board.is_focusable(1, 0));  // buried thread → not focusable
+        assert!(!board.is_focusable(2, 0));  // buried thread → not focusable
+    }
+
+    #[test]
+    fn test_is_focusable_non_thread_always() {
+        let board = GameBoard {
+            board: vec![
+                vec![BoardEntity::Obstacle, BoardEntity::Void],
+            ],
+            height: 1,
+            width: 2,
+            knit_volume: 1,
+        };
+        assert!(board.is_focusable(0, 0));  // obstacle → focusable
+        assert!(board.is_focusable(0, 1));  // void → focusable
     }
 }

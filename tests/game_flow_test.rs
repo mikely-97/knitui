@@ -123,8 +123,18 @@ fn test_engine_pick_exposes_neighbors() {
 
 #[test]
 fn test_engine_cursor_traversal() {
-    let config = make_config(4, 4, 3, "dark", 2, 5);
-    let mut engine = GameEngine::new(&config);
+    // Use an all-Void board so every cell is focusable (Void is not a knit).
+    let void_row = || vec![BoardEntity::Void, BoardEntity::Void, BoardEntity::Void, BoardEntity::Void];
+    let mut engine = GameEngine {
+        board: GameBoard {
+            board: vec![void_row(), void_row(), void_row(), void_row()],
+            height: 4, width: 4, knit_volume: 2,
+        },
+        yarn: Yarn { board: vec![vec![], vec![], vec![], vec![]], yarn_lines: 4, visible_patches: 6 },
+        active_threads: vec![],
+        cursor_row: 0, cursor_col: 0,
+        knit_volume: 2, active_threads_limit: 7,
+    };
 
     // Traverse to bottom-right corner
     for _ in 0..3 { engine.move_cursor(Direction::Right).unwrap(); }
@@ -145,8 +155,22 @@ fn test_engine_cursor_traversal() {
 
 #[test]
 fn test_engine_json_roundtrip_preserves_game_state() {
-    let config = make_config(4, 4, 3, "dark", 2, 5);
-    let mut engine = GameEngine::new(&config);
+    // Use a deterministic board: row 0 selectable threads, rest Void.
+    let void_row = || vec![BoardEntity::Void, BoardEntity::Void, BoardEntity::Void, BoardEntity::Void];
+    let mut engine = GameEngine {
+        board: GameBoard {
+            board: vec![
+                vec![BoardEntity::Thread(Color::Red), BoardEntity::Thread(Color::Blue),
+                     BoardEntity::Thread(Color::Red), BoardEntity::Thread(Color::Blue)],
+                void_row(), void_row(), void_row(),
+            ],
+            height: 4, width: 4, knit_volume: 2,
+        },
+        yarn: Yarn { board: vec![vec![], vec![], vec![], vec![]], yarn_lines: 4, visible_patches: 6 },
+        active_threads: vec![],
+        cursor_row: 0, cursor_col: 0,
+        knit_volume: 2, active_threads_limit: 7,
+    };
 
     // Make some moves
     engine.move_cursor(Direction::Right).unwrap();
