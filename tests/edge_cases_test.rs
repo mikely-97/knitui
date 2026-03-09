@@ -9,21 +9,19 @@ use std::collections::HashMap;
 
 #[test]
 fn test_empty_yarn_processing() {
-    // Create an empty yarn
     let counter = ColorCounter {
         color_hashmap: HashMap::new(),
     };
     let mut yarn = Yarn::make_from_color_counter(counter, 2, 3);
 
-    // Try to process a thread
     let mut thread = Thread {
         color: Color::Red,
         status: 1,
+        has_key: false,
     };
 
     yarn.process_one(&mut thread);
 
-    // Status should remain unchanged since there's nothing to process
     assert_eq!(thread.status, 1);
 }
 
@@ -32,7 +30,6 @@ fn test_single_color_board() {
     let palette = vec![Color::Cyan];
     let board = GameBoard::make_random(10, 10, &palette, 0, 1);
 
-    // All threads should be cyan
     let counter = board.count_knits();
     assert_eq!(counter.color_hashmap.len(), 1);
     assert!(counter.color_hashmap.contains_key(&Color::Cyan));
@@ -55,24 +52,21 @@ fn test_large_board() {
 #[test]
 fn test_thread_processing_beyond_yarn_capacity() {
     let mut map = HashMap::new();
-    map.insert(Color::Yellow, 2); // Only 2 yellow patches
+    map.insert(Color::Yellow, 2);
 
-    let counter = ColorCounter {
-        color_hashmap: map,
-    };
+    let counter = ColorCounter { color_hashmap: map };
     let mut yarn = Yarn::make_from_color_counter(counter, 2, 3);
 
     let mut thread = Thread {
         color: Color::Yellow,
         status: 1,
+        has_key: false,
     };
 
-    // Process 5 times, but only 2 patches exist
     for _ in 0..5 {
         yarn.process_one(&mut thread);
     }
 
-    // Should have processed at most 2 times (status 1 + 2 = 3)
     assert!(thread.status <= 3);
 }
 
@@ -81,9 +75,7 @@ fn test_many_threads_same_color() {
     let mut map = HashMap::new();
     map.insert(Color::Green, 10);
 
-    let counter = ColorCounter {
-        color_hashmap: map,
-    };
+    let counter = ColorCounter { color_hashmap: map };
     let mut yarn = Yarn::make_from_color_counter(counter, 3, 5);
 
     let mut threads = vec![];
@@ -91,17 +83,16 @@ fn test_many_threads_same_color() {
         threads.push(Thread {
             color: Color::Green,
             status: 1,
+            has_key: false,
         });
     }
 
     yarn.process_sequence(&mut threads);
 
-    // All threads should have been processed once
     for thread in &threads {
         assert_eq!(thread.status, 2);
     }
 
-    // All yarn patches should be consumed
     let remaining: usize = yarn.board.iter().map(|col| col.len()).sum();
     assert_eq!(remaining, 0);
 }
@@ -113,16 +104,14 @@ fn test_mixed_thread_colors() {
     map.insert(Color::Blue, 3);
     map.insert(Color::Green, 3);
 
-    let counter = ColorCounter {
-        color_hashmap: map,
-    };
+    let counter = ColorCounter { color_hashmap: map };
     let mut yarn = Yarn::make_from_color_counter(counter, 3, 5);
 
     let mut threads = vec![
-        Thread { color: Color::Red, status: 1 },
-        Thread { color: Color::Blue, status: 1 },
-        Thread { color: Color::Green, status: 1 },
-        Thread { color: Color::Red, status: 1 },
+        Thread { color: Color::Red,   status: 1, has_key: false },
+        Thread { color: Color::Blue,  status: 1, has_key: false },
+        Thread { color: Color::Green, status: 1, has_key: false },
+        Thread { color: Color::Red,   status: 1, has_key: false },
     ];
 
     let initial_patches: usize = yarn.board.iter().map(|col| col.len()).sum();
@@ -131,8 +120,6 @@ fn test_mixed_thread_colors() {
     let final_patches: usize = yarn.board.iter().map(|col| col.len()).sum();
     let patches_removed = initial_patches - final_patches;
 
-    // Due to random distribution, not all threads may find matching patches
-    // But at least some should be processed
     assert!(patches_removed >= 3 && patches_removed <= 4);
 }
 
@@ -143,7 +130,6 @@ fn test_zero_knit_volume() {
 
     let counter = board.count_knits();
 
-    // With knit_volume 0, all counts should be 0
     let total: u16 = counter.color_hashmap.values().sum();
     assert_eq!(total, 0);
 }
@@ -155,7 +141,6 @@ fn test_very_high_knit_volume() {
 
     let counter = board.count_knits();
 
-    // 4 threads * 100 = 400
     assert_eq!(*counter.color_hashmap.get(&Color::DarkRed).unwrap(), 400);
 }
 

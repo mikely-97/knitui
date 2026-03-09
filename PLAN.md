@@ -26,6 +26,7 @@ Features from the TODO list, ordered roughly from easiest to most complex. Each 
        #[arg(long, default_value_t = 4)] pub yarn_lines: u16,
        #[arg(long, default_value_t = 5)] pub obstacle_percentage: u16,
        #[arg(long, default_value_t = 6)] pub visible_patches: u16,
+       #[arg(long, default_value_t = 3)] pub generator_capacity: u16,
    }
    ```
 3. In `main.rs`: replace all constants with `let config = Config::parse();` and thread the values through.
@@ -103,10 +104,43 @@ Or:
 
 **Files**: `src/main.rs` (key handler), `src/board_entity.rs` (maybe add a helper `is_selectable()`)
 
-## 4.5. Movement Limits (Only Void-Bordering Or Upper Row Cells Are Selectable)
+---
 
-**Current state**: Cursor can select all cells on the board
-**Desired state**: for it to be a puzzle, only the upper row can be selectable initially. Then, as Knit becomes Void, knits that border it horizontally or vertically (NOT DIAGONALLY) can be selected too. Only Void unlocks them, nothing else!
+## 4.5. Selectability: Only Exposed Threads Are Pickable
+
+**Current state**: Any thread on the board can be selected.
+
+**Desired state**: A thread is selectable only if it is in the top row **or** borders a `Void` cell orthogonally (not diagonally). Obstacles never become Void, so they do not unlock neighbors.
+
+### Implementation
+
+Add `is_selectable(board: &GameBoard, row: usize, col: usize) -> bool` in `game_board.rs`:
+
+```rust
+pub fn is_selectable(board: &GameBoard, row: usize, col: usize) -> bool {
+    if !matches!(board.board[row][col], BoardEntity::Thread(_) | BoardEntity::KeyThread(_)) {
+        return false;
+    }
+    if row == 0 {
+        return true;
+    }
+    let h = board.height as usize;
+    let w = board.width as usize;
+    let is_void = |r: usize, c: usize| matches!(board.board[r][c], BoardEntity::Void);
+    (row > 0   && is_void(row - 1, col)) ||
+    (row+1 < h && is_void(row + 1, col)) ||
+    (col > 0   && is_void(row, col - 1)) ||
+    (col+1 < w && is_void(row, col + 1))
+}
+```
+
+In the Enter handler (`main.rs`): check `is_selectable` before adding a thread to active_threads.
+
+In the cursor movement handler: skip cells where `is_selectable` is false (advance until a selectable cell is found, or stop at edge).
+
+### Obstacle concern
+
+An Obstacle in the top row permanently prevents any cell directly below it from being unlocked through that column. Board generation must ensure no thread is completely surrounded by Obstacles and non-top-row positions (i.e., reachability must be checked). See §6.
 
 ---
 
@@ -114,42 +148,149 @@ Or:
 
 **Why**: The current board only has `Thread`, `Obstacle`, and `Void`. Adding interactive cell types increases strategic depth.
 
-### 5a. Lock / Key [EDITED]
+### 5a. Lock / Key
 
-- `Lock(Color)`: a patch on the yarn can be locked, in which case it cannot be processed until unlocked. It blocks its yarn's column too.
-- `Key(Color)`: a key is appended to a knit on the board that has the same color as the locked yarn. The key should be visible.
+**Design (option A — locks are on yarn, keys are on board threads):**
 
+- `Lock(Color)`: a `Patch` on the yarn that is locked. It blocks its entire yarn column — no patches behind it can be popped until it is cleared. It can only be cleared by a thread that carries the matching Key.
+- `KeyThread(Color)`: a board entity — a thread with a key attached. Displayed with a distinct glyph (e.g. `K` instead of `T`). When added to active threads, it carries `has_key: true`. When processed against the yarn, if the last patch in a column is a `Lock` of matching color, the lock is popped (unlocked + consumed as a knit stage) and the key is spent.
 
-### 5b. Generator [EDITED]
+**Data model changes:**
 
-- `Generator(Color)`: has an output cell that borders it horizontally or vertically. Initially a knit is located in that cell. When removed, the generator creates another knit in its place. This happens up to <GENERATOR_CAPACITY> times (should define that in config), after which it becomes a DepletedGenerator and effectively becomes a form of Obstacle. As for implementation, the queue should NOT be random, because solvability of the puzzle depends on what's in the queue.
+`src/yarn.rs` — add `locked` field to `Patch`:
+```rust
+pub struct Patch {
+    pub color: Color,
+    pub locked: bool,
+}
+```
 
+`src/active_threads.rs` — add `has_key` to `Thread`:
+```rust
+pub struct Thread {
+    pub color: Color,
+    pub status: u16,
+    pub has_key: bool,
+}
+```
+
+`src/board_entity.rs` — add `KeyThread` variant:
+```rust
+pub enum BoardEntity {
+    Thread(Color),
+    KeyThread(Color),       // thread with a key attached
+    Obstacle,
+    Void,
+    Generator(GeneratorData),
+    DepletedGenerator,
+}
+```
+
+**`process_one` logic** (`src/yarn.rs`):
+
+For each column, inspect the last patch:
+- Locked patch, any color, thread has no key → **skip column entirely** (blocked)
+- Locked patch, color matches, thread has key → pop patch, `knit_on()`, clear `has_key`
+- Unlocked patch, color matches → pop patch, `knit_on()` (unchanged)
+- Unlocked patch, color mismatch → skip (unchanged)
+
+**Yarn generation**: locked patches are placed at known positions (puzzle design time), paired with a `KeyThread` of the same color somewhere reachable on the board.
+
+**Files**: `src/board_entity.rs`, `src/active_threads.rs`, `src/yarn.rs`, `src/main.rs`
+
+---
+
+### 5b. Generator
+
+**Design:**
+
+- `Generator(GeneratorData)`: a board cell with a fixed adjacent output cell. The output cell starts with the first thread from the generator's queue. When a player selects and clears the output cell, the generator places the next thread from its queue in that cell. After the queue is exhausted, the generator becomes `DepletedGenerator` (acts as `Obstacle`); the output cell remains `Void`.
+- The output direction (which of the 4 orthogonal neighbors is the output cell) is set at puzzle generation time and stored in `GeneratorData`.
+- The queue is **not random** — it is defined at puzzle generation time to ensure solvability.
+
+**Data model:**
+
+```rust
+pub enum Direction { Up, Down, Left, Right }
+
+pub struct GeneratorData {
+    pub color: Color,         // color of generated threads (or use queue for varied colors)
+    pub output_dir: Direction,
+    pub queue: Vec<Color>,    // remaining outputs; front = next to generate
+}
+```
+
+`GeneratorData::output_pos(gen_row, gen_col) -> (usize, usize)` computes the output cell from the direction.
+
+**Board entity enum** (full, post-5a+5b):
+```rust
+pub enum BoardEntity {
+    Thread(Color),
+    KeyThread(Color),
+    Obstacle,
+    Void,
+    Generator(GeneratorData),
+    DepletedGenerator,
+}
+```
+
+**Enter handler changes** (`main.rs`): when the selected cell is the output cell of a Generator, after setting it to `Void`, call `generator.queue.pop_front()` and if `Some(color)`, place `Thread(color)` back at the output cell. If queue is now empty, set the generator cell to `DepletedGenerator`.
+
+**Yarn generation implication**: the yarn must include patches for all threads the generator will ever produce: `sum over generator queues of len(queue) × knit_volume` patches per color.
+
+**Files**: `src/board_entity.rs`, `src/game_board.rs`, `src/main.rs`
 
 ---
 
 ## 6. Solvability Checks
 
-**Why**: A randomly generated board might be unwinnable — e.g. active thread limit too low to clear groups of threads, or yarn distribution makes certain colors unreachable.
+**Why**: Random board generation can produce unwinnable boards — e.g. threads that can never be reached due to the void-bordering rule, or locked patches with no reachable key.
 
-**Current guarantee**: `count_knits()` × `knit_volume` patches are added to the yarn, so the total patch count always matches. The question is whether the *order* allows the player to make progress.
+### Checks required
 
-### What to check
+**Check 1 — Count balance (per color C):**
+```
+yarn_patches(C) == (board_threads(C) + sum_of_generator_queue_outputs(C)) × knit_volume
+```
+where `board_threads(C)` counts `Thread(C)` and `KeyThread(C)`, and generator outputs count the C-colored items across all generator queues.
 
-1. **Basic count match**: Already guaranteed by construction. Verify: `yarn total per color == board threads per color × knit_volume`.
-2. **Active threads headroom**: If the board has more distinct colors than `active_threads_limit`, a player might get stuck holding threads they can't match. Check: `distinct_colors_on_board <= active_threads_limit`.
-3. **Yarn column distribution**: If all patches of one color end up at the bottom of the same column, hidden behind many other colors, the game is still technically solvable but very hard. A relaxed check: ensure each color appears in at least 2 yarn columns (or warn if not).
-4. [EDITED] make sure to account for special entities, such as generators and locks/keys.
+This is almost guaranteed by construction (the current `count_knits` approach) but must be extended to include generator queues.
+
+**Check 2 — Thread reachability (BFS simulation):**
+
+Simulate the selection process on the static board using BFS:
+1. Seed queue with all top-row `Thread`/`KeyThread` cells.
+2. For each dequeued cell `(r, c)`: mark as reachable, then "remove" it (simulate → Void).
+3. For each orthogonal neighbor of `(r, c)` that is `Thread`/`KeyThread` and not yet reachable: add to queue (it now borders a Void).
+4. For generator output cells: the output cell is selectable once reachable. Each time it is cleared, the generator places a new Thread there (same position). The output cell becomes permanently Void only after the queue is exhausted — so treat it as "always available" once it first becomes reachable, until its queue runs out.
+5. After BFS: all `Thread`/`KeyThread` cells on the board (plus total generator outputs as a count) must have been reachable. If any thread is unreachable, the board is unsolvable.
+
+**Note on obstacles**: an Obstacle in the top row permanently blocks the column below it if no other Void path exists to those cells. The BFS catches this automatically.
+
+**Check 3 — Key-lock pairing:**
+
+For every `Lock(C)` patch in the yarn:
+- There must be exactly one `KeyThread(C)` on the board.
+- That `KeyThread(C)` must be reachable (from check 2) before the locked patch would be needed.
+
+The ordering constraint ("reachable before needed") is hard to check statically without simulating the full game. A sufficient relaxation: every `KeyThread` is reachable (check 2 already ensures this). If that holds, a player who picks up the key before pressing Backspace will be able to unlock the patch.
+
+**Check 4 — Active threads headroom:**
+
+At any point in the game, the player's active thread list must be able to make progress. A conservative check: `distinct_colors_on_board ≤ active_threads_limit`. If a player needs to hold one thread of every color simultaneously to make progress, and there are more colors than slots, the board may be unwinnable.
 
 ### Implementation
 
-1. Add `fn is_solvable(board: &GameBoard, yarn: &Yarn, active_limit: usize) -> bool` in a new `src/solvability.rs`.
-2. Check #1: count board threads per color, compare to yarn patch counts.
-3. Check #2: count distinct colors on board, compare to `active_limit`.
-4. In `main.rs`, after board+yarn generation, loop: if `!is_solvable(...)`, regenerate.
+1. Add `src/solvability.rs` with:
+   - `fn count_balance(board: &GameBoard, yarn: &Yarn) -> bool`
+   - `fn all_threads_reachable(board: &GameBoard) -> bool` (BFS)
+   - `fn keys_and_locks_valid(board: &GameBoard, yarn: &Yarn) -> bool`
+   - `fn active_headroom_ok(board: &GameBoard, active_limit: usize) -> bool`
+   - `fn is_solvable(board: &GameBoard, yarn: &Yarn, active_limit: usize) -> bool` (calls all four)
 
-**Cap retries** at e.g. 100 to avoid infinite loops on degenerate configs.
+2. In `main.rs`, after generation: loop regenerating until `is_solvable(...)` returns true. Cap at 100 retries; if exhausted, either panic with a helpful message or relax the config (e.g. reduce obstacle percentage).
 
-**Files**: new `src/solvability.rs`, `src/main.rs`
+**Files**: new `src/solvability.rs`, `src/main.rs`, `src/game_board.rs`
 
 ---
 
@@ -180,15 +321,17 @@ A fun in-game joke mechanic: between rounds (when the board is cleared), show a 
 ## Dependency / Ordering
 
 ```
-Config (1) ─────────────────────────── enables all features to be configurable
-Movement (4) ──────────────────────── polish, quick win
-Solvability (6) ────────────────────── needed before complex boards get too weird
-Animation (2) ──────────────────────── UX polish, independent
-Horizontal layout (3) ──────────────── UX polish, independent
-Complex boards (5) ─────────────────── builds on solvability (6)
-Bonuses (7) ────────────────────────── builds on complex boards (5)
+Config (1) ──────────────────── enables all features to be configurable
+Movement (4, 4.5) ───────────── quick win; 4.5 is prerequisite for meaningful solvability
+Solvability basic (6, checks 1+2+4) ── before complex boards get dangerous
+Animation (2) ───────────────── UX polish, independent
+Horizontal layout (3) ───────── UX polish, independent
+Locks/Keys (5a) ─────────────── builds on yarn.rs and board_entity.rs
+Generators (5b) ─────────────── builds on board_entity.rs; needs solvability
+Solvability full (6, check 3) ── extend to cover locks/keys after 5a
+Bonuses (7) ─────────────────── builds on everything above
 ```
 
-**Suggested order**: 4 → 1 → 6 → 2 → 3 → 5 → 7
+**Suggested order**: 4 → 4.5 → 1 → 6(basic) → 2 → 3 → 5a → 5b → 6(full) → 7
 
-Start with movement limits (tiny, no deps), then config (unlocks everything being tunable), then solvability (foundation for safe random generation), then the rest.
+Start with movement (tiny, no deps), then the selectable rule (changes the core interaction), then config (unlocks tuning), then basic solvability (safe foundation for the rest), then the advanced entities.

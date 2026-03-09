@@ -4,3 +4,5 @@ pub mod yarn;
 pub mod palette;
 pub mod active_threads;
 pub mod color_counter;
+pub mod config;
+pub mod solvability;

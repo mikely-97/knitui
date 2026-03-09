@@ -10,26 +10,31 @@ use std::fmt;
 pub struct Thread {
     pub color: Color,
     pub status: u16,
+    /// True when this thread was picked up from a KeyThread board cell.
+    /// The key is consumed on the first successful yarn match.
+    pub has_key: bool,
 }
 
-impl Thread{
-    pub fn knit_on(&mut self){
+impl Thread {
+    pub fn knit_on(&mut self) {
         self.status += 1;
     }
 }
 
 impl fmt::Display for Thread {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "{}",
+        // Key threads show 'k' until the key is consumed, then show progress.
+        let ch = if self.has_key {
+            'k'
+        } else {
             match self.status {
-                1 => '0'.with(self.color),
-                2 => '1'.with(self.color),
-                3 => '2'.with(self.color),
-                _ => '?'.with(self.color),
+                1 => '0',
+                2 => '1',
+                3 => '2',
+                _ => '?',
             }
-        )
+        };
+        write!(f, "{}", ch.with(self.color))
     }
 }
 
@@ -42,10 +47,24 @@ mod tests {
         let thread = Thread {
             color: Color::Red,
             status: 1,
+            has_key: false,
         };
 
         assert_eq!(thread.color, Color::Red);
         assert_eq!(thread.status, 1);
+        assert!(!thread.has_key);
+    }
+
+    #[test]
+    fn test_key_thread_creation() {
+        let thread = Thread {
+            color: Color::Blue,
+            status: 1,
+            has_key: true,
+        };
+
+        assert!(thread.has_key);
+        assert_eq!(thread.color, Color::Blue);
     }
 
     #[test]
@@ -53,6 +72,7 @@ mod tests {
         let mut thread = Thread {
             color: Color::Blue,
             status: 1,
+            has_key: false,
         };
 
         thread.knit_on();
@@ -70,6 +90,7 @@ mod tests {
         let mut thread = Thread {
             color: Color::Green,
             status: 1,
+            has_key: false,
         };
 
         for _ in 0..5 {
@@ -81,15 +102,16 @@ mod tests {
 
     #[test]
     fn test_thread_display_format() {
-        let thread1 = Thread { color: Color::Red, status: 1 };
-        let thread2 = Thread { color: Color::Blue, status: 2 };
-        let thread3 = Thread { color: Color::Green, status: 3 };
-        let thread_unknown = Thread { color: Color::Yellow, status: 5 };
+        let thread1 = Thread { color: Color::Red,    status: 1, has_key: false };
+        let thread2 = Thread { color: Color::Blue,   status: 2, has_key: false };
+        let thread3 = Thread { color: Color::Green,  status: 3, has_key: false };
+        let thread_key     = Thread { color: Color::Yellow, status: 1, has_key: true  };
+        let thread_unknown = Thread { color: Color::Yellow, status: 5, has_key: false };
 
-        // Just verify that format! doesn't panic
         let _ = format!("{}", thread1);
         let _ = format!("{}", thread2);
         let _ = format!("{}", thread3);
+        let _ = format!("{}", thread_key);
         let _ = format!("{}", thread_unknown);
     }
 
@@ -98,6 +120,7 @@ mod tests {
         let mut thread = Thread {
             color: Color::Magenta,
             status: 1,
+            has_key: false,
         };
 
         thread.knit_on();
@@ -106,4 +129,3 @@ mod tests {
         assert_eq!(thread.color, Color::Magenta);
     }
 }
-
