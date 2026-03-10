@@ -1,6 +1,7 @@
 #![allow(warnings)]
 
 use std::io::{Write, stdout};
+use std::time::{Duration, Instant};
 
 use crossterm::{
     ExecutableCommand, execute,
@@ -8,10 +9,10 @@ use crossterm::{
     cursor::{Hide, Show},
     event::{poll, read, Event, KeyCode},
 };
-use std::time::Duration;
 
 use clap::Parser;
 
+use knitui::ad_content;
 use knitui::board_entity::Direction;
 use knitui::config::Config;
 use knitui::engine::{GameEngine, GameStatus, BonusState};
@@ -21,12 +22,15 @@ enum TuiState {
     Playing,
     GameOver(GameStatus),
     Help,
+    WatchingAd { started_at: Instant, quote: String },
 }
 
 // ── Main ──────────────────────────────────────────────────────────────────────
 
 fn main() -> std::io::Result<()> {
     let config = Config::parse();
+    let ad_quotes = ad_content::load_quotes(&config.ad_file);
+    const AD_DURATION_SECS: u64 = 15;
     let scale = config.scale;
 
     let mut stdout = stdout();
@@ -70,6 +74,15 @@ fn main() -> std::io::Result<()> {
                 match tui_state {
                     TuiState::GameOver(_) => {
                         match event.code {
+                            KeyCode::Char('a') | KeyCode::Char('A') => {
+                                if engine.can_watch_ad() {
+                                    let quote = ad_content::random_quote(&ad_quotes).to_string();
+                                    tui_state = TuiState::WatchingAd {
+                                        started_at: Instant::now(),
+                                        quote,
+                                    };
+                                }
+                            }
                             KeyCode::Char('r') | KeyCode::Char('R') => {
                                 engine = GameEngine::new(&config);
                                 tui_state = TuiState::Playing;
@@ -82,6 +95,23 @@ fn main() -> std::io::Result<()> {
                     TuiState::Help => {
                         tui_state = TuiState::Playing;
                         renderer::do_render(&mut stdout, &engine, layout, yarn_x, board_x, board_y, scale)?;
+                    }
+                    TuiState::WatchingAd { ref started_at, .. } => {
+                        match event.code {
+                            KeyCode::Esc => {
+                                if started_at.elapsed().as_secs() >= AD_DURATION_SECS {
+                                    engine.watch_ad();
+                                    let status = engine.status();
+                                    tui_state = match status {
+                                        GameStatus::Playing => TuiState::Playing,
+                                        _ => TuiState::GameOver(status),
+                                    };
+                                    renderer::do_render(&mut stdout, &engine, layout, yarn_x, board_x, board_y, scale)?;
+                                }
+                                // If timer not done, ignore ESC
+                            }
+                            _ => {}
+                        }
                     }
                     TuiState::Playing => {
                         match event.code {
@@ -110,6 +140,16 @@ fn main() -> std::io::Result<()> {
                                 }
                             }
 
+                            KeyCode::Char('a') | KeyCode::Char('A') => {
+                                if engine.can_watch_ad() {
+                                    let quote = ad_content::random_quote(&ad_quotes).to_string();
+                                    tui_state = TuiState::WatchingAd {
+                                        started_at: Instant::now(),
+                                        quote,
+                                    };
+                                }
+                                continue;
+                            }
                             KeyCode::Char('h') | KeyCode::Char('H') => {
                                 renderer::render_help(&mut stdout)?;
                                 tui_state = TuiState::Help;
@@ -142,6 +182,10 @@ fn main() -> std::io::Result<()> {
                     tui_state = TuiState::GameOver(s);
                 }
             };
+        }
+
+        if let TuiState::WatchingAd { ref started_at, ref quote } = tui_state {
+            renderer::render_ad_overlay(&mut stdout, quote, started_at, AD_DURATION_SECS)?;
         }
     }
 

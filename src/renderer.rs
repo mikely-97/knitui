@@ -1,6 +1,7 @@
 #![allow(warnings)]
 
 use std::io::{self, Write, Stdout};
+use std::time::Instant;
 use crossterm::{
     QueueableCommand,
     style::{Print, Stylize, Attribute, SetAttribute},
@@ -596,4 +597,146 @@ pub fn do_render_overlay(
         Layout::Vertical => render_vertical_overlay(stdout, engine, board_y, scale, status),
         Layout::Horizontal => render_horizontal_overlay(stdout, engine, yarn_x, board_x, scale, status),
     }
+}
+
+/// Render the pseudo-ad full-screen overlay.
+pub fn render_ad_overlay(
+    stdout: &mut Stdout,
+    quote: &str,
+    started_at: &Instant,
+    ad_duration_secs: u64,
+) -> io::Result<()> {
+    let elapsed = started_at.elapsed().as_secs();
+    let remaining = ad_duration_secs.saturating_sub(elapsed);
+    let progress = if ad_duration_secs > 0 {
+        ((elapsed as f64 / ad_duration_secs as f64) * 100.0).min(100.0) as u16
+    } else {
+        100
+    };
+    let done = remaining == 0;
+
+    let (term_w, term_h) = terminal::size().unwrap_or((80, 24));
+
+    stdout.queue(BeginSynchronizedUpdate)?;
+    stdout.queue(Clear(ClearType::All))?;
+
+    // Box dimensions
+    let box_w = 50u16.min(term_w.saturating_sub(4));
+    let box_inner = (box_w - 2) as usize;
+
+    let wrapped = word_wrap(quote, box_inner);
+    let box_h = 8 + wrapped.len() as u16;
+    let x0 = (term_w.saturating_sub(box_w)) / 2;
+    let y0 = (term_h.saturating_sub(box_h)) / 2;
+
+    let mut y = y0;
+
+    // Top border
+    stdout.queue(MoveTo(x0, y))?;
+    stdout.queue(Print("╔"))?;
+    for _ in 0..box_inner { stdout.queue(Print("═"))?; }
+    stdout.queue(Print("╗"))?;
+    y += 1;
+
+    // Empty line
+    print_boxed_line(stdout, x0, y, box_inner, "")?;
+    y += 1;
+
+    // Header
+    print_boxed_line(stdout, x0, y, box_inner, &center_text("✂ FREE SCISSORS ✂", box_inner))?;
+    y += 1;
+
+    // Empty line
+    print_boxed_line(stdout, x0, y, box_inner, "")?;
+    y += 1;
+
+    // Quote lines
+    for line in &wrapped {
+        print_boxed_line(stdout, x0, y, box_inner, &center_text(line, box_inner))?;
+        y += 1;
+    }
+
+    // Empty line
+    print_boxed_line(stdout, x0, y, box_inner, "")?;
+    y += 1;
+
+    // Progress bar
+    let bar_width = box_inner.saturating_sub(8);
+    let filled = (bar_width as u16 * progress / 100) as usize;
+    let empty = bar_width - filled;
+    let bar = format!(
+        "{}{}  {:>3}%",
+        "█".repeat(filled),
+        "░".repeat(empty),
+        progress
+    );
+    print_boxed_line(stdout, x0, y, box_inner, &center_text(&bar, box_inner))?;
+    y += 1;
+
+    // Countdown or close prompt
+    if done {
+        let msg = "[ Press ESC to collect your reward ]";
+        print_boxed_line(stdout, x0, y, box_inner, &center_text(msg, box_inner))?;
+    } else {
+        let msg = format!("[{}s remaining]", remaining);
+        print_boxed_line(stdout, x0, y, box_inner, &center_text(&msg, box_inner))?;
+    }
+    y += 1;
+
+    // Empty line
+    print_boxed_line(stdout, x0, y, box_inner, "")?;
+    y += 1;
+
+    // Bottom border
+    stdout.queue(MoveTo(x0, y))?;
+    stdout.queue(Print("╚"))?;
+    for _ in 0..box_inner { stdout.queue(Print("═"))?; }
+    stdout.queue(Print("╝"))?;
+
+    stdout.queue(EndSynchronizedUpdate)?;
+    stdout.flush()
+}
+
+fn print_boxed_line(stdout: &mut Stdout, x0: u16, y: u16, inner_w: usize, content: &str) -> io::Result<()> {
+    stdout.queue(MoveTo(x0, y))?;
+    stdout.queue(Print("║"))?;
+    let content_chars: usize = content.chars().count();
+    stdout.queue(Print(content))?;
+    for _ in content_chars..inner_w {
+        stdout.queue(Print(' '))?;
+    }
+    stdout.queue(Print("║"))?;
+    Ok(())
+}
+
+fn center_text(text: &str, width: usize) -> String {
+    let text_len = text.chars().count();
+    if text_len >= width {
+        return text.to_string();
+    }
+    let padding = (width - text_len) / 2;
+    format!("{}{}", " ".repeat(padding), text)
+}
+
+fn word_wrap(text: &str, max_width: usize) -> Vec<String> {
+    let mut lines = Vec::new();
+    let mut current_line = String::new();
+    for word in text.split_whitespace() {
+        if current_line.is_empty() {
+            current_line = word.to_string();
+        } else if current_line.chars().count() + 1 + word.chars().count() <= max_width {
+            current_line.push(' ');
+            current_line.push_str(word);
+        } else {
+            lines.push(current_line);
+            current_line = word.to_string();
+        }
+    }
+    if !current_line.is_empty() {
+        lines.push(current_line);
+    }
+    if lines.is_empty() {
+        lines.push(String::new());
+    }
+    lines
 }

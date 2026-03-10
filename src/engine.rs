@@ -388,6 +388,22 @@ impl GameEngine {
         Ok(())
     }
 
+    /// Return true if the player is allowed to watch an ad right now.
+    /// Allowed when: no ad limit set, or ads_used < ad_limit.
+    pub fn can_watch_ad(&self) -> bool {
+        match self.ad_limit {
+            None => true,
+            Some(limit) => self.ads_used < limit,
+        }
+    }
+
+    /// Grant one free scissors bonus as the reward for watching an ad.
+    /// Increments ads_used.
+    pub fn watch_ad(&mut self) {
+        self.bonuses.scissors += 1;
+        self.ads_used += 1;
+    }
+
     // ── Serialisation ──────────────────────────────────────────────────────
 
     pub fn to_json(&self) -> String {
