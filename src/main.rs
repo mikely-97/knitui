@@ -14,6 +14,8 @@ use clap::{CommandFactory, Parser, parser::ValueSource};
 
 use knitui::ad_content;
 use knitui::board_entity::Direction;
+use knitui::campaign::{CampaignSaves, CampaignState};
+use knitui::campaign_levels::{self, TRACK_NAMES, TRACK_COUNT};
 use knitui::config::Config;
 use knitui::engine::{GameEngine, GameStatus, BonusState};
 use knitui::preset::PRESETS;
@@ -27,6 +29,8 @@ enum TuiState {
         selected_field: usize, // 0 = preset row, 1-8 = fields
         config: Config,
     },
+    CampaignSelect { selected: usize },
+    CampaignLevelIntro,
     Options { selected: usize },
     Playing,
     GameOver(GameStatus),
@@ -131,6 +135,16 @@ fn was_cli_set(matches: &clap::ArgMatches, name: &str) -> bool {
     matches.value_source(name) == Some(ValueSource::CommandLine)
 }
 
+fn campaign_overlay_msg(ctx: &Option<CampaignState>, status: &GameStatus) -> Option<String> {
+    let ctx = ctx.as_ref()?;
+    let level_label = format!("[{}/{}]", ctx.current_level + 1, ctx.total_levels());
+    Some(match status {
+        GameStatus::Won => format!("{} You won! N:Next Level  M:Menu  Q:Quit", level_label),
+        GameStatus::Stuck => format!("{} You're lost! R:Retry  A:Ad  M:Menu  Q:Quit", level_label),
+        _ => return None,
+    })
+}
+
 // ── Main ──────────────────────────────────────────────────────────────────────
 
 fn main() -> std::io::Result<()> {
@@ -152,6 +166,9 @@ fn main() -> std::io::Result<()> {
     let mut stdout = stdout();
     execute!(stdout, EnterAlternateScreen)?;
     enable_raw_mode()?;
+
+    let mut campaign_saves = CampaignSaves::load();
+    let mut campaign_ctx: Option<CampaignState> = None;
 
     let mut game_config = cli_config.clone();
     let mut geo = LayoutGeometry::compute(&game_config);
@@ -201,8 +218,12 @@ fn main() -> std::io::Result<()> {
                                             config: preset_cfg,
                                         };
                                     }
-                                    2 | 3 => {
-                                        // Campaign / Endless — coming soon
+                                    2 => {
+                                        // Campaign
+                                        tui_state = TuiState::CampaignSelect { selected: 0 };
+                                    }
+                                    3 => {
+                                        // Endless — coming soon
                                         *flash = Some("Coming soon!".to_string());
                                     }
                                     4 => {
@@ -225,6 +246,12 @@ fn main() -> std::io::Result<()> {
                             let fields = custom_game_fields(config);
                             renderer::render_custom_game(
                                 &mut stdout, PRESETS[preset_idx].name, &fields, selected_field,
+                            )?;
+                        } else if let TuiState::CampaignSelect { selected } = tui_state {
+                            let sizes: Vec<usize> = (0..TRACK_COUNT).map(|i| campaign_levels::levels_for_track(i).len()).collect();
+                            let labels: Vec<String> = (0..TRACK_COUNT).map(|i| campaign_saves.progress_label(i)).collect();
+                            renderer::render_campaign_select(
+                                &mut stdout, selected, TRACK_NAMES, &sizes, &labels,
                             )?;
                         } else if let TuiState::Options { selected } = tui_state {
                             renderer::render_options(
@@ -283,6 +310,86 @@ fn main() -> std::io::Result<()> {
                             user_settings.scale, &user_settings.color_mode,
                         )?;
                     }
+                    TuiState::CampaignSelect { ref mut selected } => {
+                        match event.code {
+                            KeyCode::Up => {
+                                if *selected > 0 { *selected -= 1; }
+                            }
+                            KeyCode::Down => {
+                                if *selected < TRACK_COUNT - 1 { *selected += 1; }
+                            }
+                            KeyCode::Enter => {
+                                let track_idx = *selected;
+                                // Start or resume campaign
+                                let state = campaign_saves.get(track_idx).cloned().unwrap_or_else(|| {
+                                    let s = CampaignState::new(track_idx);
+                                    s
+                                });
+                                if state.completed {
+                                    // Reset and restart
+                                    campaign_saves.reset(track_idx);
+                                    let s = CampaignState::new(track_idx);
+                                    campaign_ctx = Some(s);
+                                } else {
+                                    campaign_ctx = Some(state);
+                                }
+                                tui_state = TuiState::CampaignLevelIntro;
+                                let ctx = campaign_ctx.as_ref().unwrap();
+                                let levels = campaign_levels::levels_for_track(ctx.track_idx);
+                                let level = &levels[ctx.current_level];
+                                renderer::render_level_intro(
+                                    &mut stdout,
+                                    TRACK_NAMES[ctx.track_idx],
+                                    ctx.current_level + 1,
+                                    ctx.total_levels(),
+                                    level.board_height,
+                                    level.board_width,
+                                    level.color_number,
+                                )?;
+                                continue;
+                            }
+                            KeyCode::Esc => {
+                                tui_state = TuiState::MainMenu { selected: 2, flash: None };
+                                renderer::render_main_menu(&mut stdout, 2, None)?;
+                                continue;
+                            }
+                            _ => {}
+                        }
+                        let sizes: Vec<usize> = (0..TRACK_COUNT).map(|i| campaign_levels::levels_for_track(i).len()).collect();
+                        let labels: Vec<String> = (0..TRACK_COUNT).map(|i| campaign_saves.progress_label(i)).collect();
+                        renderer::render_campaign_select(
+                            &mut stdout, *selected, TRACK_NAMES, &sizes, &labels,
+                        )?;
+                    }
+                    TuiState::CampaignLevelIntro => {
+                        match event.code {
+                            KeyCode::Enter => {
+                                let ctx = campaign_ctx.as_ref().unwrap();
+                                game_config = ctx.to_config(&cli_config);
+                                geo = LayoutGeometry::compute(&game_config);
+                                let mut e = GameEngine::new(&game_config);
+                                e.set_ad_limit(ctx.ad_limit());
+                                engine = Some(e);
+                                tui_state = TuiState::Playing;
+                                renderer::do_render(
+                                    &mut stdout, engine.as_ref().unwrap(),
+                                    geo.layout, geo.yarn_x, geo.board_x, geo.board_y, geo.scale,
+                                )?;
+                                continue;
+                            }
+                            KeyCode::Esc => {
+                                campaign_ctx = None;
+                                tui_state = TuiState::CampaignSelect { selected: 0 };
+                                let sizes: Vec<usize> = (0..TRACK_COUNT).map(|i| campaign_levels::levels_for_track(i).len()).collect();
+                                let labels: Vec<String> = (0..TRACK_COUNT).map(|i| campaign_saves.progress_label(i)).collect();
+                                renderer::render_campaign_select(
+                                    &mut stdout, 0, TRACK_NAMES, &sizes, &labels,
+                                )?;
+                                continue;
+                            }
+                            _ => {}
+                        }
+                    }
                     TuiState::CustomGame { ref mut preset_idx, ref mut selected_field, ref mut config } => {
                         match event.code {
                             KeyCode::Up => {
@@ -337,7 +444,7 @@ fn main() -> std::io::Result<()> {
                             )?;
                         }
                     }
-                    TuiState::GameOver(_) => {
+                    TuiState::GameOver(ref status) => {
                         match event.code {
                             KeyCode::Char('a') | KeyCode::Char('A') => {
                                 if engine.as_ref().unwrap().can_watch_ad() {
@@ -348,22 +455,71 @@ fn main() -> std::io::Result<()> {
                                     };
                                 }
                             }
-                            KeyCode::Char('r') | KeyCode::Char('R') => {
-                                engine = Some(GameEngine::new(&game_config));
-                                tui_state = TuiState::Playing;
-                                renderer::do_render(&mut stdout, engine.as_ref().unwrap(), geo.layout, geo.yarn_x, geo.board_x, geo.board_y, geo.scale)?;
+                            KeyCode::Char('r') | KeyCode::Char('R') | KeyCode::Char('n') | KeyCode::Char('N') => {
+                                if let Some(ref mut ctx) = campaign_ctx {
+                                    if *status == GameStatus::Won {
+                                        // Advance to next level
+                                        let done = ctx.complete_level();
+                                        campaign_saves.upsert(ctx.clone());
+                                        campaign_saves.save();
+                                        if done {
+                                            campaign_ctx = None;
+                                            tui_state = TuiState::MainMenu {
+                                                selected: 2,
+                                                flash: Some("Campaign complete!".to_string()),
+                                            };
+                                            renderer::render_main_menu(&mut stdout, 2, Some("Campaign complete!"))?;
+                                            continue;
+                                        }
+                                        // Show next level intro
+                                        tui_state = TuiState::CampaignLevelIntro;
+                                        let levels = campaign_levels::levels_for_track(ctx.track_idx);
+                                        let level = &levels[ctx.current_level];
+                                        renderer::render_level_intro(
+                                            &mut stdout,
+                                            TRACK_NAMES[ctx.track_idx],
+                                            ctx.current_level + 1,
+                                            ctx.total_levels(),
+                                            level.board_height,
+                                            level.board_width,
+                                            level.color_number,
+                                        )?;
+                                        continue;
+                                    } else {
+                                        // Retry same level
+                                        game_config = ctx.to_config(&cli_config);
+                                        geo = LayoutGeometry::compute(&game_config);
+                                        let mut e = GameEngine::new(&game_config);
+                                        e.set_ad_limit(ctx.ad_limit());
+                                        engine = Some(e);
+                                        tui_state = TuiState::Playing;
+                                        renderer::do_render(&mut stdout, engine.as_ref().unwrap(), geo.layout, geo.yarn_x, geo.board_x, geo.board_y, geo.scale)?;
+                                    }
+                                } else {
+                                    // Non-campaign: restart
+                                    engine = Some(GameEngine::new(&game_config));
+                                    tui_state = TuiState::Playing;
+                                    renderer::do_render(&mut stdout, engine.as_ref().unwrap(), geo.layout, geo.yarn_x, geo.board_x, geo.board_y, geo.scale)?;
+                                }
                             }
-                            KeyCode::Char('m') | KeyCode::Char('M') => {
+                            KeyCode::Char('m') | KeyCode::Char('M') | KeyCode::Esc => {
+                                if campaign_ctx.is_some() {
+                                    // Save campaign progress before returning
+                                    campaign_saves.upsert(campaign_ctx.as_ref().unwrap().clone());
+                                    campaign_saves.save();
+                                    campaign_ctx = None;
+                                }
                                 tui_state = TuiState::MainMenu { selected: 0, flash: None };
                                 renderer::render_main_menu(&mut stdout, 0, None)?;
                                 continue;
                             }
-                            KeyCode::Esc => {
-                                tui_state = TuiState::MainMenu { selected: 0, flash: None };
-                                renderer::render_main_menu(&mut stdout, 0, None)?;
-                                continue;
+                            KeyCode::Char('q') | KeyCode::Char('Q') => {
+                                if campaign_ctx.is_some() {
+                                    campaign_saves.upsert(campaign_ctx.as_ref().unwrap().clone());
+                                    campaign_saves.save();
+                                }
+                                break;
                             }
-                            KeyCode::Char('q') | KeyCode::Char('Q') => break,
                             _ => {}
                         }
                     }
@@ -398,6 +554,11 @@ fn main() -> std::io::Result<()> {
                                 if engine.as_ref().unwrap().bonus_state != BonusState::None {
                                     engine.as_mut().unwrap().cancel_tweezers();
                                 } else {
+                                    if campaign_ctx.is_some() {
+                                        campaign_saves.upsert(campaign_ctx.as_ref().unwrap().clone());
+                                        campaign_saves.save();
+                                        campaign_ctx = None;
+                                    }
                                     tui_state = TuiState::MainMenu { selected: 0, flash: None };
                                     renderer::render_main_menu(&mut stdout, 0, None)?;
                                     continue;
@@ -409,7 +570,8 @@ fn main() -> std::io::Result<()> {
                                     match engine.as_ref().unwrap().status() {
                                         GameStatus::Playing => {}
                                         s => {
-                                            renderer::do_render_overlay(&mut stdout, engine.as_ref().unwrap(), geo.layout, geo.yarn_x, geo.board_x, geo.board_y, geo.scale, &s)?;
+                                            let overlay = campaign_overlay_msg(&campaign_ctx, &s);
+                                            renderer::do_render_overlay(&mut stdout, engine.as_ref().unwrap(), geo.layout, geo.yarn_x, geo.board_x, geo.board_y, geo.scale, &s, overlay.as_deref())?;
                                             tui_state = TuiState::GameOver(s);
                                             continue;
                                         }
@@ -455,7 +617,8 @@ fn main() -> std::io::Result<()> {
             match engine.as_ref().unwrap().status() {
                 GameStatus::Playing => renderer::do_render(&mut stdout, engine.as_ref().unwrap(), geo.layout, geo.yarn_x, geo.board_x, geo.board_y, geo.scale)?,
                 s => {
-                    renderer::do_render_overlay(&mut stdout, engine.as_ref().unwrap(), geo.layout, geo.yarn_x, geo.board_x, geo.board_y, geo.scale, &s)?;
+                    let overlay = campaign_overlay_msg(&campaign_ctx, &s);
+                    renderer::do_render_overlay(&mut stdout, engine.as_ref().unwrap(), geo.layout, geo.yarn_x, geo.board_x, geo.board_y, geo.scale, &s, overlay.as_deref())?;
                     tui_state = TuiState::GameOver(s);
                 }
             };

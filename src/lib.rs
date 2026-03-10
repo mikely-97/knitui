@@ -13,3 +13,5 @@ pub mod glyphs;
 pub mod ad_content;
 pub mod preset;
 pub mod settings;
+pub mod campaign;
+pub mod campaign_levels;

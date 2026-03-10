@@ -593,6 +593,99 @@ pub fn render_options(
     stdout.flush()
 }
 
+/// Render the campaign track selection screen.
+pub fn render_campaign_select(
+    stdout: &mut Stdout,
+    selected: usize,
+    track_names: &[&str],
+    track_sizes: &[usize],
+    progress_labels: &[String],
+) -> io::Result<()> {
+    stdout.queue(BeginSynchronizedUpdate)?;
+    stdout.queue(Hide)?;
+    stdout.queue(Clear(ClearType::All))?;
+
+    let (term_w, term_h) = terminal::size().unwrap_or((80, 24));
+    let total_lines = 4 + track_names.len() as u16 + 2;
+    let start_y = term_h / 2 - total_lines / 2;
+
+    let title = "═══ SELECT CAMPAIGN ═══";
+    let title_x = (term_w.saturating_sub(title.chars().count() as u16)) / 2;
+    stdout.queue(MoveTo(title_x, start_y))?;
+    stdout.queue(Print(title))?;
+
+    let col_x = (term_w.saturating_sub(44)) / 2;
+    for (i, name) in track_names.iter().enumerate() {
+        let y = start_y + 2 + i as u16;
+        let prefix = if i == selected { "> " } else { "  " };
+        let progress = &progress_labels[i];
+        let size_str = format!("({} levels)", track_sizes[i]);
+        let line = if progress.is_empty() {
+            format!("{}{:<10}{}", prefix, name, size_str)
+        } else {
+            format!("{}{:<10}{}    {}", prefix, name, size_str, progress)
+        };
+        stdout.queue(MoveTo(col_x, y))?;
+        if i == selected {
+            stdout.queue(SetAttribute(Attribute::Reverse))?;
+            stdout.queue(Print(&line))?;
+            stdout.queue(SetAttribute(Attribute::Reset))?;
+        } else {
+            stdout.queue(Print(&line))?;
+        }
+    }
+
+    let hint = "↑↓ Select  Enter: Start  Esc: Back";
+    let hint_x = (term_w.saturating_sub(hint.chars().count() as u16)) / 2;
+    let hint_y = start_y + 2 + track_names.len() as u16 + 1;
+    stdout.queue(MoveTo(hint_x, hint_y))?;
+    stdout.queue(Print(hint.dark_grey()))?;
+
+    stdout.queue(EndSynchronizedUpdate)?;
+    stdout.flush()
+}
+
+/// Render a brief level intro card before starting a campaign level.
+pub fn render_level_intro(
+    stdout: &mut Stdout,
+    track_name: &str,
+    level_num: usize,
+    total_levels: usize,
+    board_h: u16,
+    board_w: u16,
+    colors: u16,
+) -> io::Result<()> {
+    stdout.queue(BeginSynchronizedUpdate)?;
+    stdout.queue(Hide)?;
+    stdout.queue(Clear(ClearType::All))?;
+
+    let (term_w, term_h) = terminal::size().unwrap_or((80, 24));
+    let start_y = term_h / 2 - 3;
+
+    let title = format!("═══ {} CAMPAIGN ═══", track_name.to_uppercase());
+    let title_x = (term_w.saturating_sub(title.chars().count() as u16)) / 2;
+    stdout.queue(MoveTo(title_x, start_y))?;
+    stdout.queue(Print(&title))?;
+
+    let level_str = format!("Level {}/{}", level_num, total_levels);
+    let lx = (term_w.saturating_sub(level_str.chars().count() as u16)) / 2;
+    stdout.queue(MoveTo(lx, start_y + 2))?;
+    stdout.queue(Print(&level_str))?;
+
+    let desc = format!("{}x{} board, {} colors", board_w, board_h, colors);
+    let dx = (term_w.saturating_sub(desc.chars().count() as u16)) / 2;
+    stdout.queue(MoveTo(dx, start_y + 3))?;
+    stdout.queue(Print(desc.dark_grey()))?;
+
+    let hint = "Press Enter to start";
+    let hx = (term_w.saturating_sub(hint.chars().count() as u16)) / 2;
+    stdout.queue(MoveTo(hx, start_y + 5))?;
+    stdout.queue(Print(hint.dark_grey()))?;
+
+    stdout.queue(EndSynchronizedUpdate)?;
+    stdout.flush()
+}
+
 pub fn render_bonus_display_h(stdout: &mut Stdout, engine: &GameEngine, x: u16, y: u16) -> io::Result<()> {
     stdout.queue(MoveTo(x, y))?;
     let bonuses = [
@@ -666,13 +759,15 @@ pub fn render_vertical_overlay(
     board_y: u16,
     scale: u16,
     status: &GameStatus,
+    overlay_msg: Option<&str>,
 ) -> io::Result<()> {
     render_vertical(stdout, engine, board_y, scale)?;
-    let message = match status {
+    let default_msg = match status {
         GameStatus::Stuck => "You're lost! R:Restart  M:Menu  Q:Quit",
         GameStatus::Won   => "You won! R:Restart  M:Menu  Q:Quit",
         _ => return Ok(()),
     };
+    let message = overlay_msg.unwrap_or(default_msg);
     stdout.queue(MoveTo(0, 0))?;
     stdout.queue(Print(message))?;
     stdout.flush()
@@ -730,13 +825,15 @@ pub fn render_horizontal_overlay(
     board_x: u16,
     scale: u16,
     status: &GameStatus,
+    overlay_msg: Option<&str>,
 ) -> io::Result<()> {
     render_horizontal(stdout, engine, yarn_x, board_x, scale)?;
-    let message = match status {
+    let default_msg = match status {
         GameStatus::Stuck => "You're lost! R:Restart  M:Menu  Q:Quit",
         GameStatus::Won   => "You won! R:Restart  M:Menu  Q:Quit",
         _ => return Ok(()),
     };
+    let message = overlay_msg.unwrap_or(default_msg);
     stdout.queue(MoveTo(0, 0))?;
     stdout.queue(Print(message))?;
     stdout.flush()
@@ -766,10 +863,11 @@ pub fn do_render_overlay(
     board_y: u16,
     scale: u16,
     status: &GameStatus,
+    overlay_msg: Option<&str>,
 ) -> io::Result<()> {
     match layout {
-        Layout::Vertical => render_vertical_overlay(stdout, engine, board_y, scale, status),
-        Layout::Horizontal => render_horizontal_overlay(stdout, engine, yarn_x, board_x, scale, status),
+        Layout::Vertical => render_vertical_overlay(stdout, engine, board_y, scale, status, overlay_msg),
+        Layout::Horizontal => render_horizontal_overlay(stdout, engine, yarn_x, board_x, scale, status, overlay_msg),
     }
 }
 

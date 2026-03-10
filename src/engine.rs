@@ -131,6 +131,11 @@ impl GameEngine {
         }
     }
 
+    /// Set the ad limit for campaign levels. Call after `new()`.
+    pub fn set_ad_limit(&mut self, limit: u16) {
+        self.ad_limit = Some(limit);
+    }
+
     // ── Actions ────────────────────────────────────────────────────────────
 
     pub fn move_cursor(&mut self, dir: Direction) -> Result<(), MoveError> {
