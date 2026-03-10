@@ -2,7 +2,7 @@ use clap::Parser;
 use std::path::PathBuf;
 use crate::palette::ColorMode;
 
-#[derive(Parser)]
+#[derive(Parser, Clone)]
 #[command(name = "knitui", about = "Terminal knitting puzzle game")]
 pub struct Config {
     #[arg(long, default_value_t = 6, help = "Board height in rows")]
