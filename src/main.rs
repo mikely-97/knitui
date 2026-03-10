@@ -18,14 +18,16 @@ use knitui::config::Config;
 use knitui::engine::{GameEngine, GameStatus, BonusState};
 use knitui::preset::PRESETS;
 use knitui::renderer::{self, Layout, COMP_GAP, YARN_HGAP, YARN_VGAP};
+use knitui::settings::{self, UserSettings};
 
 enum TuiState {
     MainMenu { selected: usize, flash: Option<String> },
     CustomGame {
         preset_idx: usize,
-        selected_field: usize, // 0 = preset row, 1-9 = fields
+        selected_field: usize, // 0 = preset row, 1-8 = fields
         config: Config,
     },
+    Options { selected: usize },
     Playing,
     GameOver(GameStatus),
     Help,
@@ -84,7 +86,6 @@ fn custom_game_fields(config: &Config) -> Vec<(&'static str, u16)> {
         ("Color Count", config.color_number),
         ("Obstacle %", config.obstacle_percentage),
         ("Generator %", config.generator_percentage),
-        ("Scale", config.scale),
         ("Scissors", config.scissors),
         ("Tweezers", config.tweezers),
         ("Balloons", config.balloons),
@@ -102,10 +103,9 @@ fn adjust_custom_field(config: &mut Config, field: usize, delta: i16) {
         3 => apply(&mut config.color_number, 2, 8),
         4 => apply(&mut config.obstacle_percentage, 0, 50),
         5 => apply(&mut config.generator_percentage, 0, 50),
-        6 => apply(&mut config.scale, 1, 5),
-        7 => apply(&mut config.scissors, 0, 99),
-        8 => apply(&mut config.tweezers, 0, 99),
-        9 => apply(&mut config.balloons, 0, 99),
+        6 => apply(&mut config.scissors, 0, 99),
+        7 => apply(&mut config.tweezers, 0, 99),
+        8 => apply(&mut config.balloons, 0, 99),
         _ => {}
     }
 }
@@ -117,20 +117,37 @@ const GAME_ARGS: &[&str] = &[
     "scissors", "tweezers", "balloons",
 ];
 
-fn has_game_args() -> bool {
-    let matches = Config::command().get_matches_from(std::env::args_os());
+fn cli_matches() -> clap::ArgMatches {
+    Config::command().get_matches_from(std::env::args_os())
+}
+
+fn has_game_args(matches: &clap::ArgMatches) -> bool {
     GAME_ARGS.iter().any(|name| {
         matches.value_source(name) == Some(ValueSource::CommandLine)
     })
 }
 
+fn was_cli_set(matches: &clap::ArgMatches, name: &str) -> bool {
+    matches.value_source(name) == Some(ValueSource::CommandLine)
+}
+
 // ── Main ──────────────────────────────────────────────────────────────────────
 
 fn main() -> std::io::Result<()> {
-    let skip_menu = has_game_args();
-    let cli_config = Config::parse();
+    let matches = cli_matches();
+    let skip_menu = has_game_args(&matches);
+    let mut cli_config = Config::parse();
     let ad_quotes = ad_content::load_quotes(&cli_config.ad_file);
     const AD_DURATION_SECS: u64 = 15;
+
+    // Load persisted settings and apply (unless CLI overrides)
+    let mut user_settings = UserSettings::load();
+    if !was_cli_set(&matches, "scale") {
+        cli_config.scale = user_settings.scale;
+    }
+    if !was_cli_set(&matches, "color_mode") {
+        cli_config.color_mode = user_settings.color_mode.clone();
+    }
 
     let mut stdout = stdout();
     execute!(stdout, EnterAlternateScreen)?;
@@ -159,7 +176,7 @@ fn main() -> std::io::Result<()> {
                                 if *selected > 0 { *selected -= 1; }
                             }
                             KeyCode::Down => {
-                                if *selected < 4 { *selected += 1; }
+                                if *selected < 5 { *selected += 1; }
                             }
                             KeyCode::Enter => {
                                 match *selected {
@@ -188,14 +205,18 @@ fn main() -> std::io::Result<()> {
                                         // Campaign / Endless — coming soon
                                         *flash = Some("Coming soon!".to_string());
                                     }
-                                    4 => break, // Quit
+                                    4 => {
+                                        // Options
+                                        tui_state = TuiState::Options { selected: 0 };
+                                    }
+                                    5 => break, // Quit
                                     _ => {}
                                 }
                             }
                             KeyCode::Char('q') | KeyCode::Char('Q') | KeyCode::Esc => break,
                             _ => {}
                         }
-                        // Re-render menu (or transition to custom game screen)
+                        // Re-render menu (or transition screens)
                         if let TuiState::MainMenu { selected, ref flash } = tui_state {
                             renderer::render_main_menu(
                                 &mut stdout, selected, flash.as_deref(),
@@ -205,7 +226,62 @@ fn main() -> std::io::Result<()> {
                             renderer::render_custom_game(
                                 &mut stdout, PRESETS[preset_idx].name, &fields, selected_field,
                             )?;
+                        } else if let TuiState::Options { selected } = tui_state {
+                            renderer::render_options(
+                                &mut stdout, selected,
+                                user_settings.scale, &user_settings.color_mode,
+                            )?;
                         }
+                    }
+                    TuiState::Options { ref mut selected } => {
+                        match event.code {
+                            KeyCode::Up => {
+                                if *selected > 0 { *selected -= 1; }
+                            }
+                            KeyCode::Down => {
+                                if *selected < 1 { *selected += 1; }
+                            }
+                            KeyCode::Left => {
+                                match *selected {
+                                    0 => {
+                                        if user_settings.scale > 1 {
+                                            user_settings.scale -= 1;
+                                        }
+                                    }
+                                    1 => {
+                                        user_settings.color_mode = settings::prev_color_mode(&user_settings.color_mode).to_string();
+                                    }
+                                    _ => {}
+                                }
+                            }
+                            KeyCode::Right => {
+                                match *selected {
+                                    0 => {
+                                        if user_settings.scale < 5 {
+                                            user_settings.scale += 1;
+                                        }
+                                    }
+                                    1 => {
+                                        user_settings.color_mode = settings::next_color_mode(&user_settings.color_mode).to_string();
+                                    }
+                                    _ => {}
+                                }
+                            }
+                            KeyCode::Esc => {
+                                // Save and return to menu
+                                user_settings.save();
+                                cli_config.scale = user_settings.scale;
+                                cli_config.color_mode = user_settings.color_mode.clone();
+                                tui_state = TuiState::MainMenu { selected: 4, flash: None };
+                                renderer::render_main_menu(&mut stdout, 4, None)?;
+                                continue;
+                            }
+                            _ => {}
+                        }
+                        renderer::render_options(
+                            &mut stdout, *selected,
+                            user_settings.scale, &user_settings.color_mode,
+                        )?;
                     }
                     TuiState::CustomGame { ref mut preset_idx, ref mut selected_field, ref mut config } => {
                         match event.code {
@@ -213,7 +289,7 @@ fn main() -> std::io::Result<()> {
                                 if *selected_field > 0 { *selected_field -= 1; }
                             }
                             KeyCode::Down => {
-                                if *selected_field < 9 { *selected_field += 1; }
+                                if *selected_field < 8 { *selected_field += 1; }
                             }
                             KeyCode::Left => {
                                 if *selected_field == 0 {

@@ -12,3 +12,4 @@ pub mod renderer;
 pub mod glyphs;
 pub mod ad_content;
 pub mod preset;
+pub mod settings;

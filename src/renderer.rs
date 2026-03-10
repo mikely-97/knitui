@@ -444,7 +444,7 @@ pub fn render_main_menu(stdout: &mut Stdout, selected: usize, flash: Option<&str
     stdout.queue(Hide)?;
     stdout.queue(Clear(ClearType::All))?;
 
-    let items = ["Quick Game", "Custom Game", "Campaign", "Endless", "Quit"];
+    let items = ["Quick Game", "Custom Game", "Campaign", "Endless", "Options", "Quit"];
     let (term_w, term_h) = terminal::size().unwrap_or((80, 24));
     let start_y = term_h / 2 - (items.len() as u16 + 4) / 2;
 
@@ -535,6 +535,57 @@ pub fn render_custom_game(
     let hint = "↑↓ Navigate  ←→ Adjust  Enter: Start  Esc: Back";
     let hint_x = (term_w.saturating_sub(hint.chars().count() as u16)) / 2;
     let hint_y = start_y + 4 + fields.len() as u16 + 1;
+    stdout.queue(MoveTo(hint_x, hint_y))?;
+    stdout.queue(Print(hint.dark_grey()))?;
+
+    stdout.queue(EndSynchronizedUpdate)?;
+    stdout.flush()
+}
+
+/// Render the options screen (scale, color mode).
+pub fn render_options(
+    stdout: &mut Stdout,
+    selected: usize,
+    scale: u16,
+    color_mode: &str,
+) -> io::Result<()> {
+    stdout.queue(BeginSynchronizedUpdate)?;
+    stdout.queue(Hide)?;
+    stdout.queue(Clear(ClearType::All))?;
+
+    let (term_w, term_h) = terminal::size().unwrap_or((80, 24));
+    let start_y = term_h / 2 - 5;
+
+    // Title
+    let title = "═══ OPTIONS ═══";
+    let title_x = (term_w.saturating_sub(title.chars().count() as u16)) / 2;
+    stdout.queue(MoveTo(title_x, start_y))?;
+    stdout.queue(Print(title))?;
+
+    let fields: [(&str, String); 2] = [
+        ("Scale", format!("← {} →", scale)),
+        ("Color Mode", format!("← {} →", color_mode)),
+    ];
+
+    let col_x = (term_w.saturating_sub(34)) / 2;
+    for (i, (name, value)) in fields.iter().enumerate() {
+        let y = start_y + 2 + i as u16;
+        let prefix = if i == selected { "> " } else { "  " };
+        let line = format!("{}{:<16}{}", prefix, name, value);
+        stdout.queue(MoveTo(col_x, y))?;
+        if i == selected {
+            stdout.queue(SetAttribute(Attribute::Reverse))?;
+            stdout.queue(Print(&line))?;
+            stdout.queue(SetAttribute(Attribute::Reset))?;
+        } else {
+            stdout.queue(Print(&line))?;
+        }
+    }
+
+    // Hint line
+    let hint = "←→ Adjust  Esc: Save & Back";
+    let hint_x = (term_w.saturating_sub(hint.chars().count() as u16)) / 2;
+    let hint_y = start_y + 2 + fields.len() as u16 + 1;
     stdout.queue(MoveTo(hint_x, hint_y))?;
     stdout.queue(Print(hint.dark_grey()))?;
 
