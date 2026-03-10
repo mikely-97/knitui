@@ -66,7 +66,12 @@ pub fn render_yarn(stdout: &mut Stdout, engine: &GameEngine, x0: u16, y0: u16, s
                 }
                 if true_offset <= column.len() {
                     let pos = column.len() - true_offset;
-                    for _ in 0..sw { stdout.queue(Print(&column[pos]))?; }
+                    if scale > 1 {
+                        let glyph_rows = glyphs::yarn_patch_glyph(column[pos].locked, scale);
+                        stdout.queue(Print(glyph_rows[sy as usize].as_str().with(column[pos].color)))?;
+                    } else {
+                        for _ in 0..sw { stdout.queue(Print(&column[pos]))?; }
+                    }
                 } else {
                     for _ in 0..sw { stdout.queue(Print(' '))?; }
                 }
@@ -107,7 +112,12 @@ pub fn render_balloon_columns(stdout: &mut Stdout, engine: &GameEngine, yarn_x0:
             }
             match slot {
                 Some(patch) => {
-                    for _ in 0..sw { stdout.queue(Print(patch))?; }
+                    if scale > 1 {
+                        let glyph_rows = glyphs::yarn_patch_glyph(patch.locked, scale);
+                        stdout.queue(Print(glyph_rows[sy as usize].as_str().with(patch.color)))?;
+                    } else {
+                        for _ in 0..sw { stdout.queue(Print(patch))?; }
+                    }
                 }
                 None => {
                     for _ in 0..sw { stdout.queue(Print(' '))?; }
@@ -163,7 +173,12 @@ pub fn render_balloon_flank(
             } else {
                 match slots.get(slot_idx) {
                     Some(Some(patch)) => {
-                        for _ in 0..sw { stdout.queue(Print(patch))?; }
+                        if scale > 1 {
+                            let glyph_rows = glyphs::yarn_patch_glyph(patch.locked, scale);
+                            stdout.queue(Print(glyph_rows[sy as usize].as_str().with(patch.color)))?;
+                        } else {
+                            for _ in 0..sw { stdout.queue(Print(patch))?; }
+                        }
                     }
                     Some(None) => {
                         // Processed — empty space
@@ -289,8 +304,8 @@ pub fn render_board(stdout: &mut Stdout, engine: &GameEngine, x0: u16, y0: u16, 
                         stdout.queue(Print(close_bracket.bold().white()))?;
                     } else {
                         match color {
-                            Some(col) => { stdout.queue(Print((*glyph_row).with(col)))?; }
-                            None => { stdout.queue(Print(*glyph_row))?; }
+                            Some(col) => { stdout.queue(Print(glyph_row.as_str().with(col)))?; }
+                            None => { stdout.queue(Print(glyph_row.as_str()))?; }
                         }
                     }
                 }
