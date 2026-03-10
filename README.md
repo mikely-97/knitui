@@ -59,7 +59,7 @@ Cells become Void when their thread is picked up. Clearing a thread exposes its 
 | `K` (colored) | Key thread | Thread that carries a key; displayed `k` in active list until key is spent |
 | `X` | Obstacle | Impassable; never becomes Void |
 | ` ` | Void | Empty; makes orthogonal neighbors selectable |
-| `G` (colored) | Generator | Produces threads in its adjacent output cell up to `--generator-capacity` times, then becomes `#` |
+| `^` `V` `<` `>` (colored) | Generator | Arrow shows output direction. Produces threads in its adjacent output cell up to `--generator-capacity` times, then becomes `#` |
 | `#` | Depleted generator | Acts like an obstacle |
 
 ### Lock / Key mechanic
@@ -134,6 +134,7 @@ All parameters are settable via CLI flags (both binaries). Defaults:
 | `--obstacle-percentage` | 5 | % chance each cell is an obstacle |
 | `--visible-patches` | 6 | Yarn rows shown on screen |
 | `--generator-capacity` | 3 | Threads each generator produces |
+| `--generator-percentage` | 5 | % chance each cell becomes a generator |
 | `--layout` | `auto` | Layout: `auto` \| `horizontal` \| `vertical` |
 | `--scale` | 1 | Cell scale factor (1–3): render each entity as N×N characters |
 | `--scissors` | 0 | Starting scissors bonus count |
@@ -219,7 +220,7 @@ Boards that fail any check are regenerated (up to 100 retries).
 ```bash
 cargo run --bin knitui     # play the interactive game
 cargo run --bin knitui-ni  # create a non-interactive game
-cargo test                 # 145 tests (114 unit + 31 integration)
+cargo test                 # 171 tests (140 unit + 31 integration)
 cargo build --release      # build both binaries
 ```
 
@@ -227,7 +228,7 @@ cargo build --release      # build both binaries
 
 ## TODO
 
-- [ ] Puzzle editor / non-random board generation (needed to actually place generators and locks)
+- [ ] Puzzle editor / non-random board generation
 - [x] Bonuses: scissors, tweezers, balloons (hotkey-activated, configurable counts)
 - [ ] In-game pseudo-ads between rounds
 

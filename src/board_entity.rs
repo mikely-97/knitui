@@ -61,7 +61,12 @@ impl fmt::Display for BoardEntity {
                 BoardEntity::KeyThread(color)  => 'K'.with(*color),
                 BoardEntity::Obstacle          => 'X'.stylize(),
                 BoardEntity::Void              => ' '.stylize(),
-                BoardEntity::Generator(data)   => 'G'.with(data.color),
+                BoardEntity::Generator(data)   => match data.output_dir {
+                    Direction::Up    => '^',
+                    Direction::Down  => 'V',
+                    Direction::Left  => '<',
+                    Direction::Right => '>',
+                }.with(data.color),
                 BoardEntity::DepletedGenerator => '#'.stylize(),
             }
         )

@@ -181,7 +181,7 @@ mod tests {
     #[test]
     fn test_count_balance_matches_generated_yarn() {
         let palette = vec![Color::Red, Color::Blue];
-        let board = GameBoard::make_random(3, 3, &palette, 0, 2);
+        let board = GameBoard::make_random(3, 3, &palette, 0, 2, 0, 0);
         let yarn = Yarn::make_from_color_counter(board.count_knits(), 3, 5);
         assert!(count_balance(&board, &yarn, 2));
     }
@@ -190,7 +190,7 @@ mod tests {
     fn test_all_threads_reachable_flat_board() {
         // All-thread board with no obstacles: every cell is reachable.
         let palette = vec![Color::Red];
-        let board = GameBoard::make_random(4, 4, &palette, 0, 1);
+        let board = GameBoard::make_random(4, 4, &palette, 0, 1, 0, 0);
         assert!(all_threads_reachable(&board));
     }
 
@@ -216,7 +216,7 @@ mod tests {
     #[test]
     fn test_active_headroom_ok() {
         let palette = vec![Color::Red, Color::Blue, Color::Green];
-        let board = GameBoard::make_random(3, 3, &palette, 0, 1);
+        let board = GameBoard::make_random(3, 3, &palette, 0, 1, 0, 0);
         // 7-slot limit is definitely enough for 3 colors.
         assert!(active_headroom_ok(&board, 7));
     }
@@ -241,7 +241,7 @@ mod tests {
     #[test]
     fn test_keys_and_locks_valid_no_locks() {
         let palette = vec![Color::Red];
-        let board = GameBoard::make_random(2, 2, &palette, 0, 1);
+        let board = GameBoard::make_random(2, 2, &palette, 0, 1, 0, 0);
         let yarn = Yarn::make_from_color_counter(board.count_knits(), 2, 3);
         // No locked patches → always valid.
         assert!(keys_and_locks_valid(&board, &yarn));
@@ -289,7 +289,7 @@ mod tests {
     #[test]
     fn test_is_solvable_standard_board() {
         let palette = vec![Color::Red, Color::Blue];
-        let board = GameBoard::make_random(4, 4, &palette, 0, 2);
+        let board = GameBoard::make_random(4, 4, &palette, 0, 2, 0, 0);
         let yarn = Yarn::make_from_color_counter(board.count_knits(), 3, 5);
         // A full-thread board with plenty of active slots should always be solvable.
         assert!(is_solvable(&board, &yarn, 2, 10));

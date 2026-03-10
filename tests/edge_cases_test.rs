@@ -28,7 +28,7 @@ fn test_empty_yarn_processing() {
 #[test]
 fn test_single_color_board() {
     let palette = vec![Color::Cyan];
-    let board = GameBoard::make_random(10, 10, &palette, 0, 1);
+    let board = GameBoard::make_random(10, 10, &palette, 0, 1, 0, 0);
 
     let counter = board.count_knits();
     assert_eq!(counter.color_hashmap.len(), 1);
@@ -38,7 +38,7 @@ fn test_single_color_board() {
 #[test]
 fn test_large_board() {
     let palette = select_palette(ColorMode::Dark, 6);
-    let board = GameBoard::make_random(20, 20, &palette, 15, 3);
+    let board = GameBoard::make_random(20, 20, &palette, 15, 3, 0, 0);
 
     assert_eq!(board.height, 20);
     assert_eq!(board.width, 20);
@@ -149,7 +149,7 @@ fn test_mixed_thread_colors() {
 #[test]
 fn test_zero_knit_volume() {
     let palette = vec![Color::White];
-    let board = GameBoard::make_random(3, 3, &palette, 0, 0);
+    let board = GameBoard::make_random(3, 3, &palette, 0, 0, 0, 0);
 
     let counter = board.count_knits();
 
@@ -160,7 +160,7 @@ fn test_zero_knit_volume() {
 #[test]
 fn test_very_high_knit_volume() {
     let palette = vec![Color::DarkRed];
-    let board = GameBoard::make_random(2, 2, &palette, 0, 100);
+    let board = GameBoard::make_random(2, 2, &palette, 0, 100, 0, 0);
 
     let counter = board.count_knits();
 
@@ -170,7 +170,7 @@ fn test_very_high_knit_volume() {
 #[test]
 fn test_narrow_board() {
     let palette = vec![Color::Blue, Color::Red];
-    let board = GameBoard::make_random(10, 1, &palette, 0, 2);
+    let board = GameBoard::make_random(10, 1, &palette, 0, 2, 0, 0);
 
     assert_eq!(board.width, 1);
     assert_eq!(board.height, 10);
@@ -180,7 +180,7 @@ fn test_narrow_board() {
 #[test]
 fn test_wide_board() {
     let palette = vec![Color::Cyan];
-    let board = GameBoard::make_random(1, 15, &palette, 0, 1);
+    let board = GameBoard::make_random(1, 15, &palette, 0, 1, 0, 0);
 
     assert_eq!(board.width, 15);
     assert_eq!(board.height, 1);

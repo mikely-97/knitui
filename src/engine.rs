@@ -83,6 +83,8 @@ impl GameEngine {
                 &selected_palette,
                 config.obstacle_percentage,
                 config.knit_volume,
+                config.generator_percentage,
+                config.generator_capacity,
             );
             yarn = Yarn::make_from_color_counter(
                 board.count_knits(),
@@ -954,7 +956,7 @@ mod tests {
             board_height: 4, board_width: 4, color_number: 3,
             color_mode: "dark".into(), active_threads_limit: 7,
             knit_volume: 2, yarn_lines: 3, obstacle_percentage: 5,
-            visible_patches: 4, generator_capacity: 3,
+            visible_patches: 4, generator_capacity: 3, generator_percentage: 5,
             layout: "auto".into(),
             scale: 1,
             scissors: 0, tweezers: 0, balloons: 0,

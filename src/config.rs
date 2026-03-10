@@ -34,6 +34,9 @@ pub struct Config {
     #[arg(long, default_value_t = 3, help = "Threads each generator produces before depleting")]
     pub generator_capacity: u16,
 
+    #[arg(long, default_value_t = 5, help = "Percent chance each cell becomes a generator (0-100)")]
+    pub generator_percentage: u16,
+
     #[arg(long, default_value = "auto", help = "Layout: auto | horizontal | vertical")]
     pub layout: String,
 

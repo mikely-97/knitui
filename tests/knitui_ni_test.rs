@@ -82,7 +82,7 @@ fn test_create_game_custom_options() {
 
 #[test]
 fn test_move_cursor_right() {
-    let (hash, _) = create_game(&["--obstacle-percentage", "0"]);
+    let (hash, _) = create_game(&["--obstacle-percentage", "0", "--generator-percentage", "0"]);
     let (stdout, _, code) = run(&["--game", &hash, "move", "right"]);
     assert_eq!(code, 0);
     let v = parse_ok(&stdout);
@@ -92,7 +92,7 @@ fn test_move_cursor_right() {
 
 #[test]
 fn test_move_cursor_boundary() {
-    let (hash, _) = create_game(&["--obstacle-percentage", "0"]);
+    let (hash, _) = create_game(&["--obstacle-percentage", "0", "--generator-percentage", "0"]);
     // Cursor starts at (0,0), moving left should fail
     let (_, stderr, code) = run(&["--game", &hash, "move", "left"]);
     assert_ne!(code, 0);
@@ -104,8 +104,8 @@ fn test_move_cursor_boundary() {
 
 #[test]
 fn test_pick_up_thread() {
-    let (hash, initial) = create_game(&["--obstacle-percentage", "0"]);
-    // With 0% obstacles, (0,0) should be a Thread — top row is always selectable
+    let (hash, initial) = create_game(&["--obstacle-percentage", "0", "--generator-percentage", "0"]);
+    // With 0% obstacles and 0% generators, (0,0) should be a Thread — top row is always selectable
     let (stdout, _, code) = run(&["--game", &hash, "pick"]);
     assert_eq!(code, 0);
     let v = parse_ok(&stdout);
@@ -126,7 +126,7 @@ fn test_pick_up_at_obstacle() {
 
 #[test]
 fn test_process_threads() {
-    let (hash, _) = create_game(&["--obstacle-percentage", "0"]);
+    let (hash, _) = create_game(&["--obstacle-percentage", "0", "--generator-percentage", "0"]);
     // Pick a thread first
     let (_, _, code) = run(&["--game", &hash, "pick"]);
     assert_eq!(code, 0);
@@ -142,7 +142,7 @@ fn test_process_threads() {
 
 #[test]
 fn test_game_persistence() {
-    let (hash, _) = create_game(&["--obstacle-percentage", "0"]);
+    let (hash, _) = create_game(&["--obstacle-percentage", "0", "--generator-percentage", "0"]);
     // Move right
     let (_, _, code) = run(&["--game", &hash, "move", "right"]);
     assert_eq!(code, 0);

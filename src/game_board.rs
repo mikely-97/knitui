@@ -1,6 +1,6 @@
 // ./src/lib/game_board.rs
 use crossterm::style::Color;
-use crate::board_entity::BoardEntity;
+use crate::board_entity::{BoardEntity, Direction, GeneratorData};
 use crate::color_counter::ColorCounter;
 use rand::prelude::*;
 use std::collections::{HashMap, HashSet, VecDeque};
@@ -19,12 +19,18 @@ impl GameBoard {
         selected_palette: &Vec<Color>,
         obstacle_percentage: u16,
         knit_volume: u16,
+        generator_percentage: u16,
+        generator_capacity: u16,
     ) -> Self {
         let mut rng = rand::rng();
+        let h = height as usize;
+        let w = width as usize;
+
+        // Pass 1: place obstacles and threads
         let mut board: Vec<Vec<BoardEntity>> = Vec::new();
-        for _ in 0..height {
+        for _ in 0..h {
             let mut row: Vec<BoardEntity> = Vec::new();
-            for _ in 0..width {
+            for _ in 0..w {
                 if rng.random_range(0..=100) <= obstacle_percentage {
                     row.push(BoardEntity::Obstacle);
                 } else {
@@ -33,6 +39,41 @@ impl GameBoard {
             }
             board.push(row);
         }
+
+        // Pass 2: convert some threads to generators
+        if generator_percentage > 0 && generator_capacity > 0 {
+            let directions = [Direction::Up, Direction::Down, Direction::Left, Direction::Right];
+            for r in 0..h {
+                for c in 0..w {
+                    if !matches!(board[r][c], BoardEntity::Thread(_)) {
+                        continue;
+                    }
+                    if rng.random_range(0..=100) > generator_percentage {
+                        continue;
+                    }
+                    // Collect valid output directions (adjacent Thread cells)
+                    let valid_dirs: Vec<Direction> = directions.iter().copied().filter(|d| {
+                        let (dr, dc) = d.offset();
+                        let nr = r as i32 + dr;
+                        let nc = c as i32 + dc;
+                        nr >= 0 && nr < h as i32 && nc >= 0 && nc < w as i32
+                            && matches!(board[nr as usize][nc as usize], BoardEntity::Thread(_))
+                    }).collect();
+                    if let Some(&dir) = valid_dirs.choose(&mut rng) {
+                        let queue: Vec<Color> = (0..generator_capacity)
+                            .map(|_| *selected_palette.choose(&mut rng).unwrap())
+                            .collect();
+                        let color = queue[0];
+                        board[r][c] = BoardEntity::Generator(GeneratorData {
+                            color,
+                            output_dir: dir,
+                            queue,
+                        });
+                    }
+                }
+            }
+        }
+
         Self { board, height, width, knit_volume }
     }
 
@@ -178,7 +219,7 @@ mod tests {
     #[test]
     fn test_game_board_dimensions() {
         let palette = vec![Color::Red, Color::Blue, Color::Green];
-        let board = GameBoard::make_random(5, 7, &palette, 0, 3);
+        let board = GameBoard::make_random(5, 7, &palette, 0, 3, 0, 0);
 
         assert_eq!(board.height, 5);
         assert_eq!(board.width, 7);
@@ -189,7 +230,7 @@ mod tests {
     #[test]
     fn test_game_board_no_obstacles() {
         let palette = vec![Color::Red, Color::Blue];
-        let board = GameBoard::make_random(4, 4, &palette, 0, 2);
+        let board = GameBoard::make_random(4, 4, &palette, 0, 2, 0, 0);
 
         let mut thread_count = 0;
         let mut obstacle_count = 0;
@@ -209,7 +250,7 @@ mod tests {
     #[test]
     fn test_game_board_all_obstacles() {
         let palette = vec![Color::Red];
-        let board = GameBoard::make_random(3, 3, &palette, 100, 1);
+        let board = GameBoard::make_random(3, 3, &palette, 100, 1, 0, 0);
 
         let mut obstacle_count = 0;
         for row in &board.board {
@@ -226,7 +267,7 @@ mod tests {
     #[test]
     fn test_count_knits_empty_board() {
         let palette = vec![Color::Red];
-        let board = GameBoard::make_random(2, 2, &palette, 100, 5);
+        let board = GameBoard::make_random(2, 2, &palette, 100, 5, 0, 0);
         let counter = board.count_knits();
 
         assert_eq!(counter.color_hashmap.len(), 0);
@@ -235,7 +276,7 @@ mod tests {
     #[test]
     fn test_count_knits_multiplies_by_knit_volume() {
         let palette = vec![Color::Red];
-        let board = GameBoard::make_random(2, 2, &palette, 0, 3);
+        let board = GameBoard::make_random(2, 2, &palette, 0, 3, 0, 0);
         let counter = board.count_knits();
 
         // 4 threads of red * 3 knit_volume = 12
@@ -245,7 +286,7 @@ mod tests {
     #[test]
     fn test_count_knits_different_colors() {
         let palette = vec![Color::Red, Color::Blue, Color::Green];
-        let board = GameBoard::make_random(5, 5, &palette, 0, 2);
+        let board = GameBoard::make_random(5, 5, &palette, 0, 2, 0, 0);
         let counter = board.count_knits();
 
         assert!(counter.color_hashmap.len() >= 1);
@@ -258,14 +299,14 @@ mod tests {
     #[test]
     fn test_knit_volume_stored() {
         let palette = vec![Color::Red];
-        let board = GameBoard::make_random(3, 3, &palette, 0, 7);
+        let board = GameBoard::make_random(3, 3, &palette, 0, 7, 0, 0);
         assert_eq!(board.knit_volume, 7);
     }
 
     #[test]
     fn test_is_selectable_top_row_thread() {
         let palette = vec![Color::Red];
-        let board = GameBoard::make_random(3, 3, &palette, 0, 1);
+        let board = GameBoard::make_random(3, 3, &palette, 0, 1, 0, 0);
         // Top-row threads are always selectable.
         for c in 0..3 {
             if matches!(board.board[0][c], BoardEntity::Thread(_)) {
@@ -278,7 +319,7 @@ mod tests {
     fn test_is_selectable_obstacle_never() {
         let palette = vec![Color::Red];
         // 100% obstacles
-        let board = GameBoard::make_random(3, 3, &palette, 100, 1);
+        let board = GameBoard::make_random(3, 3, &palette, 100, 1, 0, 0);
         for r in 0..3 {
             for c in 0..3 {
                 assert!(!board.is_selectable(r, c));
@@ -433,5 +474,45 @@ mod tests {
         assert!(connected.contains(&(1, 0)));
         // (2,1) is void but not connected to any top-row void → NOT connected
         assert!(!connected.contains(&(2, 1)));
+    }
+
+    #[test]
+    fn test_generators_spawn_with_high_percentage() {
+        let palette = vec![Color::Red, Color::Blue, Color::Green];
+        // 100% generator chance on a large board → should produce at least one
+        let board = GameBoard::make_random(6, 6, &palette, 0, 1, 100, 3);
+        let gen_count = board.board.iter().flatten().filter(|e| {
+            matches!(e, BoardEntity::Generator(_))
+        }).count();
+        assert!(gen_count > 0, "expected generators on board with 100% generator_percentage");
+    }
+
+    #[test]
+    fn test_generator_output_points_to_valid_cell() {
+        let palette = vec![Color::Red, Color::Blue];
+        let board = GameBoard::make_random(8, 8, &palette, 0, 1, 50, 2);
+        let h = board.height as i32;
+        let w = board.width as i32;
+        for r in 0..board.height as usize {
+            for c in 0..board.width as usize {
+                if let BoardEntity::Generator(ref data) = board.board[r][c] {
+                    let (dr, dc) = data.output_dir.offset();
+                    let nr = r as i32 + dr;
+                    let nc = c as i32 + dc;
+                    assert!(nr >= 0 && nr < h && nc >= 0 && nc < w,
+                        "generator at ({r},{c}) output direction points out of bounds");
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn test_no_generators_when_percentage_zero() {
+        let palette = vec![Color::Red];
+        let board = GameBoard::make_random(5, 5, &palette, 0, 1, 0, 3);
+        let gen_count = board.board.iter().flatten().filter(|e| {
+            matches!(e, BoardEntity::Generator(_))
+        }).count();
+        assert_eq!(gen_count, 0);
     }
 }
