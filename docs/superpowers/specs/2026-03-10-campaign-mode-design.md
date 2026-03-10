@@ -62,7 +62,7 @@ Persistence: `~/.config/knitui/campaign.json` via serde_json. Stores a Vec of up
 
 ## Game-over behavior in Campaign
 
-- **Won**: R key advances to next level (not restart). Rewards banked.
+- **Won**: N/R key advances to next level (not restart). Rewards banked.
 - **Stuck**: R key retries same level. A key triggers ad rescue (if ad_limit allows).
 - **M/Esc**: Return to menu. Progress saved at current level.
 
