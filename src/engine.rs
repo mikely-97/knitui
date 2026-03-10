@@ -2,13 +2,13 @@ use crossterm::style::Color;
 use serde::{Serialize, Deserialize};
 use rand::Rng;
 
-use crate::board_entity::{BoardEntity, Direction, GeneratorData};
+use crate::board_entity::{BoardEntity, Direction, ConveyorData};
 use crate::game_board::GameBoard;
-use crate::yarn::{Yarn, Patch};
-use crate::active_threads::Thread;
+use crate::yarn::{Yarn, Stitch};
+use crate::spool::Spool;
 use crate::config::Config;
 use crate::palette::select_palette;
-use crate::solvability::is_solvable;
+use crate::solvability::{is_solvable, count_solutions};
 use crate::color_serde;
 
 // ── Error / result types ───────────────────────────────────────────────────
@@ -21,7 +21,7 @@ pub enum MoveError {
 #[derive(Debug, PartialEq)]
 pub enum PickError {
     NotSelectable,
-    NotAThread,
+    NotASpool,
     ActiveFull,
 }
 
@@ -36,7 +36,7 @@ pub enum GameStatus {
 pub enum BonusError {
     NoneLeft,
     BonusActive,
-    NoActiveThreads,
+    NoHeldSpools,
     BalloonColumnsNotEmpty,
 }
 
@@ -50,7 +50,7 @@ pub struct BonusInventory {
     pub scissors: u16,
     pub tweezers: u16,
     pub balloons: u16,
-    pub scissors_threads: u16,
+    pub scissors_spools: u16,
     pub balloon_count: u16,
 }
 
@@ -59,11 +59,11 @@ pub struct BonusInventory {
 pub struct GameEngine {
     pub board: GameBoard,
     pub yarn: Yarn,
-    pub active_threads: Vec<Thread>,
+    pub held_spools: Vec<Spool>,
     pub cursor_row: u16,
     pub cursor_col: u16,
-    pub knit_volume: u16,
-    pub active_threads_limit: usize,
+    pub spool_capacity: u16,
+    pub spool_limit: usize,
     pub bonuses: BonusInventory,
     pub bonus_state: BonusState,
     pub ad_limit: Option<u16>,
@@ -84,16 +84,23 @@ impl GameEngine {
                 config.board_width,
                 &selected_palette,
                 config.obstacle_percentage,
-                config.knit_volume,
-                config.generator_percentage,
-                config.generator_capacity,
+                config.spool_capacity,
+                config.conveyor_percentage,
+                config.conveyor_capacity,
             );
             yarn = Yarn::make_from_color_counter(
-                board.count_knits(),
+                board.count_spools(),
                 config.yarn_lines,
-                config.visible_patches,
+                config.visible_stitches,
             );
-            if is_solvable(&board, &yarn, config.knit_volume, config.active_threads_limit) {
+            if is_solvable(&board, &yarn, config.spool_capacity, config.spool_limit) {
+                if let Some(max) = config.max_solutions {
+                    if count_solutions(&board, &yarn, config.spool_capacity, config.spool_limit, max) > max {
+                        attempts += 1;
+                        if attempts >= 100 { break; }
+                        continue;
+                    }
+                }
                 break;
             }
             attempts += 1;
@@ -113,16 +120,16 @@ impl GameEngine {
         Self {
             board,
             yarn,
-            active_threads: Vec::new(),
+            held_spools: Vec::new(),
             cursor_row: init_row,
             cursor_col: init_col,
-            knit_volume: config.knit_volume,
-            active_threads_limit: config.active_threads_limit,
+            spool_capacity: config.spool_capacity,
+            spool_limit: config.spool_limit,
             bonuses: BonusInventory {
                 scissors: config.scissors,
                 tweezers: config.tweezers,
                 balloons: config.balloons,
-                scissors_threads: config.scissors_threads,
+                scissors_spools: config.scissors_spools,
                 balloon_count: config.balloon_count,
             },
             bonus_state: BonusState::None,
@@ -164,24 +171,24 @@ impl GameEngine {
         let col = self.cursor_col as usize;
         let tweezers = matches!(self.bonus_state, BonusState::TweezersActive { .. });
 
-        let thread = match &self.board.board[row][col] {
-            BoardEntity::Thread(c)    => Thread { color: *c, status: 1, has_key: false },
-            BoardEntity::KeyThread(c) => Thread { color: *c, status: 1, has_key: true },
-            _ => return Err(PickError::NotAThread),
+        let spool = match &self.board.board[row][col] {
+            BoardEntity::Spool(c)    => Spool { color: *c, fill: 1, has_key: false },
+            BoardEntity::KeySpool(c) => Spool { color: *c, fill: 1, has_key: true },
+            _ => return Err(PickError::NotASpool),
         };
 
         if !tweezers && !self.board.is_selectable(row, col) {
             return Err(PickError::NotSelectable);
         }
-        if self.active_threads.len() >= self.active_threads_limit {
+        if self.held_spools.len() >= self.spool_limit {
             return Err(PickError::ActiveFull);
         }
 
-        self.active_threads.push(thread);
+        self.held_spools.push(spool);
         self.board.board[row][col] = BoardEntity::Void;
 
-        if let Some((gr, gc)) = find_generator_for_output(&self.board.board, row, col) {
-            advance_generator(&mut self.board.board, gr, gc, row, col);
+        if let Some((gr, gc)) = find_conveyor_for_output(&self.board.board, row, col) {
+            advance_conveyor(&mut self.board.board, gr, gc, row, col);
         }
 
         // Exit tweezers mode after successful pick
@@ -195,30 +202,30 @@ impl GameEngine {
         Ok(())
     }
 
-    /// Process the first active thread one yarn step in place.
-    /// Removes the thread only if it has completed `knit_volume` steps.
-    /// Returns true if a thread was processed, false if active list was empty.
+    /// Process the first held spool one yarn step in place.
+    /// Removes the spool only if it has completed `spool_capacity` steps.
+    /// Returns true if a spool was processed, false if held list was empty.
     pub fn process_one_active(&mut self) -> bool {
-        if self.active_threads.is_empty() {
+        if self.held_spools.is_empty() {
             return false;
         }
-        self.yarn.process_one(&mut self.active_threads[0]);
-        if self.active_threads[0].status > self.knit_volume {
-            self.active_threads.remove(0);
+        self.yarn.process_one(&mut self.held_spools[0]);
+        if self.held_spools[0].fill > self.spool_capacity {
+            self.held_spools.remove(0);
         }
         self.yarn.cleanup_balloon_columns();
         true
     }
 
-    /// Process all active threads one yarn step each (for NI binary).
+    /// Process all held spools one yarn step each (for NI binary).
     pub fn process_all_active(&mut self) {
         let mut i = 0;
-        let count = self.active_threads.len();
+        let count = self.held_spools.len();
         for _ in 0..count {
-            if i >= self.active_threads.len() { break; }
-            self.yarn.process_one(&mut self.active_threads[i]);
-            if self.active_threads[i].status > self.knit_volume {
-                self.active_threads.remove(i);
+            if i >= self.held_spools.len() { break; }
+            self.yarn.process_one(&mut self.held_spools[i]);
+            if self.held_spools[i].fill > self.spool_capacity {
+                self.held_spools.remove(i);
             } else {
                 i += 1;
             }
@@ -227,13 +234,13 @@ impl GameEngine {
     }
 
     pub fn is_won(&self) -> bool {
-        self.active_threads.is_empty()
+        self.held_spools.is_empty()
             && self.yarn.board.iter().all(|col| col.is_empty())
             && self.board.board.iter().all(|row| {
                 row.iter().all(|cell| !matches!(
                     cell,
-                    BoardEntity::Thread(_) | BoardEntity::KeyThread(_)
-                        | BoardEntity::Generator(_)
+                    BoardEntity::Spool(_) | BoardEntity::KeySpool(_)
+                        | BoardEntity::Conveyor(_)
                 ))
             })
     }
@@ -242,31 +249,31 @@ impl GameEngine {
         if self.is_won() {
             return GameStatus::Won;
         }
-        if !self.active_threads.is_empty() {
-            if !self.can_any_thread_progress()
-                && (self.active_threads.len() >= self.active_threads_limit
-                    || !self.board.has_selectable_thread())
+        if !self.held_spools.is_empty() {
+            if !self.can_any_spool_progress()
+                && (self.held_spools.len() >= self.spool_limit
+                    || !self.board.has_selectable_spool())
             {
                 return GameStatus::Stuck;
             }
-        } else if !self.board.has_selectable_thread() {
+        } else if !self.board.has_selectable_spool() {
             return GameStatus::Stuck;
         }
         GameStatus::Playing
     }
 
-    /// Check if any active thread can match any yarn column's last patch.
-    fn can_any_thread_progress(&self) -> bool {
-        for thread in &self.active_threads {
+    /// Check if any held spool can match any yarn column's last stitch.
+    fn can_any_spool_progress(&self) -> bool {
+        for spool in &self.held_spools {
             for column in &self.yarn.board {
                 let Some(last) = column.last() else { continue };
                 if last.locked {
-                    if last.color == thread.color && thread.has_key {
+                    if last.color == spool.color && spool.has_key {
                         return true;
                     }
                     continue;
                 }
-                if last.color == thread.color {
+                if last.color == spool.color {
                     return true;
                 }
             }
@@ -281,46 +288,46 @@ impl GameEngine {
         self.bonus_state != BonusState::None || !self.yarn.balloon_columns.is_empty()
     }
 
-    /// Scissors: deep-scan auto-knit the least-progressed thread(s).
+    /// Scissors: deep-scan auto-wind the least-filled spool(s).
     pub fn use_scissors(&mut self) -> Result<(), BonusError> {
         if self.bonuses.scissors == 0 {
             return Err(BonusError::NoneLeft);
         }
-        if self.active_threads.is_empty() {
-            return Err(BonusError::NoActiveThreads);
+        if self.held_spools.is_empty() {
+            return Err(BonusError::NoHeldSpools);
         }
-        if self.is_bonus_active() {
+        if self.bonus_state != BonusState::None {
             return Err(BonusError::BonusActive);
         }
 
         self.bonuses.scissors -= 1;
 
-        // Process up to scissors_threads threads, picking lowest status each time
-        for _ in 0..self.bonuses.scissors_threads {
-            if self.active_threads.is_empty() { break; }
+        // Process up to scissors_spools spools, picking lowest fill each time
+        for _ in 0..self.bonuses.scissors_spools {
+            if self.held_spools.is_empty() { break; }
 
-            // Find the thread with the lowest status
-            let min_idx = self.active_threads.iter()
+            // Find the spool with the lowest fill
+            let min_idx = self.held_spools.iter()
                 .enumerate()
-                .min_by_key(|(_, t)| t.status)
+                .min_by_key(|(_, s)| s.fill)
                 .map(|(i, _)| i)
                 .unwrap();
 
-            // Deep-scan knit until complete or no more matches
+            // Deep-scan wind until complete or no more matches
             loop {
-                if self.active_threads[min_idx].status > self.knit_volume {
+                if self.held_spools[min_idx].fill > self.spool_capacity {
                     break;
                 }
-                let prev_status = self.active_threads[min_idx].status;
-                self.yarn.deep_scan_process(&mut self.active_threads[min_idx]);
-                if self.active_threads[min_idx].status == prev_status {
+                let prev_fill = self.held_spools[min_idx].fill;
+                self.yarn.deep_scan_process(&mut self.held_spools[min_idx]);
+                if self.held_spools[min_idx].fill == prev_fill {
                     break; // no match found anywhere
                 }
             }
 
             // Remove if completed
-            if self.active_threads[min_idx].status > self.knit_volume {
-                self.active_threads.remove(min_idx);
+            if self.held_spools[min_idx].fill > self.spool_capacity {
+                self.held_spools.remove(min_idx);
             }
         }
 
@@ -328,12 +335,12 @@ impl GameEngine {
     }
 
     /// Tweezers: enter free-cursor mode. Cursor can move to any cell
-    /// and pick up any thread regardless of selectability.
+    /// and pick up any spool regardless of selectability.
     pub fn use_tweezers(&mut self) -> Result<(), BonusError> {
         if self.bonuses.tweezers == 0 {
             return Err(BonusError::NoneLeft);
         }
-        if self.is_bonus_active() {
+        if self.bonus_state != BonusState::None {
             return Err(BonusError::BonusActive);
         }
 
@@ -354,8 +361,8 @@ impl GameEngine {
         }
     }
 
-    /// Balloons: lift the front N patches from each yarn column into
-    /// separate pseudo-columns, exposing the patches behind them.
+    /// Balloons: lift the front N stitches from each yarn column into
+    /// separate pseudo-columns, exposing the stitches behind them.
     pub fn use_balloons(&mut self) -> Result<(), BonusError> {
         if self.bonuses.balloons == 0 {
             return Err(BonusError::NoneLeft);
@@ -369,13 +376,13 @@ impl GameEngine {
 
         self.bonuses.balloons -= 1;
 
-        // Lift individual patches into fixed balloon slots.
+        // Lift individual stitches into fixed balloon slots.
         // Left side: pop from leftmost non-empty column(s)
         let left_count = (self.bonuses.balloon_count / 2) as usize;
         for _ in 0..left_count {
             if let Some(idx) = self.yarn.board.iter().position(|c| !c.is_empty()) {
-                if let Some(patch) = self.yarn.board[idx].pop() {
-                    self.yarn.balloon_columns.push(Some(patch));
+                if let Some(stitch) = self.yarn.board[idx].pop() {
+                    self.yarn.balloon_columns.push(Some(stitch));
                 }
             }
         }
@@ -384,8 +391,8 @@ impl GameEngine {
         let right_count = ((self.bonuses.balloon_count + 1) / 2) as usize;
         for _ in 0..right_count {
             if let Some(idx) = self.yarn.board.iter().rposition(|c| !c.is_empty()) {
-                if let Some(patch) = self.yarn.board[idx].pop() {
-                    self.yarn.balloon_columns.push(Some(patch));
+                if let Some(stitch) = self.yarn.board[idx].pop() {
+                    self.yarn.balloon_columns.push(Some(stitch));
                 }
             }
         }
@@ -434,16 +441,16 @@ impl GameEngine {
     }
 }
 
-// ── Generator helpers (moved from main.rs) ─────────────────────────────────
+// ── Conveyor helpers ────────────────────────────────────────────────────────
 
-fn find_generator_for_output(
+fn find_conveyor_for_output(
     board: &Vec<Vec<BoardEntity>>,
     out_row: usize,
     out_col: usize,
 ) -> Option<(usize, usize)> {
     for r in 0..board.len() {
         for c in 0..board[r].len() {
-            if let BoardEntity::Generator(ref data) = board[r][c] {
+            if let BoardEntity::Conveyor(ref data) = board[r][c] {
                 let (dr, dc) = data.output_dir.offset();
                 if r as i32 + dr == out_row as i32 && c as i32 + dc == out_col as i32 {
                     return Some((r, c));
@@ -454,16 +461,16 @@ fn find_generator_for_output(
     None
 }
 
-fn advance_generator(
+fn advance_conveyor(
     board: &mut Vec<Vec<BoardEntity>>,
-    gen_row: usize,
-    gen_col: usize,
+    conv_row: usize,
+    conv_col: usize,
     out_row: usize,
     out_col: usize,
 ) {
     enum Action { Spawn(Color), Deplete }
 
-    let action = if let BoardEntity::Generator(ref mut data) = board[gen_row][gen_col] {
+    let action = if let BoardEntity::Conveyor(ref mut data) = board[conv_row][conv_col] {
         if data.queue.is_empty() { Action::Deplete }
         else { Action::Spawn(data.queue.remove(0)) }
     } else {
@@ -471,8 +478,8 @@ fn advance_generator(
     };
 
     match action {
-        Action::Spawn(color) => board[out_row][out_col] = BoardEntity::Thread(color),
-        Action::Deplete      => board[gen_row][gen_col] = BoardEntity::DepletedGenerator,
+        Action::Spawn(color) => board[out_row][out_col] = BoardEntity::Spool(color),
+        Action::Deplete      => board[conv_row][conv_col] = BoardEntity::EmptyConveyor,
     }
 }
 
@@ -482,15 +489,15 @@ fn advance_generator(
 pub struct GameStateSnapshot {
     pub cursor_row: u16,
     pub cursor_col: u16,
-    pub knit_volume: u16,
-    pub active_threads_limit: usize,
+    pub spool_capacity: u16,
+    pub spool_limit: usize,
     pub board_height: u16,
     pub board_width: u16,
     pub board: Vec<Vec<String>>,
     pub yarn_lines: u16,
-    pub visible_patches: u16,
-    pub yarn: Vec<Vec<YarnPatchSnap>>,
-    pub active_threads: Vec<ThreadSnap>,
+    pub visible_stitches: u16,
+    pub yarn: Vec<Vec<YarnStitchSnap>>,
+    pub held_spools: Vec<SpoolSnap>,
     #[serde(default)]
     pub scissors: u16,
     #[serde(default)]
@@ -498,11 +505,11 @@ pub struct GameStateSnapshot {
     #[serde(default)]
     pub balloons: u16,
     #[serde(default)]
-    pub scissors_threads: u16,
+    pub scissors_spools: u16,
     #[serde(default)]
     pub balloon_count: u16,
     #[serde(default)]
-    pub balloon_columns: Vec<Option<YarnPatchSnap>>,
+    pub balloon_columns: Vec<Option<YarnStitchSnap>>,
     #[serde(default)]
     pub ad_limit: Option<u16>,
     #[serde(default)]
@@ -510,47 +517,47 @@ pub struct GameStateSnapshot {
 }
 
 #[derive(Serialize, Deserialize)]
-pub struct YarnPatchSnap { pub color: String, pub locked: bool }
+pub struct YarnStitchSnap { pub color: String, pub locked: bool }
 
 #[derive(Serialize, Deserialize)]
-pub struct ThreadSnap { pub color: String, pub status: u16, pub has_key: bool }
+pub struct SpoolSnap { pub color: String, pub fill: u16, pub has_key: bool }
 
 impl GameStateSnapshot {
     fn from_engine(e: &GameEngine) -> Self {
         Self {
             cursor_row: e.cursor_row,
             cursor_col: e.cursor_col,
-            knit_volume: e.knit_volume,
-            active_threads_limit: e.active_threads_limit,
+            spool_capacity: e.spool_capacity,
+            spool_limit: e.spool_limit,
             board_height: e.board.height,
             board_width: e.board.width,
             board: e.board.board.iter()
                 .map(|row| row.iter().map(cell_to_str).collect())
                 .collect(),
             yarn_lines: e.yarn.yarn_lines,
-            visible_patches: e.yarn.visible_patches,
+            visible_stitches: e.yarn.visible_stitches,
             yarn: e.yarn.board.iter()
-                .map(|col| col.iter().map(|p| YarnPatchSnap {
-                    color: color_serde::color_to_str(&p.color),
-                    locked: p.locked,
+                .map(|col| col.iter().map(|s| YarnStitchSnap {
+                    color: color_serde::color_to_str(&s.color),
+                    locked: s.locked,
                 }).collect())
                 .collect(),
-            active_threads: e.active_threads.iter()
-                .map(|t| ThreadSnap {
-                    color: color_serde::color_to_str(&t.color),
-                    status: t.status,
-                    has_key: t.has_key,
+            held_spools: e.held_spools.iter()
+                .map(|s| SpoolSnap {
+                    color: color_serde::color_to_str(&s.color),
+                    fill: s.fill,
+                    has_key: s.has_key,
                 })
                 .collect(),
             scissors: e.bonuses.scissors,
             tweezers: e.bonuses.tweezers,
             balloons: e.bonuses.balloons,
-            scissors_threads: e.bonuses.scissors_threads,
+            scissors_spools: e.bonuses.scissors_spools,
             balloon_count: e.bonuses.balloon_count,
             balloon_columns: e.yarn.balloon_columns.iter()
-                .map(|opt| opt.as_ref().map(|p| YarnPatchSnap {
-                    color: color_serde::color_to_str(&p.color),
-                    locked: p.locked,
+                .map(|opt| opt.as_ref().map(|s| YarnStitchSnap {
+                    color: color_serde::color_to_str(&s.color),
+                    locked: s.locked,
                 }))
                 .collect(),
             ad_limit: e.ad_limit,
@@ -564,29 +571,29 @@ impl GameStateSnapshot {
             .collect();
         let board_cells = board_cells?;
 
-        let yarn_cols: Result<Vec<Vec<Patch>>, String> = self.yarn.iter()
-            .map(|col| col.iter().map(|p| {
-                let color = color_serde::str_to_color(&p.color)
-                    .ok_or_else(|| format!("bad color: {}", p.color))?;
-                Ok(Patch { color, locked: p.locked })
+        let yarn_cols: Result<Vec<Vec<Stitch>>, String> = self.yarn.iter()
+            .map(|col| col.iter().map(|s| {
+                let color = color_serde::str_to_color(&s.color)
+                    .ok_or_else(|| format!("bad color: {}", s.color))?;
+                Ok(Stitch { color, locked: s.locked })
             }).collect())
             .collect();
         let yarn_cols = yarn_cols?;
 
-        let threads: Result<Vec<Thread>, String> = self.active_threads.iter()
-            .map(|t| {
-                let color = color_serde::str_to_color(&t.color)
-                    .ok_or_else(|| format!("bad color: {}", t.color))?;
-                Ok(Thread { color, status: t.status, has_key: t.has_key })
+        let spools: Result<Vec<Spool>, String> = self.held_spools.iter()
+            .map(|s| {
+                let color = color_serde::str_to_color(&s.color)
+                    .ok_or_else(|| format!("bad color: {}", s.color))?;
+                Ok(Spool { color, fill: s.fill, has_key: s.has_key })
             })
             .collect();
-        let threads = threads?;
+        let spools = spools?;
 
-        let balloon_cols: Result<Vec<Option<Patch>>, String> = self.balloon_columns.iter()
-            .map(|opt| opt.as_ref().map(|p| {
-                let color = color_serde::str_to_color(&p.color)
-                    .ok_or_else(|| format!("bad color: {}", p.color))?;
-                Ok(Patch { color, locked: p.locked })
+        let balloon_cols: Result<Vec<Option<Stitch>>, String> = self.balloon_columns.iter()
+            .map(|opt| opt.as_ref().map(|s| {
+                let color = color_serde::str_to_color(&s.color)
+                    .ok_or_else(|| format!("bad color: {}", s.color))?;
+                Ok(Stitch { color, locked: s.locked })
             }).transpose())
             .collect();
         let balloon_cols = balloon_cols?;
@@ -596,24 +603,24 @@ impl GameStateSnapshot {
                 board: board_cells,
                 height: self.board_height,
                 width: self.board_width,
-                knit_volume: self.knit_volume,
+                spool_capacity: self.spool_capacity,
             },
             yarn: Yarn {
                 board: yarn_cols,
                 yarn_lines: self.yarn_lines,
-                visible_patches: self.visible_patches,
+                visible_stitches: self.visible_stitches,
                 balloon_columns: balloon_cols,
             },
-            active_threads: threads,
+            held_spools: spools,
             cursor_row: self.cursor_row,
             cursor_col: self.cursor_col,
-            knit_volume: self.knit_volume,
-            active_threads_limit: self.active_threads_limit,
+            spool_capacity: self.spool_capacity,
+            spool_limit: self.spool_limit,
             bonuses: BonusInventory {
                 scissors: self.scissors,
                 tweezers: self.tweezers,
                 balloons: self.balloons,
-                scissors_threads: if self.scissors_threads == 0 { 1 } else { self.scissors_threads },
+                scissors_spools: if self.scissors_spools == 0 { 1 } else { self.scissors_spools },
                 balloon_count: if self.balloon_count == 0 { 2 } else { self.balloon_count },
             },
             bonus_state: BonusState::None,
@@ -625,11 +632,11 @@ impl GameStateSnapshot {
 
 fn cell_to_str(cell: &BoardEntity) -> String {
     match cell {
-        BoardEntity::Thread(c)    => format!("T:{}", color_serde::color_to_str(c)),
-        BoardEntity::KeyThread(c) => format!("K:{}", color_serde::color_to_str(c)),
-        BoardEntity::Obstacle     => "X".into(),
-        BoardEntity::Void         => "V".into(),
-        BoardEntity::Generator(d) => {
+        BoardEntity::Spool(c)    => format!("T:{}", color_serde::color_to_str(c)),
+        BoardEntity::KeySpool(c) => format!("K:{}", color_serde::color_to_str(c)),
+        BoardEntity::Obstacle    => "X".into(),
+        BoardEntity::Void        => "V".into(),
+        BoardEntity::Conveyor(d) => {
             let dir = match d.output_dir {
                 Direction::Up    => "up",
                 Direction::Down  => "down",
@@ -639,30 +646,30 @@ fn cell_to_str(cell: &BoardEntity) -> String {
             let queue: Vec<String> = d.queue.iter().map(|c| color_serde::color_to_str(c)).collect();
             format!("G:{}:{}:{}", color_serde::color_to_str(&d.color), dir, queue.join(","))
         }
-        BoardEntity::DepletedGenerator => "#".into(),
+        BoardEntity::EmptyConveyor => "#".into(),
     }
 }
 
 fn str_to_cell(s: &str) -> Result<BoardEntity, String> {
     if s == "X" { return Ok(BoardEntity::Obstacle); }
     if s == "V" { return Ok(BoardEntity::Void); }
-    if s == "#" { return Ok(BoardEntity::DepletedGenerator); }
+    if s == "#" { return Ok(BoardEntity::EmptyConveyor); }
 
     let parts: Vec<&str> = s.splitn(4, ':').collect();
     match parts.as_slice() {
         ["T", color] => {
             let c = color_serde::str_to_color(color)
                 .ok_or_else(|| format!("bad color: {color}"))?;
-            Ok(BoardEntity::Thread(c))
+            Ok(BoardEntity::Spool(c))
         }
         ["K", color] => {
             let c = color_serde::str_to_color(color)
                 .ok_or_else(|| format!("bad color: {color}"))?;
-            Ok(BoardEntity::KeyThread(c))
+            Ok(BoardEntity::KeySpool(c))
         }
         ["G", color, dir_str, queue_str] => {
             let color = color_serde::str_to_color(color)
-                .ok_or_else(|| format!("bad generator color: {color}"))?;
+                .ok_or_else(|| format!("bad conveyor color: {color}"))?;
             let output_dir = match *dir_str {
                 "up"    => Direction::Up,
                 "down"  => Direction::Down,
@@ -678,7 +685,7 @@ fn str_to_cell(s: &str) -> Result<BoardEntity, String> {
                         .ok_or_else(|| format!("bad queue color: {c}")))
                     .collect()
             };
-            Ok(BoardEntity::Generator(GeneratorData { color, output_dir, queue: queue? }))
+            Ok(BoardEntity::Conveyor(ConveyorData { color, output_dir, queue: queue? }))
         }
         _ => Err(format!("cannot parse cell: {s}")),
     }
@@ -691,34 +698,34 @@ mod tests {
     fn default_engine() -> GameEngine {
         let board = GameBoard {
             board: vec![
-                vec![BoardEntity::Thread(Color::Red),  BoardEntity::Thread(Color::Blue), BoardEntity::Thread(Color::Red)],
-                vec![BoardEntity::Thread(Color::Blue), BoardEntity::Obstacle,             BoardEntity::Thread(Color::Red)],
-                vec![BoardEntity::Thread(Color::Red),  BoardEntity::Thread(Color::Blue), BoardEntity::Thread(Color::Red)],
+                vec![BoardEntity::Spool(Color::Red),  BoardEntity::Spool(Color::Blue), BoardEntity::Spool(Color::Red)],
+                vec![BoardEntity::Spool(Color::Blue), BoardEntity::Obstacle,            BoardEntity::Spool(Color::Red)],
+                vec![BoardEntity::Spool(Color::Red),  BoardEntity::Spool(Color::Blue), BoardEntity::Spool(Color::Red)],
             ],
             height: 3,
             width: 3,
-            knit_volume: 1,
+            spool_capacity: 1,
         };
         let yarn = Yarn {
             board: vec![
-                vec![Patch { color: Color::Red, locked: false }, Patch { color: Color::Blue, locked: false }],
-                vec![Patch { color: Color::Red, locked: false }, Patch { color: Color::Red, locked: false }],
+                vec![Stitch { color: Color::Red, locked: false }, Stitch { color: Color::Blue, locked: false }],
+                vec![Stitch { color: Color::Red, locked: false }, Stitch { color: Color::Red, locked: false }],
             ],
             yarn_lines: 2,
-            visible_patches: 3,
+            visible_stitches: 3,
             balloon_columns: Vec::new(),
         };
         GameEngine {
             board,
             yarn,
-            active_threads: vec![],
+            held_spools: vec![],
             cursor_row: 0,
             cursor_col: 0,
-            knit_volume: 1,
-            active_threads_limit: 5,
+            spool_capacity: 1,
+            spool_limit: 5,
             bonuses: BonusInventory {
                 scissors: 0, tweezers: 0, balloons: 0,
-                scissors_threads: 1, balloon_count: 2,
+                scissors_spools: 1, balloon_count: 2,
             },
             bonus_state: BonusState::None,
             ad_limit: None,
@@ -746,13 +753,13 @@ mod tests {
     fn pick_up_top_row_succeeds() {
         let mut e = default_engine();
         assert!(e.pick_up().is_ok());
-        assert_eq!(e.active_threads.len(), 1);
+        assert_eq!(e.held_spools.len(), 1);
     }
     #[test]
     fn pick_up_obstacle_fails() {
         let mut e = default_engine();
         e.cursor_row = 1; e.cursor_col = 1;
-        assert_eq!(e.pick_up(), Err(PickError::NotAThread));
+        assert_eq!(e.pick_up(), Err(PickError::NotASpool));
     }
     #[test]
     fn pick_up_non_exposed_fails() {
@@ -763,19 +770,19 @@ mod tests {
     #[test]
     fn pick_up_active_full_fails() {
         let mut e = default_engine();
-        e.active_threads_limit = 0;
+        e.spool_limit = 0;
         assert_eq!(e.pick_up(), Err(PickError::ActiveFull));
     }
     #[test]
     fn process_one_active_removes_when_done() {
         let mut e = default_engine();
-        e.active_threads.push(Thread { color: Color::Red, status: 1, has_key: false });
+        e.held_spools.push(Spool { color: Color::Red, fill: 1, has_key: false });
         e.process_one_active();
-        // knit_volume=1: after one successful process, status becomes 2 > 1, discarded
-        assert_eq!(e.active_threads.len(), 0);
+        // spool_capacity=1: after one successful process, fill becomes 2 > 1, discarded
+        assert_eq!(e.held_spools.len(), 0);
     }
     #[test]
-    fn is_won_false_while_board_has_threads() {
+    fn is_won_false_while_board_has_spools() {
         assert!(!default_engine().is_won());
     }
     #[test]
@@ -784,19 +791,19 @@ mod tests {
         let json = e.to_json();
         let e2 = GameEngine::from_json(&json).expect("roundtrip");
         assert_eq!(e2.cursor_row, e.cursor_row);
-        assert_eq!(e2.knit_volume, e.knit_volume);
+        assert_eq!(e2.spool_capacity, e.spool_capacity);
         assert_eq!(e2.board.height, e.board.height);
         assert_eq!(e2.yarn.yarn_lines, e.yarn.yarn_lines);
     }
     #[test]
     fn cell_roundtrip_all_variants() {
         let cells = vec![
-            BoardEntity::Thread(Color::Red),
-            BoardEntity::KeyThread(Color::Blue),
+            BoardEntity::Spool(Color::Red),
+            BoardEntity::KeySpool(Color::Blue),
             BoardEntity::Obstacle,
             BoardEntity::Void,
-            BoardEntity::DepletedGenerator,
-            BoardEntity::Generator(GeneratorData {
+            BoardEntity::EmptyConveyor,
+            BoardEntity::Conveyor(ConveyorData {
                 color: Color::Green,
                 output_dir: Direction::Down,
                 queue: vec![Color::Red, Color::Blue],
@@ -808,67 +815,55 @@ mod tests {
         }
     }
 
-    // ── Task 2: missing engine unit tests ──────────────────────────────────
-
     #[test]
     fn move_cursor_down_succeeds() {
         let mut e = default_engine();
-        // Place a Void at (0,0) — surface void in row 0.
-        // Thread at (1,0) now has a surface-connected void neighbor → selectable → focusable.
         e.board.board[0][0] = BoardEntity::Void;
-        // Cursor starts at (0,0) which is Void (focusable).
         assert!(e.move_cursor(Direction::Down).is_ok());
         assert_eq!(e.cursor_row, 1);
     }
     #[test]
     fn move_cursor_down_at_edge_fails() {
         let mut e = default_engine();
-        e.cursor_row = 2; // bottom edge of 3-row board
+        e.cursor_row = 2;
         assert_eq!(e.move_cursor(Direction::Down), Err(MoveError::OutOfBounds));
     }
     #[test]
     fn move_cursor_right_at_edge_fails() {
         let mut e = default_engine();
-        e.cursor_col = 2; // right edge of 3-col board
+        e.cursor_col = 2;
         assert_eq!(e.move_cursor(Direction::Right), Err(MoveError::OutOfBounds));
     }
     #[test]
-    fn move_cursor_skips_non_focusable_knits() {
-        // Build a 3×3 board where:
-        //   row 0: [Thread, Void,     Void    ]  ← cursor starts at (0,0)
-        //   row 1: [Thread, Obstacle, Void    ]  ← (1,0) has no void neighbor → NOT focusable
-        //   row 2: [Thread, Void,     Void    ]  ← (2,0) has void neighbor (2,1) connected
-        //                                            via (2,2)→(1,2)→(0,2) → surface-connected
+    fn move_cursor_skips_non_focusable_spools() {
         let board = GameBoard {
             board: vec![
-                vec![BoardEntity::Thread(Color::Red),  BoardEntity::Void,     BoardEntity::Void],
-                vec![BoardEntity::Thread(Color::Blue), BoardEntity::Obstacle, BoardEntity::Void],
-                vec![BoardEntity::Thread(Color::Red),  BoardEntity::Void,     BoardEntity::Void],
+                vec![BoardEntity::Spool(Color::Red),  BoardEntity::Void,     BoardEntity::Void],
+                vec![BoardEntity::Spool(Color::Blue), BoardEntity::Obstacle, BoardEntity::Void],
+                vec![BoardEntity::Spool(Color::Red),  BoardEntity::Void,     BoardEntity::Void],
             ],
             height: 3,
             width: 3,
-            knit_volume: 1,
+            spool_capacity: 1,
         };
         let mut e = GameEngine {
             board,
             yarn: Yarn {
-                board: vec![vec![Patch { color: Color::Red, locked: false }]],
-                yarn_lines: 1, visible_patches: 3,
+                board: vec![vec![Stitch { color: Color::Red, locked: false }]],
+                yarn_lines: 1, visible_stitches: 3,
                 balloon_columns: Vec::new(),
             },
-            active_threads: vec![],
+            held_spools: vec![],
             cursor_row: 0, cursor_col: 0,
-            knit_volume: 1, active_threads_limit: 5,
+            spool_capacity: 1, spool_limit: 5,
             bonuses: BonusInventory {
                 scissors: 0, tweezers: 0, balloons: 0,
-                scissors_threads: 1, balloon_count: 2,
+                scissors_spools: 1, balloon_count: 2,
             },
             bonus_state: BonusState::None,
             ad_limit: None,
             ads_used: 0,
         };
-        // (1,0) Thread(Blue): neighbors (0,0)=Thread, (1,1)=Obstacle, (2,0)=Thread → no void → NOT focusable
-        // (2,0) Thread(Red): neighbor (2,1)=Void, connected to surface → focusable
         assert!(e.move_cursor(Direction::Down).is_ok());
         assert_eq!(e.cursor_row, 2); // skipped row 1
         assert_eq!(e.cursor_col, 0);
@@ -876,7 +871,6 @@ mod tests {
     #[test]
     fn move_cursor_down_into_all_buried_fails() {
         let mut e = default_engine();
-        // Default board: rows 1 and 2 are all buried threads → not focusable
         assert_eq!(e.move_cursor(Direction::Down), Err(MoveError::OutOfBounds));
     }
 
@@ -887,42 +881,38 @@ mod tests {
         assert!(matches!(e.board.board[0][0], BoardEntity::Void));
     }
     #[test]
-    fn pick_up_key_thread_sets_has_key() {
+    fn pick_up_key_spool_sets_has_key() {
         let mut e = default_engine();
-        e.board.board[0][0] = BoardEntity::KeyThread(Color::Red);
+        e.board.board[0][0] = BoardEntity::KeySpool(Color::Red);
         e.pick_up().unwrap();
-        assert!(e.active_threads[0].has_key);
-        assert_eq!(e.active_threads[0].color, Color::Red);
+        assert!(e.held_spools[0].has_key);
+        assert_eq!(e.held_spools[0].color, Color::Red);
     }
 
     #[test]
-    fn process_all_active_processes_each_thread() {
-        // knit_volume=2 so threads need 2 hits to complete (status starts at 1, done when > 2)
+    fn process_all_active_processes_each_spool() {
         let mut e = default_engine();
-        e.knit_volume = 2;
-        // Yarn: col0=[Red, Blue], col1=[Red, Red] — plenty of Red and Blue patches
-        e.active_threads = vec![
-            Thread { color: Color::Red,  status: 1, has_key: false },
-            Thread { color: Color::Blue, status: 1, has_key: false },
-            Thread { color: Color::Red,  status: 1, has_key: false },
+        e.spool_capacity = 2;
+        e.held_spools = vec![
+            Spool { color: Color::Red,  fill: 1, has_key: false },
+            Spool { color: Color::Blue, fill: 1, has_key: false },
+            Spool { color: Color::Red,  fill: 1, has_key: false },
         ];
         e.process_all_active();
-        // Each thread gets one step: Red→2, Blue→2, Red→2 (all still <= knit_volume=2)
-        assert_eq!(e.active_threads.len(), 3);
-        for t in &e.active_threads {
-            assert_eq!(t.status, 2);
+        assert_eq!(e.held_spools.len(), 3);
+        for s in &e.held_spools {
+            assert_eq!(s.fill, 2);
         }
     }
     #[test]
     fn process_all_active_removes_completed() {
-        let mut e = default_engine(); // knit_volume=1
-        e.active_threads = vec![
-            Thread { color: Color::Red, status: 1, has_key: false },
-            Thread { color: Color::Red, status: 1, has_key: false },
+        let mut e = default_engine(); // spool_capacity=1
+        e.held_spools = vec![
+            Spool { color: Color::Red, fill: 1, has_key: false },
+            Spool { color: Color::Red, fill: 1, has_key: false },
         ];
-        // knit_volume=1: after one process, status=2 > 1, thread is discarded
         e.process_all_active();
-        assert_eq!(e.active_threads.len(), 0);
+        assert_eq!(e.held_spools.len(), 0);
     }
     #[test]
     fn process_one_active_returns_false_when_empty() {
@@ -936,17 +926,17 @@ mod tests {
             board: GameBoard {
                 board: vec![
                     vec![BoardEntity::Void, BoardEntity::Obstacle],
-                    vec![BoardEntity::DepletedGenerator, BoardEntity::Void],
+                    vec![BoardEntity::EmptyConveyor, BoardEntity::Void],
                 ],
-                height: 2, width: 2, knit_volume: 1,
+                height: 2, width: 2, spool_capacity: 1,
             },
-            yarn: Yarn { board: vec![vec![], vec![]], yarn_lines: 2, visible_patches: 3, balloon_columns: Vec::new() },
-            active_threads: vec![],
+            yarn: Yarn { board: vec![vec![], vec![]], yarn_lines: 2, visible_stitches: 3, balloon_columns: Vec::new() },
+            held_spools: vec![],
             cursor_row: 0, cursor_col: 0,
-            knit_volume: 1, active_threads_limit: 5,
+            spool_capacity: 1, spool_limit: 5,
             bonuses: BonusInventory {
                 scissors: 0, tweezers: 0, balloons: 0,
-                scissors_threads: 1, balloon_count: 2,
+                scissors_spools: 1, balloon_count: 2,
             },
             bonus_state: BonusState::None,
             ad_limit: None,
@@ -955,13 +945,12 @@ mod tests {
         assert!(e.is_won());
     }
     #[test]
-    fn is_won_false_with_active_threads() {
+    fn is_won_false_with_held_spools() {
         let mut e = default_engine();
-        // Clear board and yarn but leave an active thread
         e.board.board = vec![vec![BoardEntity::Void]];
         e.board.height = 1; e.board.width = 1;
         e.yarn.board = vec![vec![]];
-        e.active_threads = vec![Thread { color: Color::Red, status: 1, has_key: false }];
+        e.held_spools = vec![Spool { color: Color::Red, fill: 1, has_key: false }];
         assert!(!e.is_won());
     }
     #[test]
@@ -969,8 +958,7 @@ mod tests {
         let mut e = default_engine();
         e.board.board = vec![vec![BoardEntity::Void]];
         e.board.height = 1; e.board.width = 1;
-        e.active_threads = vec![];
-        // yarn still has patches
+        e.held_spools = vec![];
         assert!(!e.is_won());
     }
 
@@ -993,31 +981,29 @@ mod tests {
     fn new_from_config_produces_solvable_game() {
         let config = Config {
             board_height: 4, board_width: 4, color_number: 3,
-            color_mode: "dark".into(), active_threads_limit: 7,
-            knit_volume: 2, yarn_lines: 3, obstacle_percentage: 5,
-            visible_patches: 4, generator_capacity: 3, generator_percentage: 5,
+            color_mode: "dark".into(), spool_limit: 7,
+            spool_capacity: 2, yarn_lines: 3, obstacle_percentage: 5,
+            visible_stitches: 4, conveyor_capacity: 3, conveyor_percentage: 5,
             layout: "auto".into(),
             scale: 1,
             scissors: 0, tweezers: 0, balloons: 0,
-            scissors_threads: 1, balloon_count: 2,
+            scissors_spools: 1, balloon_count: 2,
             ad_file: None,
+            max_solutions: None,
         };
         let e = GameEngine::new(&config);
         assert_eq!(e.board.height, 4);
         assert_eq!(e.board.width, 4);
-        assert_eq!(e.knit_volume, 2);
-        assert!(e.active_threads.is_empty());
-        // yarn should have patches
-        let total_patches: usize = e.yarn.board.iter().map(|c| c.len()).sum();
-        assert!(total_patches > 0);
+        assert_eq!(e.spool_capacity, 2);
+        assert!(e.held_spools.is_empty());
+        let total_stitches: usize = e.yarn.board.iter().map(|c| c.len()).sum();
+        assert!(total_stitches > 0);
     }
 
-    // ── Task 3: snapshot edge case tests ───────────────────────────────────
-
     #[test]
-    fn snapshot_roundtrip_with_generator() {
+    fn snapshot_roundtrip_with_conveyor() {
         let mut e = default_engine();
-        e.board.board[1][0] = BoardEntity::Generator(GeneratorData {
+        e.board.board[1][0] = BoardEntity::Conveyor(ConveyorData {
             color: Color::Cyan,
             output_dir: Direction::Right,
             queue: vec![Color::Red, Color::Blue, Color::Green],
@@ -1025,18 +1011,18 @@ mod tests {
         let json = e.to_json();
         let e2 = GameEngine::from_json(&json).expect("roundtrip");
         match &e2.board.board[1][0] {
-            BoardEntity::Generator(d) => {
+            BoardEntity::Conveyor(d) => {
                 assert_eq!(d.color, Color::Cyan);
                 assert_eq!(d.output_dir, Direction::Right);
                 assert_eq!(d.queue, vec![Color::Red, Color::Blue, Color::Green]);
             }
-            other => panic!("expected Generator, got {:?}", cell_to_str(other)),
+            other => panic!("expected Conveyor, got {:?}", cell_to_str(other)),
         }
     }
     #[test]
-    fn snapshot_roundtrip_with_locked_patches() {
+    fn snapshot_roundtrip_with_locked_stitches() {
         let mut e = default_engine();
-        e.yarn.board[0].push(Patch { color: Color::Magenta, locked: true });
+        e.yarn.board[0].push(Stitch { color: Color::Magenta, locked: true });
         let json = e.to_json();
         let e2 = GameEngine::from_json(&json).expect("roundtrip");
         let last = e2.yarn.board[0].last().unwrap();
@@ -1044,35 +1030,35 @@ mod tests {
         assert_eq!(last.color, Color::Magenta);
     }
     #[test]
-    fn snapshot_roundtrip_with_key_threads() {
+    fn snapshot_roundtrip_with_key_spools() {
         let mut e = default_engine();
-        e.board.board[0][1] = BoardEntity::KeyThread(Color::Yellow);
-        e.active_threads.push(Thread { color: Color::Yellow, status: 2, has_key: true });
+        e.board.board[0][1] = BoardEntity::KeySpool(Color::Yellow);
+        e.held_spools.push(Spool { color: Color::Yellow, fill: 2, has_key: true });
         let json = e.to_json();
         let e2 = GameEngine::from_json(&json).expect("roundtrip");
         match &e2.board.board[0][1] {
-            BoardEntity::KeyThread(c) => assert_eq!(*c, Color::Yellow),
-            other => panic!("expected KeyThread, got {:?}", cell_to_str(other)),
+            BoardEntity::KeySpool(c) => assert_eq!(*c, Color::Yellow),
+            other => panic!("expected KeySpool, got {:?}", cell_to_str(other)),
         }
-        assert!(e2.active_threads[0].has_key);
-        assert_eq!(e2.active_threads[0].status, 2);
+        assert!(e2.held_spools[0].has_key);
+        assert_eq!(e2.held_spools[0].fill, 2);
     }
     #[test]
-    fn snapshot_roundtrip_with_active_threads() {
+    fn snapshot_roundtrip_with_held_spools() {
         let mut e = default_engine();
-        e.active_threads = vec![
-            Thread { color: Color::Red,  status: 1, has_key: false },
-            Thread { color: Color::Blue, status: 3, has_key: true },
+        e.held_spools = vec![
+            Spool { color: Color::Red,  fill: 1, has_key: false },
+            Spool { color: Color::Blue, fill: 3, has_key: true },
         ];
         let json = e.to_json();
         let e2 = GameEngine::from_json(&json).expect("roundtrip");
-        assert_eq!(e2.active_threads.len(), 2);
-        assert_eq!(e2.active_threads[0].color, Color::Red);
-        assert_eq!(e2.active_threads[0].status, 1);
-        assert!(!e2.active_threads[0].has_key);
-        assert_eq!(e2.active_threads[1].color, Color::Blue);
-        assert_eq!(e2.active_threads[1].status, 3);
-        assert!(e2.active_threads[1].has_key);
+        assert_eq!(e2.held_spools.len(), 2);
+        assert_eq!(e2.held_spools[0].color, Color::Red);
+        assert_eq!(e2.held_spools[0].fill, 1);
+        assert!(!e2.held_spools[0].has_key);
+        assert_eq!(e2.held_spools[1].color, Color::Blue);
+        assert_eq!(e2.held_spools[1].fill, 3);
+        assert!(e2.held_spools[1].has_key);
     }
 
     #[test]
@@ -1081,22 +1067,18 @@ mod tests {
     }
     #[test]
     fn from_json_rejects_bad_color() {
-        let mut e = default_engine();
+        let e = default_engine();
         let mut json = e.to_json();
-        // Corrupt a color name in the JSON
         json = json.replace("\"red\"", "\"neonpink\"");
         assert!(GameEngine::from_json(&json).is_err());
     }
     #[test]
     fn from_json_rejects_bad_cell() {
-        let mut e = default_engine();
+        let e = default_engine();
         let mut json = e.to_json();
-        // Corrupt a cell encoding
         json = json.replace("\"T:red\"", "\"Z:invalid\"");
         assert!(GameEngine::from_json(&json).is_err());
     }
-
-    // ── Task 4: GameStatus tests ─────────────────────────────────────────
 
     #[test]
     fn status_playing_at_start() {
@@ -1109,15 +1091,15 @@ mod tests {
         let e = GameEngine {
             board: GameBoard {
                 board: vec![vec![BoardEntity::Void, BoardEntity::Obstacle]],
-                height: 1, width: 2, knit_volume: 1,
+                height: 1, width: 2, spool_capacity: 1,
             },
-            yarn: Yarn { board: vec![vec![], vec![]], yarn_lines: 2, visible_patches: 3, balloon_columns: Vec::new() },
-            active_threads: vec![],
+            yarn: Yarn { board: vec![vec![], vec![]], yarn_lines: 2, visible_stitches: 3, balloon_columns: Vec::new() },
+            held_spools: vec![],
             cursor_row: 0, cursor_col: 0,
-            knit_volume: 1, active_threads_limit: 5,
+            spool_capacity: 1, spool_limit: 5,
             bonuses: BonusInventory {
                 scissors: 0, tweezers: 0, balloons: 0,
-                scissors_threads: 1, balloon_count: 2,
+                scissors_spools: 1, balloon_count: 2,
             },
             bonus_state: BonusState::None,
             ad_limit: None,
@@ -1127,24 +1109,23 @@ mod tests {
     }
 
     #[test]
-    fn status_stuck_front_thread_blocked() {
-        // active_threads[0] is Green, but yarn only has Red patches → deadlock
+    fn status_stuck_front_spool_blocked() {
         let e = GameEngine {
             board: GameBoard {
                 board: vec![vec![BoardEntity::Void]],
-                height: 1, width: 1, knit_volume: 1,
+                height: 1, width: 1, spool_capacity: 1,
             },
             yarn: Yarn {
-                board: vec![vec![Patch { color: Color::Red, locked: false }]],
-                yarn_lines: 1, visible_patches: 3,
+                board: vec![vec![Stitch { color: Color::Red, locked: false }]],
+                yarn_lines: 1, visible_stitches: 3,
                 balloon_columns: Vec::new(),
             },
-            active_threads: vec![Thread { color: Color::Green, status: 1, has_key: false }],
+            held_spools: vec![Spool { color: Color::Green, fill: 1, has_key: false }],
             cursor_row: 0, cursor_col: 0,
-            knit_volume: 3, active_threads_limit: 5,
+            spool_capacity: 3, spool_limit: 5,
             bonuses: BonusInventory {
                 scissors: 0, tweezers: 0, balloons: 0,
-                scissors_threads: 1, balloon_count: 2,
+                scissors_spools: 1, balloon_count: 2,
             },
             bonus_state: BonusState::None,
             ad_limit: None,
@@ -1154,27 +1135,26 @@ mod tests {
     }
 
     #[test]
-    fn status_stuck_no_selectable_threads_on_board() {
-        // No active threads, board has threads but all buried, yarn has patches
+    fn status_stuck_no_selectable_spools_on_board() {
         let e = GameEngine {
             board: GameBoard {
                 board: vec![
                     vec![BoardEntity::Obstacle, BoardEntity::Obstacle],
-                    vec![BoardEntity::Thread(Color::Red), BoardEntity::Thread(Color::Blue)],
+                    vec![BoardEntity::Spool(Color::Red), BoardEntity::Spool(Color::Blue)],
                 ],
-                height: 2, width: 2, knit_volume: 1,
+                height: 2, width: 2, spool_capacity: 1,
             },
             yarn: Yarn {
-                board: vec![vec![Patch { color: Color::Red, locked: false }]],
-                yarn_lines: 1, visible_patches: 3,
+                board: vec![vec![Stitch { color: Color::Red, locked: false }]],
+                yarn_lines: 1, visible_stitches: 3,
                 balloon_columns: Vec::new(),
             },
-            active_threads: vec![],
+            held_spools: vec![],
             cursor_row: 0, cursor_col: 0,
-            knit_volume: 1, active_threads_limit: 5,
+            spool_capacity: 1, spool_limit: 5,
             bonuses: BonusInventory {
                 scissors: 0, tweezers: 0, balloons: 0,
-                scissors_threads: 1, balloon_count: 2,
+                scissors_spools: 1, balloon_count: 2,
             },
             bonus_state: BonusState::None,
             ad_limit: None,
@@ -1184,24 +1164,23 @@ mod tests {
     }
 
     #[test]
-    fn status_playing_when_front_thread_can_match() {
-        // active_threads[0] is Red, yarn has Red → can process → still playing
+    fn status_playing_when_front_spool_can_match() {
         let e = GameEngine {
             board: GameBoard {
                 board: vec![vec![BoardEntity::Void]],
-                height: 1, width: 1, knit_volume: 1,
+                height: 1, width: 1, spool_capacity: 1,
             },
             yarn: Yarn {
-                board: vec![vec![Patch { color: Color::Red, locked: false }]],
-                yarn_lines: 1, visible_patches: 3,
+                board: vec![vec![Stitch { color: Color::Red, locked: false }]],
+                yarn_lines: 1, visible_stitches: 3,
                 balloon_columns: Vec::new(),
             },
-            active_threads: vec![Thread { color: Color::Red, status: 1, has_key: false }],
+            held_spools: vec![Spool { color: Color::Red, fill: 1, has_key: false }],
             cursor_row: 0, cursor_col: 0,
-            knit_volume: 3, active_threads_limit: 5,
+            spool_capacity: 3, spool_limit: 5,
             bonuses: BonusInventory {
                 scissors: 0, tweezers: 0, balloons: 0,
-                scissors_threads: 1, balloon_count: 2,
+                scissors_spools: 1, balloon_count: 2,
             },
             bonus_state: BonusState::None,
             ad_limit: None,
@@ -1211,232 +1190,49 @@ mod tests {
     }
 
     #[test]
-    fn status_stuck_locked_patch_no_key() {
-        // active_threads[0] is Red, yarn has locked Red but thread has no key → stuck
-        let e = GameEngine {
-            board: GameBoard {
-                board: vec![vec![BoardEntity::Void]],
-                height: 1, width: 1, knit_volume: 1,
-            },
-            yarn: Yarn {
-                board: vec![vec![Patch { color: Color::Red, locked: true }]],
-                yarn_lines: 1, visible_patches: 3,
-                balloon_columns: Vec::new(),
-            },
-            active_threads: vec![Thread { color: Color::Red, status: 1, has_key: false }],
-            cursor_row: 0, cursor_col: 0,
-            knit_volume: 3, active_threads_limit: 5,
-            bonuses: BonusInventory {
-                scissors: 0, tweezers: 0, balloons: 0,
-                scissors_threads: 1, balloon_count: 2,
-            },
-            bonus_state: BonusState::None,
-            ad_limit: None,
-            ads_used: 0,
-        };
-        assert_eq!(e.status(), GameStatus::Stuck);
-    }
-
-    #[test]
-    fn status_playing_locked_patch_with_key() {
-        // active_threads[0] is Red with key, yarn has locked Red → can unlock → playing
-        let e = GameEngine {
-            board: GameBoard {
-                board: vec![vec![BoardEntity::Void]],
-                height: 1, width: 1, knit_volume: 1,
-            },
-            yarn: Yarn {
-                board: vec![vec![Patch { color: Color::Red, locked: true }]],
-                yarn_lines: 1, visible_patches: 3,
-                balloon_columns: Vec::new(),
-            },
-            active_threads: vec![Thread { color: Color::Red, status: 1, has_key: true }],
-            cursor_row: 0, cursor_col: 0,
-            knit_volume: 3, active_threads_limit: 5,
-            bonuses: BonusInventory {
-                scissors: 0, tweezers: 0, balloons: 0,
-                scissors_threads: 1, balloon_count: 2,
-            },
-            bonus_state: BonusState::None,
-            ad_limit: None,
-            ads_used: 0,
-        };
-        assert_eq!(e.status(), GameStatus::Playing);
-    }
-
-    #[test]
-    fn status_playing_when_other_thread_can_match() {
-        // active_threads[0] is Green (blocked), but [1] is Red which CAN match → not stuck
-        let e = GameEngine {
-            board: GameBoard {
-                board: vec![vec![BoardEntity::Void]],
-                height: 1, width: 1, knit_volume: 1,
-            },
-            yarn: Yarn {
-                board: vec![vec![Patch { color: Color::Red, locked: false }]],
-                yarn_lines: 1, visible_patches: 3,
-                balloon_columns: Vec::new(),
-            },
-            active_threads: vec![
-                Thread { color: Color::Green, status: 1, has_key: false },
-                Thread { color: Color::Red, status: 1, has_key: false },
-            ],
-            cursor_row: 0, cursor_col: 0,
-            knit_volume: 3, active_threads_limit: 5,
-            bonuses: BonusInventory {
-                scissors: 0, tweezers: 0, balloons: 0,
-                scissors_threads: 1, balloon_count: 2,
-            },
-            bonus_state: BonusState::None,
-            ad_limit: None,
-            ads_used: 0,
-        };
-        assert_eq!(e.status(), GameStatus::Playing);
-    }
-
-    #[test]
-    fn status_stuck_when_no_thread_can_match() {
-        // Two active threads, neither color matches any yarn top → stuck
-        let e = GameEngine {
-            board: GameBoard {
-                board: vec![vec![BoardEntity::Void]],
-                height: 1, width: 1, knit_volume: 1,
-            },
-            yarn: Yarn {
-                board: vec![vec![Patch { color: Color::Red, locked: false }]],
-                yarn_lines: 1, visible_patches: 3,
-                balloon_columns: Vec::new(),
-            },
-            active_threads: vec![
-                Thread { color: Color::Green, status: 1, has_key: false },
-                Thread { color: Color::Blue, status: 1, has_key: false },
-            ],
-            cursor_row: 0, cursor_col: 0,
-            knit_volume: 3, active_threads_limit: 5,
-            bonuses: BonusInventory {
-                scissors: 0, tweezers: 0, balloons: 0,
-                scissors_threads: 1, balloon_count: 2,
-            },
-            bonus_state: BonusState::None,
-            ad_limit: None,
-            ads_used: 0,
-        };
-        assert_eq!(e.status(), GameStatus::Stuck);
-    }
-
-    #[test]
-    fn status_playing_when_blocked_but_can_pick_up_more() {
-        // Active thread can't match yarn, but board has selectable threads
-        // and active_threads_limit not reached → player can pick up helpers
-        let e = GameEngine {
-            board: GameBoard {
-                board: vec![
-                    vec![BoardEntity::Thread(Color::Red), BoardEntity::Void],
-                ],
-                height: 1, width: 2, knit_volume: 1,
-            },
-            yarn: Yarn {
-                board: vec![vec![Patch { color: Color::Red, locked: false }]],
-                yarn_lines: 1, visible_patches: 3,
-                balloon_columns: Vec::new(),
-            },
-            active_threads: vec![Thread { color: Color::Green, status: 1, has_key: false }],
-            cursor_row: 0, cursor_col: 0,
-            knit_volume: 3, active_threads_limit: 5,
-            bonuses: BonusInventory {
-                scissors: 0, tweezers: 0, balloons: 0,
-                scissors_threads: 1, balloon_count: 2,
-            },
-            bonus_state: BonusState::None,
-            ad_limit: None,
-            ads_used: 0,
-        };
-        assert_eq!(e.status(), GameStatus::Playing);
-    }
-
-    #[test]
-    fn status_stuck_when_blocked_and_active_full() {
-        // Active thread can't match, AND active_threads is full → truly stuck
-        let e = GameEngine {
-            board: GameBoard {
-                board: vec![
-                    vec![BoardEntity::Thread(Color::Red), BoardEntity::Void],
-                ],
-                height: 1, width: 2, knit_volume: 1,
-            },
-            yarn: Yarn {
-                board: vec![vec![Patch { color: Color::Red, locked: false }]],
-                yarn_lines: 1, visible_patches: 3,
-                balloon_columns: Vec::new(),
-            },
-            active_threads: vec![Thread { color: Color::Green, status: 1, has_key: false }],
-            cursor_row: 0, cursor_col: 0,
-            knit_volume: 3, active_threads_limit: 1,
-            bonuses: BonusInventory {
-                scissors: 0, tweezers: 0, balloons: 0,
-                scissors_threads: 1, balloon_count: 2,
-            },
-            bonus_state: BonusState::None,
-            ad_limit: None,
-            ads_used: 0,
-        };
-        assert_eq!(e.status(), GameStatus::Stuck);
-    }
-
-    // ── Task 4: scissors bonus tests ────────────────────────────────────
-
-    #[test]
-    fn use_scissors_completes_thread() {
+    fn use_scissors_completes_spool() {
         let mut e = default_engine();
         e.bonuses.scissors = 1;
-        e.bonuses.scissors_threads = 1;
-        e.knit_volume = 2;
-        // Active thread: Red, status 1 (needs 2 total knits to complete, since done when status > knit_volume)
-        e.active_threads = vec![
-            Thread { color: Color::Red, status: 1, has_key: false },
+        e.bonuses.scissors_spools = 1;
+        e.spool_capacity = 2;
+        e.held_spools = vec![
+            Spool { color: Color::Red, fill: 1, has_key: false },
         ];
-        // default_engine yarn has Red patches in both columns — deep scan will find them
         let result = e.use_scissors();
         assert!(result.is_ok());
         assert_eq!(e.bonuses.scissors, 0);
-        // Thread should be fully knitted and removed (status went past knit_volume=2)
-        assert_eq!(e.active_threads.len(), 0);
+        assert_eq!(e.held_spools.len(), 0);
     }
 
     #[test]
     fn use_scissors_none_left_fails() {
         let mut e = default_engine();
         e.bonuses.scissors = 0;
-        e.active_threads = vec![Thread { color: Color::Red, status: 1, has_key: false }];
+        e.held_spools = vec![Spool { color: Color::Red, fill: 1, has_key: false }];
         assert_eq!(e.use_scissors(), Err(BonusError::NoneLeft));
     }
 
     #[test]
-    fn use_scissors_no_active_threads_fails() {
+    fn use_scissors_no_held_spools_fails() {
         let mut e = default_engine();
         e.bonuses.scissors = 1;
-        assert_eq!(e.use_scissors(), Err(BonusError::NoActiveThreads));
+        assert_eq!(e.use_scissors(), Err(BonusError::NoHeldSpools));
     }
 
     #[test]
-    fn use_scissors_picks_least_progress_thread() {
+    fn use_scissors_picks_least_filled_spool() {
         let mut e = default_engine();
         e.bonuses.scissors = 1;
-        e.bonuses.scissors_threads = 1;
-        e.knit_volume = 1;
-        e.active_threads = vec![
-            Thread { color: Color::Red,  status: 2, has_key: false }, // more progress
-            Thread { color: Color::Blue, status: 1, has_key: false }, // least progress
+        e.bonuses.scissors_spools = 1;
+        e.spool_capacity = 1;
+        e.held_spools = vec![
+            Spool { color: Color::Red,  fill: 2, has_key: false },
+            Spool { color: Color::Blue, fill: 1, has_key: false },
         ];
-        // default_engine yarn has Blue patches — deep scan should find one
         let _ = e.use_scissors();
-        // The Blue thread (status 1) should have been selected and completed
-        // It had status 1, knit_volume=1, so after 1 knit → status 2 > 1 → removed
-        assert_eq!(e.active_threads.len(), 1);
-        assert_eq!(e.active_threads[0].color, Color::Red);
+        assert_eq!(e.held_spools.len(), 1);
+        assert_eq!(e.held_spools[0].color, Color::Red);
     }
-
-    // ── Task 5: tweezers bonus tests ───────────────────────────────────
 
     #[test]
     fn use_tweezers_enters_mode() {
@@ -1447,7 +1243,6 @@ mod tests {
         let result = e.use_tweezers();
         assert!(result.is_ok());
         assert_eq!(e.bonus_state, BonusState::TweezersActive { saved_row: 0, saved_col: 0 });
-        // Count not decremented until pick completes
         assert_eq!(e.bonuses.tweezers, 1);
     }
 
@@ -1463,12 +1258,8 @@ mod tests {
         let mut e = default_engine();
         e.bonuses.tweezers = 1;
         e.use_tweezers().unwrap();
-        // In the default board, row 1 col 0 is a buried Thread (normally not focusable)
-        // but tweezers mode should let cursor move there
         let result = e.move_cursor(Direction::Down);
         assert!(result.is_ok());
-        // In tweezers mode, cursor moves to immediately adjacent cell (row 1)
-        // instead of skipping to the next focusable cell
         assert_eq!(e.cursor_row, 1);
     }
 
@@ -1477,17 +1268,13 @@ mod tests {
         let mut e = default_engine();
         e.bonuses.tweezers = 1;
         e.use_tweezers().unwrap();
-        // Move cursor directly to buried thread at (2, 0)
         e.cursor_row = 2;
         e.cursor_col = 0;
-        // Normally this would fail with NotSelectable, but tweezers overrides
         let result = e.pick_up();
         assert!(result.is_ok());
-        assert_eq!(e.active_threads.len(), 1);
-        // Cursor restored to saved position
+        assert_eq!(e.held_spools.len(), 1);
         assert_eq!(e.cursor_row, 0);
         assert_eq!(e.cursor_col, 0);
-        // Bonus consumed
         assert_eq!(e.bonuses.tweezers, 0);
         assert_eq!(e.bonus_state, BonusState::None);
     }
@@ -1503,26 +1290,19 @@ mod tests {
         assert_eq!(e.cursor_row, 0);
         assert_eq!(e.cursor_col, 0);
         assert_eq!(e.bonus_state, BonusState::None);
-        // Bonus NOT consumed on cancel
         assert_eq!(e.bonuses.tweezers, 1);
     }
 
-    // ── Task 6: balloons bonus tests ──────────────────────────────────
-
     #[test]
-    fn use_balloons_lifts_patches() {
+    fn use_balloons_lifts_stitches() {
         let mut e = default_engine();
         e.bonuses.balloons = 1;
         e.bonuses.balloon_count = 1;
-        // default_engine yarn: col0=[Red, Blue], col1=[Red, Red]
-        // Lifting 1 patch from front (top/last) of each column
         let total_before: usize = e.yarn.board.iter().map(|c| c.len()).sum();
         let result = e.use_balloons();
         assert!(result.is_ok());
         assert_eq!(e.bonuses.balloons, 0);
-        // Balloon columns should have been created
         assert!(!e.yarn.balloon_columns.is_empty());
-        // Total patches should be conserved (moved, not destroyed)
         let total_regular: usize = e.yarn.board.iter().map(|c| c.len()).sum();
         let total_balloon = e.yarn.balloon_columns.iter().filter(|s| s.is_some()).count();
         assert_eq!(total_before, total_regular + total_balloon);
@@ -1541,11 +1321,8 @@ mod tests {
         e.bonuses.balloons = 2;
         e.bonuses.balloon_count = 1;
         e.use_balloons().unwrap();
-        // Balloon columns are non-empty now
         assert_eq!(e.use_balloons(), Err(BonusError::BalloonColumnsNotEmpty));
     }
-
-    // ── Task 7: snapshot roundtrip with bonuses ─────────────────────────
 
     #[test]
     fn snapshot_roundtrip_with_bonuses() {
@@ -1553,7 +1330,7 @@ mod tests {
         e.bonuses.scissors = 3;
         e.bonuses.tweezers = 2;
         e.bonuses.balloons = 1;
-        e.yarn.balloon_columns = vec![Some(Patch { color: Color::Red, locked: false })];
+        e.yarn.balloon_columns = vec![Some(Stitch { color: Color::Red, locked: false })];
         let json = e.to_json();
         let e2 = GameEngine::from_json(&json).expect("roundtrip");
         assert_eq!(e2.bonuses.scissors, 3);

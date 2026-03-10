@@ -17,31 +17,31 @@ struct Args {
     command: Option<NiCommand>,
 
     // Game-creation options (used only when --game is absent)
-    #[arg(long)] board_height:         Option<u16>,
-    #[arg(long)] board_width:          Option<u16>,
-    #[arg(long)] color_number:         Option<u16>,
-    #[arg(long)] color_mode:           Option<String>,
-    #[arg(long)] active_threads_limit: Option<usize>,
-    #[arg(long)] knit_volume:          Option<u16>,
-    #[arg(long)] yarn_lines:           Option<u16>,
-    #[arg(long)] obstacle_percentage:  Option<u16>,
-    #[arg(long)] visible_patches:      Option<u16>,
-    #[arg(long)] generator_capacity:   Option<u16>,
-    #[arg(long)] generator_percentage: Option<u16>,
-    #[arg(long)] scissors:          Option<u16>,
-    #[arg(long)] tweezers:          Option<u16>,
-    #[arg(long)] balloons:          Option<u16>,
-    #[arg(long)] scissors_threads:  Option<u16>,
-    #[arg(long)] balloon_count:     Option<u16>,
+    #[arg(long)] board_height:        Option<u16>,
+    #[arg(long)] board_width:         Option<u16>,
+    #[arg(long)] color_number:        Option<u16>,
+    #[arg(long)] color_mode:          Option<String>,
+    #[arg(long)] spool_limit:         Option<usize>,
+    #[arg(long)] spool_capacity:      Option<u16>,
+    #[arg(long)] yarn_lines:          Option<u16>,
+    #[arg(long)] obstacle_percentage: Option<u16>,
+    #[arg(long)] visible_stitches:    Option<u16>,
+    #[arg(long)] conveyor_capacity:   Option<u16>,
+    #[arg(long)] conveyor_percentage: Option<u16>,
+    #[arg(long)] scissors:            Option<u16>,
+    #[arg(long)] tweezers:            Option<u16>,
+    #[arg(long)] balloons:            Option<u16>,
+    #[arg(long)] scissors_spools:     Option<u16>,
+    #[arg(long)] balloon_count:       Option<u16>,
 }
 
 #[derive(Subcommand)]
 enum NiCommand {
     /// Move the cursor
     Move { direction: NiDirection },
-    /// Pick up the thread under the cursor
+    /// Pick up the spool under the cursor
     Pick,
-    /// Process all active threads one yarn step each
+    /// Process all held spools one yarn step each
     Process,
     /// Use scissors bonus
     Scissors,
@@ -149,11 +149,11 @@ fn main() {
                     if let Err(e) = engine.pick_up() {
                         let (code, msg) = match e {
                             knitui::engine::PickError::NotSelectable =>
-                                ("not_selectable", "thread is not exposed (not in top row and no Void neighbour)"),
-                            knitui::engine::PickError::NotAThread =>
-                                ("not_a_thread", "cell under cursor is not a thread"),
+                                ("not_selectable", "spool is not exposed (not in top row and no Void neighbour)"),
+                            knitui::engine::PickError::NotASpool =>
+                                ("not_a_spool", "cell under cursor is not a spool"),
                             knitui::engine::PickError::ActiveFull =>
-                                ("active_full", "active thread limit reached"),
+                                ("active_full", "held spool limit reached"),
                         };
                         err_response(code, msg);
                         return;
@@ -206,25 +206,26 @@ fn main() {
         // ── Create a new game ──────────────────────────────────────────────
         None => {
             let config = Config {
-                board_height:         args.board_height.unwrap_or(6),
-                board_width:          args.board_width.unwrap_or(6),
-                color_number:         args.color_number.unwrap_or(6),
-                color_mode:           args.color_mode.unwrap_or_else(|| "dark".into()),
-                active_threads_limit: args.active_threads_limit.unwrap_or(7),
-                knit_volume:          args.knit_volume.unwrap_or(3),
-                yarn_lines:           args.yarn_lines.unwrap_or(4),
-                obstacle_percentage:  args.obstacle_percentage.unwrap_or(5),
-                visible_patches:      args.visible_patches.unwrap_or(6),
-                generator_capacity:   args.generator_capacity.unwrap_or(3),
-                generator_percentage: args.generator_percentage.unwrap_or(5),
-                layout:               "auto".into(),
-                scale:                1,
-                scissors:             args.scissors.unwrap_or(0),
-                tweezers:             args.tweezers.unwrap_or(0),
-                balloons:             args.balloons.unwrap_or(0),
-                scissors_threads:     args.scissors_threads.unwrap_or(1),
-                balloon_count:        args.balloon_count.unwrap_or(2),
-                ad_file:              None,
+                board_height:        args.board_height.unwrap_or(6),
+                board_width:         args.board_width.unwrap_or(6),
+                color_number:        args.color_number.unwrap_or(6),
+                color_mode:          args.color_mode.unwrap_or_else(|| "dark".into()),
+                spool_limit:         args.spool_limit.unwrap_or(7),
+                spool_capacity:      args.spool_capacity.unwrap_or(3),
+                yarn_lines:          args.yarn_lines.unwrap_or(4),
+                obstacle_percentage: args.obstacle_percentage.unwrap_or(5),
+                visible_stitches:    args.visible_stitches.unwrap_or(6),
+                conveyor_capacity:   args.conveyor_capacity.unwrap_or(3),
+                conveyor_percentage: args.conveyor_percentage.unwrap_or(5),
+                layout:              "auto".into(),
+                scale:               1,
+                scissors:            args.scissors.unwrap_or(0),
+                tweezers:            args.tweezers.unwrap_or(0),
+                balloons:            args.balloons.unwrap_or(0),
+                scissors_spools:     args.scissors_spools.unwrap_or(1),
+                balloon_count:       args.balloon_count.unwrap_or(2),
+                ad_file:             None,
+                max_solutions:       None,
             };
 
             let engine = GameEngine::new(&config);

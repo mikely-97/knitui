@@ -14,7 +14,7 @@ pub struct CampaignLevel {
     pub board_width: u16,
     pub color_number: u16,
     pub obstacle_percentage: u16,
-    pub generator_percentage: u16,
+    pub conveyor_percentage: u16,
     pub scissors: u16,        // base starting bonuses
     pub tweezers: u16,
     pub balloons: u16,

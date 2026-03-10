@@ -56,11 +56,11 @@ fn test_create_game_default() {
     assert_eq!(hash.len(), 8);
     assert!(hash.chars().all(|c| c.is_ascii_alphanumeric()));
     assert_eq!(v["won"], false);
-    // state should have board, yarn, active_threads
+    // state should have board, yarn, held_spools
     let state = &v["state"];
     assert!(state["board"].is_array());
     assert!(state["yarn"].is_array());
-    assert!(state["active_threads"].is_array());
+    assert!(state["held_spools"].is_array());
     assert_eq!(state["board_height"], 6);
     assert_eq!(state["board_width"], 6);
 }
@@ -68,12 +68,12 @@ fn test_create_game_default() {
 #[test]
 fn test_create_game_custom_options() {
     let (_, v) = create_game(&[
-        "--board-height", "3", "--board-width", "4", "--knit-volume", "2",
+        "--board-height", "3", "--board-width", "4", "--spool-capacity", "2",
     ]);
     let state = &v["state"];
     assert_eq!(state["board_height"], 3);
     assert_eq!(state["board_width"], 4);
-    assert_eq!(state["knit_volume"], 2);
+    assert_eq!(state["spool_capacity"], 2);
     assert_eq!(state["board"].as_array().unwrap().len(), 3);
     assert_eq!(state["board"][0].as_array().unwrap().len(), 4);
 }
@@ -82,7 +82,7 @@ fn test_create_game_custom_options() {
 
 #[test]
 fn test_move_cursor_right() {
-    let (hash, _) = create_game(&["--obstacle-percentage", "0", "--generator-percentage", "0"]);
+    let (hash, _) = create_game(&["--obstacle-percentage", "0", "--conveyor-percentage", "0"]);
     let (stdout, _, code) = run(&["--game", &hash, "move", "right"]);
     assert_eq!(code, 0);
     let v = parse_ok(&stdout);
@@ -92,7 +92,7 @@ fn test_move_cursor_right() {
 
 #[test]
 fn test_move_cursor_boundary() {
-    let (hash, _) = create_game(&["--obstacle-percentage", "0", "--generator-percentage", "0"]);
+    let (hash, _) = create_game(&["--obstacle-percentage", "0", "--conveyor-percentage", "0"]);
     // Cursor starts at (0,0), moving left should fail
     let (_, stderr, code) = run(&["--game", &hash, "move", "left"]);
     assert_ne!(code, 0);
@@ -103,46 +103,46 @@ fn test_move_cursor_boundary() {
 // ── Pick tests ──────────────────────────────────────────────────────────────
 
 #[test]
-fn test_pick_up_thread() {
-    let (hash, initial) = create_game(&["--obstacle-percentage", "0", "--generator-percentage", "0"]);
-    // With 0% obstacles and 0% generators, (0,0) should be a Thread — top row is always selectable
+fn test_pick_up_spool() {
+    let (hash, _) = create_game(&["--obstacle-percentage", "0", "--conveyor-percentage", "0"]);
+    // With 0% obstacles and 0% conveyors, (0,0) should be a Spool — top row is always selectable
     let (stdout, _, code) = run(&["--game", &hash, "pick"]);
     assert_eq!(code, 0);
     let v = parse_ok(&stdout);
-    assert_eq!(v["state"]["active_threads"].as_array().unwrap().len(), 1);
+    assert_eq!(v["state"]["held_spools"].as_array().unwrap().len(), 1);
 }
 
 #[test]
 fn test_pick_up_at_obstacle() {
     let (hash, _) = create_game(&["--obstacle-percentage", "100"]);
-    // 100% obstacles: picking up should fail with not_a_thread
+    // 100% obstacles: picking up should fail with not_a_spool
     let (_, stderr, code) = run(&["--game", &hash, "pick"]);
     assert_ne!(code, 0);
     let v = parse_err(&stderr);
-    assert_eq!(v["code"], "not_a_thread");
+    assert_eq!(v["code"], "not_a_spool");
 }
 
 // ── Process tests ───────────────────────────────────────────────────────────
 
 #[test]
-fn test_process_threads() {
-    let (hash, _) = create_game(&["--obstacle-percentage", "0", "--generator-percentage", "0"]);
-    // Pick a thread first
+fn test_process_spools() {
+    let (hash, _) = create_game(&["--obstacle-percentage", "0", "--conveyor-percentage", "0"]);
+    // Pick a spool first
     let (_, _, code) = run(&["--game", &hash, "pick"]);
     assert_eq!(code, 0);
     // Then process
     let (stdout, _, code) = run(&["--game", &hash, "process"]);
     assert_eq!(code, 0);
     let v = parse_ok(&stdout);
-    // active_threads may still have the thread (if knit_volume > 1) or be empty
-    assert!(v["state"]["active_threads"].is_array());
+    // held_spools may still have the spool (if spool_capacity > 1) or be empty
+    assert!(v["state"]["held_spools"].is_array());
 }
 
 // ── Persistence tests ───────────────────────────────────────────────────────
 
 #[test]
 fn test_game_persistence() {
-    let (hash, _) = create_game(&["--obstacle-percentage", "0", "--generator-percentage", "0"]);
+    let (hash, _) = create_game(&["--obstacle-percentage", "0", "--conveyor-percentage", "0"]);
     // Move right
     let (_, _, code) = run(&["--game", &hash, "move", "right"]);
     assert_eq!(code, 0);

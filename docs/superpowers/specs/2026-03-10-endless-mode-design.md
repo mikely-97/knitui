@@ -25,7 +25,7 @@ endless game-over screen is shown.
 | `board_width` | `min(4 + w/3, 10)` | 4–10 |
 | `color_number` | `min(2 + w/4, 8)` | 2–8 |
 | `obstacle_percentage` | `min(w*2, 20)` | 0–20 |
-| `generator_percentage` | `min(w*2, 20)` | 0–20 |
+| `conveyor_percentage` | `min(w*2, 20)` | 0–20 |
 
 Display settings (scale, color mode) inherited from user settings.
 

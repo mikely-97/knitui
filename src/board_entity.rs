@@ -27,28 +27,28 @@ impl Direction {
     }
 }
 
-pub struct GeneratorData {
-    /// Color displayed on the generator cell itself.
+pub struct ConveyorData {
+    /// Color displayed on the conveyor cell itself.
     pub color: Color,
     /// Which adjacent cell is the output cell.
     pub output_dir: Direction,
-    /// Remaining threads to generate; front of vec = next to produce.
+    /// Remaining spools to generate; front of vec = next to produce.
     pub queue: Vec<Color>,
 }
 
 pub enum BoardEntity {
-    /// A normal selectable thread.
-    Thread(Color),
-    /// A thread that carries a key — unlocks a matching locked yarn patch.
-    KeyThread(Color),
+    /// A normal selectable spool.
+    Spool(Color),
+    /// A spool that carries a key — unlocks a matching locked yarn stitch.
+    KeySpool(Color),
     /// Impassable obstacle; never becomes Void.
     Obstacle,
     /// Empty cell — makes orthogonal neighbors selectable.
     Void,
-    /// Produces threads in its output cell until its queue is exhausted.
-    Generator(GeneratorData),
-    /// A depleted generator; acts like an Obstacle.
-    DepletedGenerator,
+    /// Produces spools in its output cell until its queue is exhausted.
+    Conveyor(ConveyorData),
+    /// A depleted conveyor; acts like an Obstacle.
+    EmptyConveyor,
 }
 
 impl fmt::Display for BoardEntity {
@@ -57,17 +57,17 @@ impl fmt::Display for BoardEntity {
             f,
             "{}",
             match self {
-                BoardEntity::Thread(color)     => 'T'.with(*color),
-                BoardEntity::KeyThread(color)  => 'K'.with(*color),
-                BoardEntity::Obstacle          => 'X'.stylize(),
-                BoardEntity::Void              => ' '.stylize(),
-                BoardEntity::Generator(data)   => match data.output_dir {
+                BoardEntity::Spool(color)     => 'T'.with(*color),
+                BoardEntity::KeySpool(color)  => 'K'.with(*color),
+                BoardEntity::Obstacle         => 'X'.stylize(),
+                BoardEntity::Void             => ' '.stylize(),
+                BoardEntity::Conveyor(data)   => match data.output_dir {
                     Direction::Up    => '^',
                     Direction::Down  => 'V',
                     Direction::Left  => '<',
                     Direction::Right => '>',
                 }.with(data.color),
-                BoardEntity::DepletedGenerator => '#'.stylize(),
+                BoardEntity::EmptyConveyor    => '#'.stylize(),
             }
         )
     }
@@ -78,20 +78,20 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_board_entity_thread_creation() {
-        let entity = BoardEntity::Thread(Color::Red);
+    fn test_board_entity_spool_creation() {
+        let entity = BoardEntity::Spool(Color::Red);
         match entity {
-            BoardEntity::Thread(color) => assert_eq!(color, Color::Red),
-            _ => panic!("Expected Thread variant"),
+            BoardEntity::Spool(color) => assert_eq!(color, Color::Red),
+            _ => panic!("Expected Spool variant"),
         }
     }
 
     #[test]
-    fn test_board_entity_key_thread_creation() {
-        let entity = BoardEntity::KeyThread(Color::Blue);
+    fn test_board_entity_key_spool_creation() {
+        let entity = BoardEntity::KeySpool(Color::Blue);
         match entity {
-            BoardEntity::KeyThread(color) => assert_eq!(color, Color::Blue),
-            _ => panic!("Expected KeyThread variant"),
+            BoardEntity::KeySpool(color) => assert_eq!(color, Color::Blue),
+            _ => panic!("Expected KeySpool variant"),
         }
     }
 
@@ -114,29 +114,29 @@ mod tests {
     }
 
     #[test]
-    fn test_board_entity_generator_creation() {
-        let data = GeneratorData {
+    fn test_board_entity_conveyor_creation() {
+        let data = ConveyorData {
             color: Color::Green,
             output_dir: Direction::Down,
             queue: vec![Color::Green, Color::Green],
         };
-        let entity = BoardEntity::Generator(data);
+        let entity = BoardEntity::Conveyor(data);
         match entity {
-            BoardEntity::Generator(d) => {
+            BoardEntity::Conveyor(d) => {
                 assert_eq!(d.color, Color::Green);
                 assert_eq!(d.output_dir, Direction::Down);
                 assert_eq!(d.queue.len(), 2);
             }
-            _ => panic!("Expected Generator variant"),
+            _ => panic!("Expected Conveyor variant"),
         }
     }
 
     #[test]
-    fn test_board_entity_depleted_generator_creation() {
-        let entity = BoardEntity::DepletedGenerator;
+    fn test_board_entity_empty_conveyor_creation() {
+        let entity = BoardEntity::EmptyConveyor;
         match entity {
-            BoardEntity::DepletedGenerator => {},
-            _ => panic!("Expected DepletedGenerator variant"),
+            BoardEntity::EmptyConveyor => {},
+            _ => panic!("Expected EmptyConveyor variant"),
         }
     }
 
@@ -150,23 +150,23 @@ mod tests {
 
     #[test]
     fn test_board_entity_display_format() {
-        let thread = BoardEntity::Thread(Color::Blue);
-        let key    = BoardEntity::KeyThread(Color::Red);
-        let obs    = BoardEntity::Obstacle;
-        let void   = BoardEntity::Void;
-        let dep    = BoardEntity::DepletedGenerator;
-        let generator = BoardEntity::Generator(GeneratorData {
+        let spool   = BoardEntity::Spool(Color::Blue);
+        let key     = BoardEntity::KeySpool(Color::Red);
+        let obs     = BoardEntity::Obstacle;
+        let void    = BoardEntity::Void;
+        let dep     = BoardEntity::EmptyConveyor;
+        let conveyor = BoardEntity::Conveyor(ConveyorData {
             color: Color::Cyan,
             output_dir: Direction::Right,
             queue: vec![],
         });
 
         // Verify Display doesn't panic for any variant
-        let _ = format!("{}", thread);
+        let _ = format!("{}", spool);
         let _ = format!("{}", key);
         let _ = format!("{}", obs);
         let _ = format!("{}", void);
         let _ = format!("{}", dep);
-        let _ = format!("{}", generator);
+        let _ = format!("{}", conveyor);
     }
 }

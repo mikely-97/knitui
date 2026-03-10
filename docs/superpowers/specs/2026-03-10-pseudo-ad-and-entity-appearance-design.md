@@ -92,14 +92,14 @@ A function `entity_glyph(entity: &BoardEntity, scale: u16) -> Vec<&'static str>`
 
 | Entity | Row 1 | Row 2 | Notes |
 |--------|-------|-------|-------|
-| Thread | `╲╱╲╱` | `╱╲╱╲` | Cross-stitch, colored with thread color |
-| KeyThread | `╲╱⚷╱` | `╱╲╲╱` | Cross-stitch with key symbol embedded |
+| Spool | `╲╱╲╱` | `╱╲╱╲` | Cross-stitch, colored with spool color |
+| KeySpool | `╲╱⚷╱` | `╱╲╲╱` | Cross-stitch with key symbol embedded |
 | Obstacle | `░░░░` | `░░░░` | Light shade, grey/dim |
-| Generator(→) | `⊞──▸` | `⊞──▸` | Source box + arrow in direction |
-| Generator(←) | `◂──⊞` | `◂──⊞` | Mirrored |
-| Generator(↓) | `·⊞⊞·` | `·▾▾·` | Source on top, arrow below, centered in 4-wide cell |
-| Generator(↑) | `·▴▴·` | `·⊞⊞·` | Arrow on top, source below, centered in 4-wide cell |
-| DepletedGenerator | `⊞──·` | `⊞──·` | Source box + dots (exhausted, no arrow) |
+| Conveyor(→) | `⊞──▸` | `⊞──▸` | Source box + arrow in direction |
+| Conveyor(←) | `◂──⊞` | `◂──⊞` | Mirrored |
+| Conveyor(↓) | `·⊞⊞·` | `·▾▾·` | Source on top, arrow below, centered in 4-wide cell |
+| Conveyor(↑) | `·▴▴·` | `·⊞⊞·` | Arrow on top, source below, centered in 4-wide cell |
+| EmptyConveyor | `⊞──·` | `⊞──·` | Source box + dots (exhausted, no arrow) |
 | Void | `    ` | `    ` | Empty space |
 
 ### Scale 3 patterns (6 chars wide × 3 rows)
@@ -108,20 +108,20 @@ Tile/extend the scale 2 patterns to fill the 6-wide × 3-row grid:
 
 | Entity | Row 1 | Row 2 | Row 3 |
 |--------|-------|-------|-------|
-| Thread | `╲╱╲╱╲╱` | `╱╲╱╲╱╲` | `╲╱╲╱╲╱` |
-| KeyThread | `╲╱╲╱╲╱` | `╱╲⚷╲╱╲` | `╲╱╲╱╲╱` |
+| Spool | `╲╱╲╱╲╱` | `╱╲╱╲╱╲` | `╲╱╲╱╲╱` |
+| KeySpool | `╲╱╲╱╲╱` | `╱╲⚷╲╱╲` | `╲╱╲╱╲╱` |
 | Obstacle | `░░░░░░` | `░░░░░░` | `░░░░░░` |
-| Generator(→) | `⊞────▸` | `⊞────▸` | `⊞────▸` |
-| Generator(←) | `◂────⊞` | `◂────⊞` | `◂────⊞` |
-| Generator(↓) | `··⊞⊞··` | `··╏╏··` | `··▾▾··` |
-| Generator(↑) | `··▴▴··` | `··╏╏··` | `··⊞⊞··` |
-| DepletedGenerator | `⊞──··` | `⊞──··` | `⊞──··` |
+| Conveyor(→) | `⊞────▸` | `⊞────▸` | `⊞────▸` |
+| Conveyor(←) | `◂────⊞` | `◂────⊞` | `◂────⊞` |
+| Conveyor(↓) | `··⊞⊞··` | `··╏╏··` | `··▾▾··` |
+| Conveyor(↑) | `··▴▴··` | `··╏╏··` | `··⊞⊞··` |
+| EmptyConveyor | `⊞──··` | `⊞──··` | `⊞──··` |
 | Void | `      ` | `      ` | `      ` |
 
 ### Coloring
 
-- Thread and KeyThread glyphs are rendered in the thread's `Color`, same as scale 1.
-- Generator glyphs use the first color in the generator's queue (or dim/grey if depleted).
+- Spool and KeySpool glyphs are rendered in the spool's `Color`, same as scale 1.
+- Conveyor glyphs use the first color in the conveyor's queue (or dim/grey if depleted).
 - Obstacle glyphs use dim grey (`Color::DarkGrey`).
 
 ### Cursor brackets at scale 2+
@@ -160,7 +160,7 @@ Functions moving from `main.rs` to `renderer.rs`:
 - `detect_layout()`, `FlankSide` enum, spacing constants (`YARN_HGAP`, `YARN_VGAP`, `THREAD_GAP`, `COMP_GAP`)
 - `render_yarn()`, `render_balloon_columns()`, `render_balloon_flank()`
 - `render_board()` (grid drawing)
-- `render_active_threads()`
+- `render_held_spools()`
 - `render_help_overlay()`, `render_game_over_overlay()`
 - New: `render_ad_overlay()`
 

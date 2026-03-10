@@ -6,7 +6,7 @@ pub struct GamePreset {
     pub board_width: u16,
     pub color_number: u16,
     pub obstacle_percentage: u16,
-    pub generator_percentage: u16,
+    pub conveyor_percentage: u16,
     pub scissors: u16,
     pub tweezers: u16,
     pub balloons: u16,
@@ -16,25 +16,25 @@ pub const PRESETS: &[GamePreset] = &[
     GamePreset {
         name: "Small",
         board_height: 4, board_width: 4, color_number: 4,
-        obstacle_percentage: 0, generator_percentage: 0,
+        obstacle_percentage: 0, conveyor_percentage: 0,
         scissors: 0, tweezers: 0, balloons: 0,
     },
     GamePreset {
         name: "Medium",
         board_height: 6, board_width: 6, color_number: 6,
-        obstacle_percentage: 5, generator_percentage: 5,
+        obstacle_percentage: 5, conveyor_percentage: 5,
         scissors: 0, tweezers: 0, balloons: 0,
     },
     GamePreset {
         name: "Large",
         board_height: 8, board_width: 8, color_number: 8,
-        obstacle_percentage: 10, generator_percentage: 10,
+        obstacle_percentage: 10, conveyor_percentage: 10,
         scissors: 1, tweezers: 1, balloons: 1,
     },
     GamePreset {
         name: "Chaos",
         board_height: 10, board_width: 10, color_number: 8,
-        obstacle_percentage: 20, generator_percentage: 15,
+        obstacle_percentage: 20, conveyor_percentage: 15,
         scissors: 2, tweezers: 2, balloons: 2,
     },
 ];
@@ -48,7 +48,7 @@ impl GamePreset {
         cfg.board_width = self.board_width;
         cfg.color_number = self.color_number;
         cfg.obstacle_percentage = self.obstacle_percentage;
-        cfg.generator_percentage = self.generator_percentage;
+        cfg.conveyor_percentage = self.conveyor_percentage;
         cfg.scissors = self.scissors;
         cfg.tweezers = self.tweezers;
         cfg.balloons = self.balloons;
@@ -105,9 +105,9 @@ mod tests {
     fn to_config_inherits_non_preset_fields() {
         let mut base = default_config();
         base.color_mode = "bright-rgb".to_string();
-        base.knit_volume = 5;
+        base.spool_capacity = 5;
         let cfg = PRESETS[0].to_config(&base);
         assert_eq!(cfg.color_mode, "bright-rgb");
-        assert_eq!(cfg.knit_volume, 5);
+        assert_eq!(cfg.spool_capacity, 5);
     }
 }

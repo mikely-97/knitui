@@ -1,6 +1,6 @@
 # knitui
 
-A terminal-based puzzle game inspired by mobile yarn/knitting games. Match colored threads on the board against a scrolling yarn queue to clear the board.
+A terminal-based puzzle game inspired by mobile yarn/knitting games. Match colored spools on the board against a scrolling yarn queue to clear the board.
 
 Two binaries:
 - **knitui** — interactive TUI (crossterm)
@@ -22,18 +22,18 @@ cargo run --bin knitui -- --help
 
 The screen shows three sections (top-to-bottom in vertical layout, left-to-right in horizontal):
 
-1. **Yarn queue** — rows of colored patches (`▦`) showing upcoming knitting work, split into columns. Locked patches show as `▣` and block their column until cleared with a key.
-2. **Active threads** — threads you've selected from the board, waiting to be processed
+1. **Yarn queue** — rows of colored stitches (`▦`) showing upcoming knitting work, split into columns. Locked stitches show as `▣` and block their column until cleared with a key.
+2. **Held spools** — spools you've selected from the board, waiting to be processed
 3. **Game board** — a bordered grid of cells to clear. The selected cell is marked with `[` `]` bracket markers.
 
-**Goal**: Clear all threads from the board by picking them up and processing them against the yarn queue. Each thread must be processed `--knit-volume` times (default: 3) to complete and be discarded.
+**Goal**: Clear all spools from the board by picking them up and processing them against the yarn queue. Each spool must be processed `--spool-capacity` times (default: 3) to complete and be discarded.
 
 **Controls**:
 
 | Key | Action |
 |-----|--------|
 | Arrow keys | Move cursor across the board |
-| Enter | Pick up the thread under the cursor |
+| Enter | Pick up the spool under the cursor |
 | H | Show help overlay |
 | Z | Use Scissors bonus |
 | X | Use Tweezers bonus |
@@ -45,26 +45,26 @@ A key bar at the bottom of the screen shows all available controls and current b
 
 ### Selectability rule
 
-Only **exposed** threads can be picked up:
+Only **exposed** spools can be picked up:
 - The **top row** is always selectable.
-- Any other thread is selectable only if it **borders a `Void` cell** horizontally or vertically (not diagonally).
+- Any other spool is selectable only if it **borders a `Void` cell** horizontally or vertically (not diagonally).
 
-Cells become Void when their thread is picked up. Clearing a thread exposes its neighbors, cascading inward from the top.
+Cells become Void when their spool is picked up. Clearing a spool exposes its neighbors, cascading inward from the top.
 
 ### Board entities
 
 | Glyph | Entity | Behavior |
 |-------|--------|----------|
-| `T` (colored) | Thread | Normal selectable thread |
-| `K` (colored) | Key thread | Thread that carries a key; displayed `k` in active list until key is spent |
+| `T` (colored) | Spool | Normal selectable spool |
+| `K` (colored) | Key spool | Spool that carries a key; displayed `k` in held list until key is spent |
 | `X` | Obstacle | Impassable; never becomes Void |
 | ` ` | Void | Empty; makes orthogonal neighbors selectable |
-| `^` `V` `<` `>` (colored) | Generator | Arrow shows output direction. Produces threads in its adjacent output cell up to `--generator-capacity` times, then becomes `#` |
-| `#` | Depleted generator | Acts like an obstacle |
+| `^` `V` `<` `>` (colored) | Conveyor | Arrow shows output direction. Produces spools in its adjacent output cell up to `--conveyor-capacity` times, then becomes `#` |
+| `#` | Depleted conveyor | Acts like an obstacle |
 
 ### Lock / Key mechanic
 
-A locked yarn patch (`▣`) blocks its entire column — nothing behind it can be processed until the lock is cleared. To clear it, pick up the matching **Key thread** (`K`) from the board. The key is consumed on contact and the lock is removed as a normal knit stage.
+A locked yarn stitch (`▣`) blocks its entire column — nothing behind it can be processed until the lock is cleared. To clear it, pick up the matching **Key spool** (`K`) from the board. The key is consumed on contact and the lock is removed as a normal wind stage.
 
 ### Bonuses
 
@@ -72,15 +72,15 @@ Bonuses are optional power-ups activated by hotkeys. Their counts are set at lau
 
 | Bonus | Key | Icon | Effect |
 |-------|-----|------|--------|
-| **Scissors** | Z | ✂ | Instantly auto-knits the least-progressed active thread by deep-scanning ALL patches in the yarn (not just the front). Ignores queue order. |
-| **Tweezers** | X | ⊹ | Enter free-cursor mode: move to any cell and pick up any thread regardless of selectability. Cursor shows `{ }` brackets. Press Esc to cancel without consuming. |
-| **Balloons** | C | ⊛ | Lifts the front N patches from each yarn column into separate pseudo-columns, exposing the patches behind them. Pseudo-columns are also matchable. |
+| **Scissors** | Z | ✂ | Instantly auto-winds the least-progressed held spool by deep-scanning ALL stitches in the yarn (not just the front). Ignores queue order. |
+| **Tweezers** | X | ⊹ | Enter free-cursor mode: move to any cell and pick up any spool regardless of selectability. Cursor shows `{ }` brackets. Press Esc to cancel without consuming. |
+| **Balloons** | C | ⊛ | Lifts the front N stitches from each yarn column into separate pseudo-columns, exposing the stitches behind them. Pseudo-columns are also matchable. |
 
-Guards: only one bonus can be active at a time. Scissors requires active threads. Balloons requires previous balloon columns to be fully consumed first.
+Guards: only one bonus can be active at a time. Scissors requires held spools. Balloons requires previous balloon columns to be fully consumed first.
 
 ### Background processing
 
-Active threads are processed automatically in the background (one step every 150 ms). You can continue moving and picking up threads while processing runs. Each thread is matched against the yarn one at a time so you can see what matches and what doesn't.
+Held spools are processed automatically in the background (one step every 150 ms). You can continue moving and picking up spools while processing runs. Each spool is matched against the yarn one at a time so you can see what matches and what doesn't.
 
 ## Non-interactive mode (knitui-ni)
 
@@ -113,10 +113,10 @@ Success response:
 
 Error response (to stderr, exit code 1):
 ```json
-{"status":"error","code":"not_selectable","message":"thread is not exposed"}
+{"status":"error","code":"not_selectable","message":"spool is not exposed"}
 ```
 
-Error codes: `out_of_bounds`, `not_selectable`, `not_a_thread`, `active_full`, `bonus_failed`, `load_failed`, `save_failed`, `no_command`.
+Error codes: `out_of_bounds`, `not_selectable`, `not_a_spool`, `active_full`, `bonus_failed`, `load_failed`, `save_failed`, `no_command`.
 
 ## Configuration
 
@@ -128,20 +128,20 @@ All parameters are settable via CLI flags (both binaries). Defaults:
 | `--board-width` | 6 | Grid columns |
 | `--color-number` | 6 | Distinct colors used |
 | `--color-mode` | `dark` | Palette: `dark` \| `bright` \| `colorblind` \| `dark-rgb` \| `bright-rgb` \| `colorblind-rgb` |
-| `--active-threads-limit` | 7 | Max threads held at once |
-| `--knit-volume` | 3 | Times each thread must be processed |
+| `--spool-limit` | 7 | Max spools held at once |
+| `--spool-capacity` | 3 | Times each spool must be wound to complete |
 | `--yarn-lines` | 4 | Yarn columns |
 | `--obstacle-percentage` | 5 | % chance each cell is an obstacle |
-| `--visible-patches` | 6 | Yarn rows shown on screen |
-| `--generator-capacity` | 3 | Threads each generator produces |
-| `--generator-percentage` | 5 | % chance each cell becomes a generator |
+| `--visible-stitches` | 6 | Yarn rows shown on screen |
+| `--conveyor-capacity` | 3 | Spools each conveyor produces |
+| `--conveyor-percentage` | 5 | % chance each cell becomes a conveyor |
 | `--layout` | `auto` | Layout: `auto` \| `horizontal` \| `vertical` |
 | `--scale` | 1 | Cell scale factor (1–3): render each entity as N×N characters |
 | `--scissors` | 0 | Starting scissors bonus count |
 | `--tweezers` | 0 | Starting tweezers bonus count |
 | `--balloons` | 0 | Starting balloons bonus count |
-| `--scissors-threads` | 1 | Threads processed per scissors use |
-| `--balloon-count` | 2 | Patches lifted per yarn column per balloons use |
+| `--scissors-spools` | 1 | Spools wound per scissors use |
+| `--balloon-count` | 2 | Stitches lifted per yarn column per balloons use |
 
 The `-rgb` color modes use 24-bit true color escapes, which are immune to terminal theme overrides (useful for kitty, alacritty, etc. that remap ANSI palette slots).
 
@@ -156,7 +156,7 @@ cargo run --bin knitui -- --scissors 3 --tweezers 2 --balloons 2
 Example — a bigger, harder board:
 
 ```
-cargo run --bin knitui -- --board-height 8 --board-width 10 --knit-volume 5 --color-mode bright
+cargo run --bin knitui -- --board-height 8 --board-width 10 --spool-capacity 5 --color-mode bright
 ```
 
 Example — scaled cells with RGB colors in horizontal layout:
@@ -175,14 +175,14 @@ src/
 │   └── knitui_ni.rs  — NI binary: CLI arg parsing, JSON I/O, XDG persistence
 ├── lib.rs            — module declarations
 ├── engine.rs         — GameEngine: owns all game state, action methods,
-│                       JSON snapshot serialisation, generator helpers
+│                       JSON snapshot serialisation, conveyor helpers
 ├── config.rs         — CLI config (clap)
-├── game_board.rs     — board generation, is_selectable, count_knits
-├── board_entity.rs   — BoardEntity enum: Thread | KeyThread | Obstacle | Void
-│                       | Generator(GeneratorData) | DepletedGenerator
-│                       Direction enum and GeneratorData struct
-├── yarn.rs           — Patch (with locked flag), Yarn, process_one with lock logic
-├── active_threads.rs — Thread: color, status, has_key
+├── game_board.rs     — board generation, is_selectable, count_spools
+├── board_entity.rs   — BoardEntity enum: Spool | KeySpool | Obstacle | Void
+│                       | Conveyor(ConveyorData) | EmptyConveyor
+│                       Direction enum and ConveyorData struct
+├── yarn.rs           — Stitch (with locked flag), Yarn, process_one with lock logic
+├── spool.rs          — Spool: color, fill, has_key
 ├── color_counter.rs  — ColorCounter: HashMap of Color → count, shuffled queue
 ├── color_serde.rs    — serialize/deserialize crossterm::Color as strings
 ├── palette.rs        — color palettes: Dark | Bright | Colorblind, each with
@@ -198,20 +198,20 @@ Config
   → GameEngine::new()
       → select_palette()
       → GameBoard::make_random()               (retry loop until is_solvable)
-          → game_board.count_knits()           (color → threads × knit_volume,
-                                                includes generator queues)
-              → Yarn::make_from_color_counter() (shuffled patches across columns)
+          → game_board.count_spools()          (color → spools × spool_capacity,
+                                                includes conveyor queues)
+              → Yarn::make_from_color_counter() (shuffled stitches across columns)
 
-TUI (main.rs):   GameEngine + crossterm rendering + ProcessingState animation
+TUI (main.rs):   GameEngine + crossterm rendering + background spool processing
 NI  (knitui_ni): GameEngine + JSON snapshot ↔ ~/.local/share/knitui/<hash>.json
 ```
 
 ### Solvability checks (run on every generated board)
 
-1. **Count balance** — yarn patches per color == board threads × knit_volume (including all generator outputs)
-2. **Thread reachability** — BFS from top row, simulating selections; every thread must be reachable via the void-bordering cascade
-3. **Active headroom** — distinct colors on board ≤ active thread limit
-4. **Key-lock pairing** — every locked yarn patch has a matching Key thread on the board
+1. **Count balance** — yarn stitches per color == board spools × spool_capacity (including all conveyor outputs)
+2. **Spool reachability** — BFS from top row, simulating selections; every spool must be reachable via the void-bordering cascade
+3. **Active headroom** — distinct colors on board ≤ spool limit
+4. **Key-lock pairing** — every locked yarn stitch has a matching Key spool on the board
 
 Boards that fail any check are regenerated (up to 100 retries).
 

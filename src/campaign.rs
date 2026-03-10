@@ -43,7 +43,7 @@ impl CampaignState {
         cfg.board_width = level.board_width;
         cfg.color_number = level.color_number;
         cfg.obstacle_percentage = level.obstacle_percentage;
-        cfg.generator_percentage = level.generator_percentage;
+        cfg.conveyor_percentage = level.conveyor_percentage;
         cfg.scissors = level.scissors + self.banked_scissors;
         cfg.tweezers = level.tweezers + self.banked_tweezers;
         cfg.balloons = level.balloons + self.banked_balloons;

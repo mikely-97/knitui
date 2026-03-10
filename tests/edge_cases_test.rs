@@ -1,7 +1,7 @@
 // Integration tests for edge cases
 use knitui::game_board::GameBoard;
 use knitui::palette::{select_palette, ColorMode};
-use knitui::active_threads::Thread;
+use knitui::spool::Spool;
 use knitui::yarn::Yarn;
 use knitui::color_counter::ColorCounter;
 use crossterm::style::Color;
@@ -14,15 +14,15 @@ fn test_empty_yarn_processing() {
     };
     let mut yarn = Yarn::make_from_color_counter(counter, 2, 3);
 
-    let mut thread = Thread {
+    let mut spool = Spool {
         color: Color::Red,
-        status: 1,
+        fill: 1,
         has_key: false,
     };
 
-    yarn.process_one(&mut thread);
+    yarn.process_one(&mut spool);
 
-    assert_eq!(thread.status, 1);
+    assert_eq!(spool.fill, 1);
 }
 
 #[test]
@@ -30,7 +30,7 @@ fn test_single_color_board() {
     let palette = vec![Color::Cyan];
     let board = GameBoard::make_random(10, 10, &palette, 0, 1, 0, 0);
 
-    let counter = board.count_knits();
+    let counter = board.count_spools();
     assert_eq!(counter.color_hashmap.len(), 1);
     assert!(counter.color_hashmap.contains_key(&Color::Cyan));
 }
@@ -43,54 +43,54 @@ fn test_large_board() {
     assert_eq!(board.height, 20);
     assert_eq!(board.width, 20);
 
-    let counter = board.count_knits();
+    let counter = board.count_spools();
     let yarn = Yarn::make_from_color_counter(counter, 10, 8);
 
     assert_eq!(yarn.yarn_lines, 10);
 }
 
 #[test]
-fn test_thread_processing_beyond_yarn_capacity() {
+fn test_spool_processing_beyond_yarn_capacity() {
     let mut map = HashMap::new();
     map.insert(Color::Yellow, 2);
 
     let counter = ColorCounter { color_hashmap: map };
     let mut yarn = Yarn::make_from_color_counter(counter, 2, 3);
 
-    let mut thread = Thread {
+    let mut spool = Spool {
         color: Color::Yellow,
-        status: 1,
+        fill: 1,
         has_key: false,
     };
 
     for _ in 0..5 {
-        yarn.process_one(&mut thread);
+        yarn.process_one(&mut spool);
     }
 
-    assert!(thread.status <= 3);
+    assert!(spool.fill <= 3);
 }
 
 #[test]
-fn test_many_threads_same_color() {
+fn test_many_spools_same_color() {
     let mut map = HashMap::new();
     map.insert(Color::Green, 10);
 
     let counter = ColorCounter { color_hashmap: map };
     let mut yarn = Yarn::make_from_color_counter(counter, 3, 5);
 
-    let mut threads = vec![];
+    let mut spools = vec![];
     for _ in 0..10 {
-        threads.push(Thread {
+        spools.push(Spool {
             color: Color::Green,
-            status: 1,
+            fill: 1,
             has_key: false,
         });
     }
 
-    yarn.process_sequence(&mut threads);
+    yarn.process_sequence(&mut spools);
 
-    for thread in &threads {
-        assert_eq!(thread.status, 2);
+    for spool in &spools {
+        assert_eq!(spool.fill, 2);
     }
 
     let remaining: usize = yarn.board.iter().map(|col| col.len()).sum();
@@ -98,41 +98,41 @@ fn test_many_threads_same_color() {
 }
 
 #[test]
-fn test_mixed_thread_colors() {
+fn test_mixed_spool_colors() {
     // Deterministic yarn: col0=[Red,Blue,Red], col1=[Green,Blue,Green], col2=[Red]
     // (last element = top of stack, processed first)
-    use knitui::yarn::Patch;
+    use knitui::yarn::Stitch;
     let mut yarn = Yarn {
         board: vec![
             vec![
-                Patch { color: Color::Red,  locked: false },
-                Patch { color: Color::Blue, locked: false },
-                Patch { color: Color::Red,  locked: false },
+                Stitch { color: Color::Red,  locked: false },
+                Stitch { color: Color::Blue, locked: false },
+                Stitch { color: Color::Red,  locked: false },
             ],
             vec![
-                Patch { color: Color::Green, locked: false },
-                Patch { color: Color::Blue,  locked: false },
-                Patch { color: Color::Green, locked: false },
+                Stitch { color: Color::Green, locked: false },
+                Stitch { color: Color::Blue,  locked: false },
+                Stitch { color: Color::Green, locked: false },
             ],
             vec![
-                Patch { color: Color::Red, locked: false },
+                Stitch { color: Color::Red, locked: false },
             ],
         ],
         yarn_lines: 3,
-        visible_patches: 5,
+        visible_stitches: 5,
         balloon_columns: Vec::new(),
     };
 
-    let mut threads = vec![
-        Thread { color: Color::Red,   status: 1, has_key: false },
-        Thread { color: Color::Blue,  status: 1, has_key: false },
-        Thread { color: Color::Green, status: 1, has_key: false },
-        Thread { color: Color::Red,   status: 1, has_key: false },
+    let mut spools = vec![
+        Spool { color: Color::Red,   fill: 1, has_key: false },
+        Spool { color: Color::Blue,  fill: 1, has_key: false },
+        Spool { color: Color::Green, fill: 1, has_key: false },
+        Spool { color: Color::Red,   fill: 1, has_key: false },
     ];
 
-    yarn.process_sequence(&mut threads);
+    yarn.process_sequence(&mut spools);
 
-    // Each thread matches exactly once (left-to-right scan):
+    // Each spool matches exactly once (left-to-right scan):
     // Red  → pops col0 top (Red)
     // Blue → pops col0 top (Blue, was under Red)
     // Green→ pops col1 top (Green)
@@ -140,29 +140,29 @@ fn test_mixed_thread_colors() {
     // Total removed: 4
     let remaining: usize = yarn.board.iter().map(|col| col.len()).sum();
     assert_eq!(remaining, 7 - 4);
-    assert_eq!(threads[0].status, 2);
-    assert_eq!(threads[1].status, 2);
-    assert_eq!(threads[2].status, 2);
-    assert_eq!(threads[3].status, 2);
+    assert_eq!(spools[0].fill, 2);
+    assert_eq!(spools[1].fill, 2);
+    assert_eq!(spools[2].fill, 2);
+    assert_eq!(spools[3].fill, 2);
 }
 
 #[test]
-fn test_zero_knit_volume() {
+fn test_zero_spool_capacity() {
     let palette = vec![Color::White];
     let board = GameBoard::make_random(3, 3, &palette, 0, 0, 0, 0);
 
-    let counter = board.count_knits();
+    let counter = board.count_spools();
 
     let total: u16 = counter.color_hashmap.values().sum();
     assert_eq!(total, 0);
 }
 
 #[test]
-fn test_very_high_knit_volume() {
+fn test_very_high_spool_capacity() {
     let palette = vec![Color::DarkRed];
     let board = GameBoard::make_random(2, 2, &palette, 0, 100, 0, 0);
 
-    let counter = board.count_knits();
+    let counter = board.count_spools();
 
     assert_eq!(*counter.color_hashmap.get(&Color::DarkRed).unwrap(), 400);
 }

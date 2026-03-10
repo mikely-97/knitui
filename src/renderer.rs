@@ -27,14 +27,14 @@ pub enum Layout {
 #[derive(Clone, Copy)]
 pub enum FlankSide { Left, Right }
 
-pub fn detect_layout(config_layout: &str, visible_patches: u16, board_height: u16, scale: u16) -> Layout {
+pub fn detect_layout(config_layout: &str, visible_stitches: u16, board_height: u16, scale: u16) -> Layout {
     match config_layout {
         "horizontal" => Layout::Horizontal,
         "vertical" => Layout::Vertical,
         _ => {
             let sh = scale;
             let (_, term_height) = terminal::size().unwrap_or((80, 24));
-            let yarn_h = visible_patches * sh + visible_patches.saturating_sub(1) * YARN_VGAP;
+            let yarn_h = visible_stitches * sh + visible_stitches.saturating_sub(1) * YARN_VGAP;
             let board_h = 1 + board_height * (sh + 1);
             let vertical_height = yarn_h + COMP_GAP + sh + COMP_GAP + board_h;
             if vertical_height + 2 > term_height {
@@ -48,15 +48,15 @@ pub fn detect_layout(config_layout: &str, visible_patches: u16, board_height: u1
 
 // ── Scaled rendering helpers ─────────────────────────────────────────────────
 
-/// Render yarn patches into a region starting at (x0, y0), scaled with spacing.
+/// Render yarn stitches into a region starting at (x0, y0), scaled with spacing.
 /// `with_balloons`: if true, render balloon columns to the right of regular
 /// yarn (used in vertical layout). If false, caller handles balloon rendering
 /// separately (used in horizontal layout to avoid overlap).
 pub fn render_yarn(stdout: &mut Stdout, engine: &GameEngine, x0: u16, y0: u16, scale: u16, with_balloons: bool) -> io::Result<()> {
     let sh = scale;
     let sw = scale * 2;
-    for offset in 0..(engine.yarn.visible_patches as usize) {
-        let true_offset = (engine.yarn.visible_patches as usize) - offset;
+    for offset in 0..(engine.yarn.visible_stitches as usize) {
+        let true_offset = (engine.yarn.visible_stitches as usize) - offset;
         let row_y = y0 + (offset as u16) * (sh + YARN_VGAP);
         for sy in 0..sh {
             stdout.queue(MoveTo(x0, row_y + sy))?;
@@ -88,7 +88,7 @@ pub fn render_yarn(stdout: &mut Stdout, engine: &GameEngine, x0: u16, y0: u16, s
 }
 
 /// Render balloon pseudo-columns at (x0, y0), to the right of regular yarn.
-/// Uses compact height based on actual balloon content so patches are
+/// Uses compact height based on actual balloon content so stitches are
 /// visible right at y0, aligned to the bottom of the yarn area.
 pub fn render_balloon_columns(stdout: &mut Stdout, engine: &GameEngine, yarn_x0: u16, y0: u16, scale: u16) -> io::Result<()> {
     if engine.yarn.balloon_columns.is_empty() {
@@ -101,7 +101,7 @@ pub fn render_balloon_columns(stdout: &mut Stdout, engine: &GameEngine, yarn_x0:
     let balloon_x0 = yarn_x0 + regular_w + COMP_GAP;
 
     // Single row of fixed slots, bottom-aligned with yarn
-    let yarn_h = engine.yarn.visible_patches * (sh + YARN_VGAP) - YARN_VGAP;
+    let yarn_h = engine.yarn.visible_stitches * (sh + YARN_VGAP) - YARN_VGAP;
     let y_start = y0 + yarn_h - sh;
 
     for sy in 0..sh {
@@ -111,12 +111,12 @@ pub fn render_balloon_columns(stdout: &mut Stdout, engine: &GameEngine, yarn_x0:
                 for _ in 0..YARN_HGAP { stdout.queue(Print(' '))?; }
             }
             match slot {
-                Some(patch) => {
+                Some(stitch) => {
                     if scale > 1 {
-                        let glyph_rows = glyphs::yarn_patch_glyph(patch.locked, scale);
-                        stdout.queue(Print(glyph_rows[sy as usize].as_str().with(patch.color)))?;
+                        let glyph_rows = glyphs::yarn_patch_glyph(stitch.locked, scale);
+                        stdout.queue(Print(glyph_rows[sy as usize].as_str().with(stitch.color)))?;
                     } else {
-                        for _ in 0..sw { stdout.queue(Print(patch))?; }
+                        for _ in 0..sw { stdout.queue(Print(stitch))?; }
                     }
                 }
                 None => {
@@ -158,7 +158,7 @@ pub fn render_balloon_flank(
     let slots = &engine.yarn.balloon_columns;
 
     // Bottom-align with yarn visible area
-    let yarn_h = engine.yarn.visible_patches * (sh + YARN_VGAP) - YARN_VGAP;
+    let yarn_h = engine.yarn.visible_stitches * (sh + YARN_VGAP) - YARN_VGAP;
     let flank_h = count as u16 * (sh + YARN_VGAP) - YARN_VGAP;
     let y_start = y0 + yarn_h.saturating_sub(flank_h);
 
@@ -172,12 +172,12 @@ pub fn render_balloon_flank(
                 for _ in 0..sw { stdout.queue(Print("░".dark_grey()))?; }
             } else {
                 match slots.get(slot_idx) {
-                    Some(Some(patch)) => {
+                    Some(Some(stitch)) => {
                         if scale > 1 {
-                            let glyph_rows = glyphs::yarn_patch_glyph(patch.locked, scale);
-                            stdout.queue(Print(glyph_rows[sy as usize].as_str().with(patch.color)))?;
+                            let glyph_rows = glyphs::yarn_patch_glyph(stitch.locked, scale);
+                            stdout.queue(Print(glyph_rows[sy as usize].as_str().with(stitch.color)))?;
                         } else {
-                            for _ in 0..sw { stdout.queue(Print(patch))?; }
+                            for _ in 0..sw { stdout.queue(Print(stitch))?; }
                         }
                     }
                     Some(None) => {
@@ -195,31 +195,31 @@ pub fn render_balloon_flank(
     Ok(())
 }
 
-/// Render active threads horizontally (one row, scaled) starting at (x0, y0).
+/// Render held spools horizontally (one row, scaled) starting at (x0, y0).
 pub fn render_active_h(stdout: &mut Stdout, engine: &GameEngine, x0: u16, y0: u16, scale: u16) -> io::Result<()> {
     let sh = scale;
     let sw = scale * 2;
     for sy in 0..sh {
         stdout.queue(MoveTo(x0, y0 + sy))?;
-        for (i, thread) in engine.active_threads.iter().enumerate() {
+        for (i, spool) in engine.held_spools.iter().enumerate() {
             if i > 0 {
                 for _ in 0..THREAD_GAP { stdout.queue(Print(' '))?; }
             }
-            for _ in 0..sw { stdout.queue(Print(thread))?; }
+            for _ in 0..sw { stdout.queue(Print(spool))?; }
         }
     }
     Ok(())
 }
 
-/// Render active threads vertically (one column, scaled) starting at (x0, y0).
+/// Render held spools vertically (one column, scaled) starting at (x0, y0).
 pub fn render_active_v(stdout: &mut Stdout, engine: &GameEngine, x0: u16, y0: u16, scale: u16) -> io::Result<()> {
     let sh = scale;
     let sw = scale * 2;
-    for (i, thread) in engine.active_threads.iter().enumerate() {
+    for (i, spool) in engine.held_spools.iter().enumerate() {
         let ty = y0 + (i as u16) * (sh + THREAD_GAP);
         for sy in 0..sh {
             stdout.queue(MoveTo(x0, ty + sy))?;
-            for _ in 0..sw { stdout.queue(Print(thread))?; }
+            for _ in 0..sw { stdout.queue(Print(spool))?; }
         }
     }
     Ok(())
@@ -258,25 +258,25 @@ pub fn render_board(stdout: &mut Stdout, engine: &GameEngine, x0: u16, y0: u16, 
     // Top border
     draw_hline(stdout, x0, y0, cols, sw, 0)?;
 
-    for (row_idx, thread_row) in engine.board.board.iter().enumerate() {
+    for (row_idx, board_row) in engine.board.board.iter().enumerate() {
         let content_y = y0 + 1 + (row_idx as u16) * (sh + 1);
         let is_cur_row = row_idx == cur_r;
 
         if scale > 1 {
-            for (col_idx, cell) in thread_row.iter().enumerate() {
+            for (col_idx, cell) in board_row.iter().enumerate() {
                 let is_cursor = is_cur_row && col_idx == cur_c;
                 let is_after_cursor = is_cur_row && col_idx > 0 && col_idx - 1 == cur_c;
                 let glyph_rows = match &engine.board.board[row_idx][col_idx] {
-                    BoardEntity::Thread(_) => glyphs::entity_glyph_thread(scale),
-                    BoardEntity::KeyThread(_) => glyphs::entity_glyph_key_thread(scale),
+                    BoardEntity::Spool(_) => glyphs::entity_glyph_thread(scale),
+                    BoardEntity::KeySpool(_) => glyphs::entity_glyph_key_thread(scale),
                     BoardEntity::Obstacle => glyphs::entity_glyph_obstacle(scale),
-                    BoardEntity::Generator(data) => glyphs::entity_glyph_generator(data.output_dir, scale),
-                    BoardEntity::DepletedGenerator => glyphs::entity_glyph_depleted(scale),
+                    BoardEntity::Conveyor(data) => glyphs::entity_glyph_generator(data.output_dir, scale),
+                    BoardEntity::EmptyConveyor => glyphs::entity_glyph_depleted(scale),
                     BoardEntity::Void => glyphs::entity_glyph_void(scale),
                 };
                 let color = match &engine.board.board[row_idx][col_idx] {
-                    BoardEntity::Thread(c) | BoardEntity::KeyThread(c) => Some(*c),
-                    BoardEntity::Generator(data) => Some(data.color),
+                    BoardEntity::Spool(c) | BoardEntity::KeySpool(c) => Some(*c),
+                    BoardEntity::Conveyor(data) => Some(data.color),
                     _ => None,
                 };
                 for (sy_idx, glyph_row) in glyph_rows.iter().enumerate() {
@@ -323,7 +323,7 @@ pub fn render_board(stdout: &mut Stdout, engine: &GameEngine, x0: u16, y0: u16, 
         } else {
             for sy in 0..sh {
                 stdout.queue(MoveTo(x0, content_y + sy))?;
-                for (col_idx, cell) in thread_row.iter().enumerate() {
+                for (col_idx, cell) in board_row.iter().enumerate() {
                     let is_cursor = is_cur_row && col_idx == cur_c;
                     let is_after_cursor = is_cur_row && col_idx > 0 && col_idx - 1 == cur_c;
 
@@ -375,14 +375,14 @@ pub fn render_help(stdout: &mut Stdout) -> io::Result<()> {
         "                    ═══ HELP ═══",
         "",
         "  Movement:   ← → ↑ ↓   Move cursor",
-        "  Pick up:    Enter       Pick up thread at cursor",
+        "  Pick up:    Enter       Pick up spool at cursor",
         "  Menu:       Esc         Return to main menu",
         "  Restart:    R           New game (from game-over)",
         "  Help:       H           Show this screen",
         "",
         "  ─── Bonuses ───",
-        "  [Z] ✂ Scissors    Auto-knit thread by deep-scanning yarn",
-        "  [X] ⊹ Tweezers    Pick any thread from the board",
+        "  [Z] ✂ Scissors    Auto-wind spool by deep-scanning yarn",
+        "  [X] ⊹ Tweezers    Pick any spool from the board",
         "  [C] ⊛ Balloons    Lift front patches, expose patches behind",
         "  [A] ⊟ Watch ad    Watch a fake ad for +1 scissors",
         "",
@@ -774,8 +774,8 @@ pub fn render_vertical(
     scale: u16,
 ) -> io::Result<()> {
     let sh = scale;
-    let yarn_h = engine.yarn.visible_patches * sh
-        + engine.yarn.visible_patches.saturating_sub(1) * YARN_VGAP;
+    let yarn_h = engine.yarn.visible_stitches * sh
+        + engine.yarn.visible_stitches.saturating_sub(1) * YARN_VGAP;
     let active_y = yarn_h + COMP_GAP;
 
     stdout.queue(BeginSynchronizedUpdate)?;
@@ -797,6 +797,37 @@ pub fn render_vertical(
     stdout.flush()
 }
 
+fn draw_stuck_overlay(
+    stdout: &mut Stdout,
+    engine: &GameEngine,
+    status: &GameStatus,
+    overlay_msg: Option<&str>,
+) -> io::Result<()> {
+    if matches!(status, GameStatus::Stuck) && overlay_msg.is_none() {
+        let b = &engine.bonuses;
+        let s_txt = format!("[Z] \u{2702} x{}  ", b.scissors);
+        let t_txt = format!("[X] \u{2295} x{}  ", b.tweezers);
+        let b_txt = format!("[C] \u{25cb} x{}", b.balloons);
+        stdout.queue(MoveTo(0, 0))?;
+        if b.scissors == 0 { stdout.queue(Print(s_txt.as_str().dark_grey()))?; } else { stdout.queue(Print(&s_txt))?; }
+        if b.tweezers == 0 { stdout.queue(Print(t_txt.as_str().dark_grey()))?; } else { stdout.queue(Print(&t_txt))?; }
+        if b.balloons == 0 { stdout.queue(Print(b_txt.as_str().dark_grey()))?; } else { stdout.queue(Print(&b_txt))?; }
+        if engine.can_watch_ad() { stdout.queue(Print("  [A] Watch ad"))?; }
+        stdout.queue(MoveTo(0, 1))?;
+        stdout.queue(Print("You're lost! R:Restart  M:Menu  Q:Quit"))?;
+    } else {
+        let default_msg = match status {
+            GameStatus::Stuck => "You're lost! R:Restart  M:Menu  Q:Quit",
+            GameStatus::Won   => "You won! R:Restart  M:Menu  Q:Quit",
+            _ => return Ok(()),
+        };
+        let message = overlay_msg.unwrap_or(default_msg);
+        stdout.queue(MoveTo(0, 0))?;
+        stdout.queue(Print(message))?;
+    }
+    Ok(())
+}
+
 pub fn render_vertical_overlay(
     stdout: &mut Stdout,
     engine: &GameEngine,
@@ -806,14 +837,7 @@ pub fn render_vertical_overlay(
     overlay_msg: Option<&str>,
 ) -> io::Result<()> {
     render_vertical(stdout, engine, board_y, scale)?;
-    let default_msg = match status {
-        GameStatus::Stuck => "You're lost! R:Restart  M:Menu  Q:Quit",
-        GameStatus::Won   => "You won! R:Restart  M:Menu  Q:Quit",
-        _ => return Ok(()),
-    };
-    let message = overlay_msg.unwrap_or(default_msg);
-    stdout.queue(MoveTo(0, 0))?;
-    stdout.queue(Print(message))?;
+    draw_stuck_overlay(stdout, engine, status, overlay_msg)?;
     stdout.flush()
 }
 
@@ -872,14 +896,7 @@ pub fn render_horizontal_overlay(
     overlay_msg: Option<&str>,
 ) -> io::Result<()> {
     render_horizontal(stdout, engine, yarn_x, board_x, scale)?;
-    let default_msg = match status {
-        GameStatus::Stuck => "You're lost! R:Restart  M:Menu  Q:Quit",
-        GameStatus::Won   => "You won! R:Restart  M:Menu  Q:Quit",
-        _ => return Ok(()),
-    };
-    let message = overlay_msg.unwrap_or(default_msg);
-    stdout.queue(MoveTo(0, 0))?;
-    stdout.queue(Print(message))?;
+    draw_stuck_overlay(stdout, engine, status, overlay_msg)?;
     stdout.flush()
 }
 

@@ -44,9 +44,9 @@ impl EndlessState {
         cfg.board_width  = (4 + w / 3).min(10);
         // Colors grow from 3 up to 8
         cfg.color_number = (2 + w / 4).min(8).max(2);
-        // Obstacles and generators grow from 0 up to 20%
+        // Obstacles and conveyors grow from 0 up to 20%
         cfg.obstacle_percentage  = (w * 2).min(20);
-        cfg.generator_percentage = (w * 2).min(20);
+        cfg.conveyor_percentage = (w * 2).min(20);
         // Bonuses: base level's earned carry-over
         cfg.scissors = self.banked_scissors;
         cfg.tweezers = self.banked_tweezers;
@@ -115,12 +115,13 @@ mod tests {
     fn to_config_scales_with_wave() {
         let base = Config {
             board_height: 6, board_width: 6, color_number: 6,
-            color_mode: "dark".into(), active_threads_limit: 7,
-            knit_volume: 3, yarn_lines: 4, obstacle_percentage: 5,
-            visible_patches: 6, generator_capacity: 3, generator_percentage: 5,
+            color_mode: "dark".into(), spool_limit: 7,
+            spool_capacity: 3, yarn_lines: 4, obstacle_percentage: 5,
+            visible_stitches: 6, conveyor_capacity: 3, conveyor_percentage: 5,
             layout: "auto".into(), scale: 1,
             scissors: 0, tweezers: 0, balloons: 0,
-            scissors_threads: 1, balloon_count: 2, ad_file: None,
+            scissors_spools: 1, balloon_count: 2, ad_file: None,
+            max_solutions: None,
         };
 
         let s1 = EndlessState::new(); // wave 1

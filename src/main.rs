@@ -54,12 +54,12 @@ impl LayoutGeometry {
         let sw = scale * 2;
 
         let layout = renderer::detect_layout(
-            &config.layout, config.visible_patches, config.board_height, scale,
+            &config.layout, config.visible_stitches, config.board_height, scale,
         );
 
         // Vertical layout offsets
-        let yarn_h = config.visible_patches * sh
-            + config.visible_patches.saturating_sub(1) * YARN_VGAP;
+        let yarn_h = config.visible_stitches * sh
+            + config.visible_stitches.saturating_sub(1) * YARN_VGAP;
         let board_y: u16 = yarn_h + COMP_GAP + sh + COMP_GAP;
 
         // Horizontal layout offsets — reserve flanking columns for balloon patches
@@ -90,7 +90,7 @@ fn custom_game_fields(config: &Config) -> Vec<(&'static str, u16)> {
         ("Board Width", config.board_width),
         ("Color Count", config.color_number),
         ("Obstacle %", config.obstacle_percentage),
-        ("Generator %", config.generator_percentage),
+        ("Conveyor %", config.conveyor_percentage),
         ("Scissors", config.scissors),
         ("Tweezers", config.tweezers),
         ("Balloons", config.balloons),
@@ -107,7 +107,7 @@ fn adjust_custom_field(config: &mut Config, field: usize, delta: i16) {
         2 => apply(&mut config.board_width, 2, 20),
         3 => apply(&mut config.color_number, 2, 8),
         4 => apply(&mut config.obstacle_percentage, 0, 50),
-        5 => apply(&mut config.generator_percentage, 0, 50),
+        5 => apply(&mut config.conveyor_percentage, 0, 50),
         6 => apply(&mut config.scissors, 0, 99),
         7 => apply(&mut config.tweezers, 0, 99),
         8 => apply(&mut config.balloons, 0, 99),
@@ -118,7 +118,7 @@ fn adjust_custom_field(config: &mut Config, field: usize, delta: i16) {
 /// Game-specific args: if any were explicitly passed, skip the menu.
 const GAME_ARGS: &[&str] = &[
     "board_height", "board_width", "color_number",
-    "obstacle_percentage", "generator_percentage",
+    "obstacle_percentage", "conveyor_percentage",
     "scissors", "tweezers", "balloons",
 ];
 
@@ -557,6 +557,40 @@ fn main() -> std::io::Result<()> {
                                 }
                                 break;
                             }
+                            KeyCode::Char('z') | KeyCode::Char('Z') if *status == GameStatus::Stuck => {
+                                let _ = engine.as_mut().unwrap().use_scissors();
+                                let e = engine.as_ref().unwrap();
+                                match e.status() {
+                                    GameStatus::Playing => {
+                                        tui_state = TuiState::Playing;
+                                        renderer::do_render(&mut stdout, e, geo.layout, geo.yarn_x, geo.board_x, geo.board_y, geo.scale)?;
+                                    }
+                                    s => {
+                                        renderer::do_render_overlay(&mut stdout, e, geo.layout, geo.yarn_x, geo.board_x, geo.board_y, geo.scale, &s, None)?;
+                                        tui_state = TuiState::GameOver(s);
+                                    }
+                                }
+                            }
+                            KeyCode::Char('x') | KeyCode::Char('X') if *status == GameStatus::Stuck => {
+                                if engine.as_mut().unwrap().use_tweezers().is_ok() {
+                                    tui_state = TuiState::Playing;
+                                    renderer::do_render(&mut stdout, engine.as_ref().unwrap(), geo.layout, geo.yarn_x, geo.board_x, geo.board_y, geo.scale)?;
+                                }
+                            }
+                            KeyCode::Char('c') | KeyCode::Char('C') if *status == GameStatus::Stuck => {
+                                let _ = engine.as_mut().unwrap().use_balloons();
+                                let e = engine.as_ref().unwrap();
+                                match e.status() {
+                                    GameStatus::Playing => {
+                                        tui_state = TuiState::Playing;
+                                        renderer::do_render(&mut stdout, e, geo.layout, geo.yarn_x, geo.board_x, geo.board_y, geo.scale)?;
+                                    }
+                                    s => {
+                                        renderer::do_render_overlay(&mut stdout, e, geo.layout, geo.yarn_x, geo.board_x, geo.board_y, geo.scale, &s, None)?;
+                                        tui_state = TuiState::GameOver(s);
+                                    }
+                                }
+                            }
                             _ => {}
                         }
                     }
@@ -662,7 +696,7 @@ fn main() -> std::io::Result<()> {
                     }
                 }
             }
-        } else if matches!(tui_state, TuiState::Playing) && !engine.as_ref().unwrap().active_threads.is_empty() {
+        } else if matches!(tui_state, TuiState::Playing) && !engine.as_ref().unwrap().held_spools.is_empty() {
             engine.as_mut().unwrap().process_all_active();
             match engine.as_ref().unwrap().status() {
                 GameStatus::Playing => renderer::do_render(&mut stdout, engine.as_ref().unwrap(), geo.layout, geo.yarn_x, geo.board_x, geo.board_y, geo.scale)?,

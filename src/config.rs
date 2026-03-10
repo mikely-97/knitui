@@ -17,11 +17,11 @@ pub struct Config {
     #[arg(long, default_value = "dark", help = "Color palette: dark | bright | colorblind")]
     pub color_mode: String,
 
-    #[arg(long, default_value_t = 7, help = "Max active threads held at once")]
-    pub active_threads_limit: usize,
+    #[arg(long, default_value_t = 7, help = "Max held spools at once")]
+    pub spool_limit: usize,
 
-    #[arg(long, default_value_t = 3, help = "Times each thread must be processed to complete")]
-    pub knit_volume: u16,
+    #[arg(long, default_value_t = 3, help = "Times each spool must be wound to complete")]
+    pub spool_capacity: u16,
 
     #[arg(long, default_value_t = 4, help = "Number of yarn columns")]
     pub yarn_lines: u16,
@@ -30,13 +30,13 @@ pub struct Config {
     pub obstacle_percentage: u16,
 
     #[arg(long, default_value_t = 6, help = "Visible yarn rows shown on screen")]
-    pub visible_patches: u16,
+    pub visible_stitches: u16,
 
-    #[arg(long, default_value_t = 3, help = "Threads each generator produces before depleting")]
-    pub generator_capacity: u16,
+    #[arg(long, default_value_t = 3, help = "Spools each conveyor produces before depleting")]
+    pub conveyor_capacity: u16,
 
-    #[arg(long, default_value_t = 5, help = "Percent chance each cell becomes a generator (0-100)")]
-    pub generator_percentage: u16,
+    #[arg(long, default_value_t = 5, help = "Percent chance each cell becomes a conveyor (0-100)")]
+    pub conveyor_percentage: u16,
 
     #[arg(long, default_value = "auto", help = "Layout: auto | horizontal | vertical")]
     pub layout: String,
@@ -53,14 +53,17 @@ pub struct Config {
     #[arg(long, default_value_t = 0, help = "Starting balloons bonus count")]
     pub balloons: u16,
 
-    #[arg(long, default_value_t = 1, help = "Threads processed per scissors use")]
-    pub scissors_threads: u16,
+    #[arg(long, default_value_t = 1, help = "Spools cut per scissors use")]
+    pub scissors_spools: u16,
 
-    #[arg(long, default_value_t = 2, help = "Patches lifted per yarn column per balloons use")]
+    #[arg(long, default_value_t = 2, help = "Stitches lifted per yarn column per balloons use")]
     pub balloon_count: u16,
 
     #[arg(long, help = "Path to ad quotes file (one per line, default: ~/.config/knitui/ads.txt)")]
     pub ad_file: Option<PathBuf>,
+
+    #[arg(long, help = "Max distinct winning pick sequences (1 = single forced-sequence puzzle). Slower generation for small values.")]
+    pub max_solutions: Option<u64>,
 }
 
 impl Config {

@@ -58,7 +58,7 @@ pub struct GamePreset {
     pub board_width: u16,
     pub color_number: u16,
     pub obstacle_percentage: u16,
-    pub generator_percentage: u16,
+    pub conveyor_percentage: u16,
     pub scissors: u16,
     pub tweezers: u16,
     pub balloons: u16,
@@ -67,7 +67,7 @@ pub struct GamePreset {
 
 ### Named presets
 
-| Preset | Board | Colors | Obstacles | Generators | Bonuses |
+| Preset | Board | Colors | Obstacles | Conveyors | Bonuses |
 |--------|-------|--------|-----------|------------|---------|
 | Small | 4×4 | 4 | 0% | 0% | 0/0/0 |
 | Medium | 6×6 | 6 | 5% | 5% | 0/0/0 |
@@ -76,7 +76,7 @@ pub struct GamePreset {
 
 ### to_config() conversion
 
-`GamePreset::to_config(&self, base: &Config) -> Config` — creates a `Config` by applying preset values on top of the CLI-parsed `Config`. Fields not in the preset (like `color_mode`, `yarn_lines`, `knit_volume`, `ad_file`, etc.) are inherited from the base `Config`. This means CLI flags like `--color-mode dark-rgb` or `--scale 2` still take effect.
+`GamePreset::to_config(&self, base: &Config) -> Config` — creates a `Config` by applying preset values on top of the CLI-parsed `Config`. Fields not in the preset (like `color_mode`, `yarn_lines`, `spool_capacity`, `ad_file`, etc.) are inherited from the base `Config`. This means CLI flags like `--color-mode dark-rgb` or `--scale 2` still take effect.
 
 ### Custom Game screen
 
