@@ -8,7 +8,8 @@ use crossterm::{
     cursor::{MoveTo, Hide},
 };
 use crate::engine::{GameEngine, GameStatus, BonusState};
-use crate::board_entity::Direction;
+use crate::board_entity::{BoardEntity, Direction};
+use crate::glyphs;
 
 // ── Spacing constants ────────────────────────────────────────────────────────
 pub const YARN_HGAP: u16 = 2;   // horizontal gap between yarn columns
@@ -245,35 +246,95 @@ pub fn render_board(stdout: &mut Stdout, engine: &GameEngine, x0: u16, y0: u16, 
         let content_y = y0 + 1 + (row_idx as u16) * (sh + 1);
         let is_cur_row = row_idx == cur_r;
 
-        for sy in 0..sh {
-            stdout.queue(MoveTo(x0, content_y + sy))?;
+        if scale > 1 {
             for (col_idx, cell) in thread_row.iter().enumerate() {
                 let is_cursor = is_cur_row && col_idx == cur_c;
                 let is_after_cursor = is_cur_row && col_idx > 0 && col_idx - 1 == cur_c;
-
-                // Left border: bright brackets for cursor edges, normal │ otherwise
-                if is_cursor {
-                    stdout.queue(Print(open_bracket.bold().white()))?;
-                } else if is_after_cursor {
+                let glyph_rows = match &engine.board.board[row_idx][col_idx] {
+                    BoardEntity::Thread(_) => glyphs::entity_glyph_thread(scale),
+                    BoardEntity::KeyThread(_) => glyphs::entity_glyph_key_thread(scale),
+                    BoardEntity::Obstacle => glyphs::entity_glyph_obstacle(scale),
+                    BoardEntity::Generator(data) => glyphs::entity_glyph_generator(data.output_dir, scale),
+                    BoardEntity::DepletedGenerator => glyphs::entity_glyph_depleted(scale),
+                    BoardEntity::Void => glyphs::entity_glyph_void(scale),
+                };
+                let color = match &engine.board.board[row_idx][col_idx] {
+                    BoardEntity::Thread(c) | BoardEntity::KeyThread(c) => Some(*c),
+                    BoardEntity::Generator(data) => Some(data.color),
+                    _ => None,
+                };
+                for (sy_idx, glyph_row) in glyph_rows.iter().enumerate() {
+                    let cell_x = x0 + 1 + (col_idx as u16) * (sw + 1);
+                    let cell_y = content_y + sy_idx as u16;
+                    // Left border (only on sy_idx == 0 column position is handled by cell_x offset)
+                    stdout.queue(MoveTo(x0 + (col_idx as u16) * (sw + 1), cell_y))?;
+                    if is_cursor {
+                        stdout.queue(Print(open_bracket.bold().white()))?;
+                    } else if is_after_cursor {
+                        stdout.queue(Print(close_bracket.bold().white()))?;
+                    } else {
+                        stdout.queue(Print('│'))?;
+                    }
+                    // Cell content
+                    stdout.queue(MoveTo(cell_x, cell_y))?;
+                    if is_cursor {
+                        let chars: Vec<char> = glyph_row.chars().collect();
+                        stdout.queue(Print(open_bracket.bold().white()))?;
+                        let inner: String = chars[1..chars.len()-1].iter().collect();
+                        match color {
+                            Some(col) => { stdout.queue(Print(inner.with(col)))?; }
+                            None => { stdout.queue(Print(&inner))?; }
+                        }
+                        stdout.queue(Print(close_bracket.bold().white()))?;
+                    } else {
+                        match color {
+                            Some(col) => { stdout.queue(Print((*glyph_row).with(col)))?; }
+                            None => { stdout.queue(Print(*glyph_row))?; }
+                        }
+                    }
+                }
+            }
+            // Right border for glyph path
+            for sy_idx in 0..sh {
+                let cell_y = content_y + sy_idx;
+                stdout.queue(MoveTo(x0 + (cols as u16) * (sw + 1), cell_y))?;
+                if is_cur_row && cols - 1 == cur_c {
                     stdout.queue(Print(close_bracket.bold().white()))?;
                 } else {
                     stdout.queue(Print('│'))?;
                 }
-
-                // Cell content: inverted colors for cursor cell
-                if is_cursor {
-                    stdout.queue(SetAttribute(Attribute::Reverse))?;
-                    for _ in 0..sw { stdout.queue(Print(cell))?; }
-                    stdout.queue(SetAttribute(Attribute::Reset))?;
-                } else {
-                    for _ in 0..sw { stdout.queue(Print(cell))?; }
-                }
             }
-            // Right border
-            if is_cur_row && cols - 1 == cur_c {
-                stdout.queue(Print(close_bracket.bold().white()))?;
-            } else {
-                stdout.queue(Print('│'))?;
+        } else {
+            for sy in 0..sh {
+                stdout.queue(MoveTo(x0, content_y + sy))?;
+                for (col_idx, cell) in thread_row.iter().enumerate() {
+                    let is_cursor = is_cur_row && col_idx == cur_c;
+                    let is_after_cursor = is_cur_row && col_idx > 0 && col_idx - 1 == cur_c;
+
+                    // Left border: bright brackets for cursor edges, normal │ otherwise
+                    if is_cursor {
+                        stdout.queue(Print(open_bracket.bold().white()))?;
+                    } else if is_after_cursor {
+                        stdout.queue(Print(close_bracket.bold().white()))?;
+                    } else {
+                        stdout.queue(Print('│'))?;
+                    }
+
+                    // Cell content: inverted colors for cursor cell
+                    if is_cursor {
+                        stdout.queue(SetAttribute(Attribute::Reverse))?;
+                        for _ in 0..sw { stdout.queue(Print(cell))?; }
+                        stdout.queue(SetAttribute(Attribute::Reset))?;
+                    } else {
+                        for _ in 0..sw { stdout.queue(Print(cell))?; }
+                    }
+                }
+                // Right border
+                if is_cur_row && cols - 1 == cur_c {
+                    stdout.queue(Print(close_bracket.bold().white()))?;
+                } else {
+                    stdout.queue(Print('│'))?;
+                }
             }
         }
 
