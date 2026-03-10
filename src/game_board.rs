@@ -3,7 +3,7 @@ use crossterm::style::Color;
 use crate::board_entity::BoardEntity;
 use crate::color_counter::ColorCounter;
 use rand::prelude::*;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet, VecDeque};
 
 pub struct GameBoard {
     pub board: Vec<Vec<BoardEntity>>,
@@ -66,6 +66,48 @@ impl GameBoard {
         ColorCounter { color_hashmap: counter }
     }
 
+    /// Compute the set of Void cells reachable from the top row via
+    /// orthogonal adjacency through other Void cells.  Row-0 Void cells
+    /// are the seeds; any Void that can be reached from them is
+    /// "surface-connected."  Top-row threads/obstacles are NOT seeds
+    /// (only actual Void cells propagate connectivity).
+    pub fn surface_connected_voids(&self) -> HashSet<(usize, usize)> {
+        let h = self.height as usize;
+        let w = self.width as usize;
+        let mut visited = HashSet::new();
+        let mut queue = VecDeque::new();
+
+        // Seed: all Void cells in row 0
+        for c in 0..w {
+            if matches!(self.board[0][c], BoardEntity::Void) {
+                visited.insert((0, c));
+                queue.push_back((0, c));
+            }
+        }
+
+        while let Some((r, c)) = queue.pop_front() {
+            for (nr, nc) in Self::neighbors(r, c, h, w) {
+                if !visited.contains(&(nr, nc))
+                    && matches!(self.board[nr][nc], BoardEntity::Void)
+                {
+                    visited.insert((nr, nc));
+                    queue.push_back((nr, nc));
+                }
+            }
+        }
+
+        visited
+    }
+
+    fn neighbors(r: usize, c: usize, h: usize, w: usize) -> Vec<(usize, usize)> {
+        let mut n = Vec::with_capacity(4);
+        if r > 0     { n.push((r - 1, c)); }
+        if r + 1 < h { n.push((r + 1, c)); }
+        if c > 0     { n.push((r, c - 1)); }
+        if c + 1 < w { n.push((r, c + 1)); }
+        n
+    }
+
     /// A cell is focusable (cursor can land on it) when it is actionable.
     /// Threads / KeyThreads must pass `is_selectable`.
     /// Obstacles and depleted generators are never focusable.
@@ -79,9 +121,10 @@ impl GameBoard {
 
     /// Returns true if at least one Thread or KeyThread on the board is selectable.
     pub fn has_selectable_thread(&self) -> bool {
+        let connected = self.surface_connected_voids();
         for row in 0..self.height as usize {
             for col in 0..self.width as usize {
-                if self.is_selectable(row, col) {
+                if self.is_selectable_with(row, col, &connected) {
                     return true;
                 }
             }
@@ -91,8 +134,24 @@ impl GameBoard {
 
     /// A cell is selectable when:
     ///   - it contains a Thread or KeyThread, AND
-    ///   - it is in the top row (row 0), OR at least one orthogonal neighbor is Void.
+    ///   - it is in the top row (row 0), OR at least one orthogonal
+    ///     neighbor is a *surface-connected* Void.
+    ///
+    /// This prevents tweezers-created isolated voids from granting
+    /// selectability to buried threads.
     pub fn is_selectable(&self, row: usize, col: usize) -> bool {
+        let connected = self.surface_connected_voids();
+        self.is_selectable_with(row, col, &connected)
+    }
+
+    /// Like `is_selectable` but accepts a pre-computed connectivity set
+    /// to avoid redundant BFS when checking many cells.
+    pub fn is_selectable_with(
+        &self,
+        row: usize,
+        col: usize,
+        connected_voids: &HashSet<(usize, usize)>,
+    ) -> bool {
         match &self.board[row][col] {
             BoardEntity::Thread(_) | BoardEntity::KeyThread(_) => {}
             _ => return false,
@@ -102,12 +161,13 @@ impl GameBoard {
         }
         let h = self.height as usize;
         let w = self.width as usize;
-        let is_void = |r: usize, c: usize| matches!(self.board[r][c], BoardEntity::Void);
 
-        (row > 0       && is_void(row - 1, col)) ||
-        (row + 1 < h   && is_void(row + 1, col)) ||
-        (col > 0       && is_void(row, col - 1)) ||
-        (col + 1 < w   && is_void(row, col + 1))
+        for (nr, nc) in Self::neighbors(row, col, h, w) {
+            if connected_voids.contains(&(nr, nc)) {
+                return true;
+            }
+        }
+        false
     }
 }
 
@@ -310,5 +370,68 @@ mod tests {
             height: 1, width: 2, knit_volume: 1,
         };
         assert!(!board.has_selectable_thread());
+    }
+
+    #[test]
+    fn test_isolated_void_does_not_grant_selectability() {
+        // An isolated void (not connected to top row) should NOT make
+        // neighboring threads selectable.
+        let board = GameBoard {
+            board: vec![
+                vec![BoardEntity::Thread(Color::Red)],   // row 0: thread, no void
+                vec![BoardEntity::Thread(Color::Blue)],  // row 1: thread
+                vec![BoardEntity::Void],                 // row 2: void, but not connected to top
+                vec![BoardEntity::Thread(Color::Green)], // row 3: has void above but isolated
+            ],
+            height: 4,
+            width: 1,
+            knit_volume: 1,
+        };
+        // Row 0 is selectable (top row)
+        assert!(board.is_selectable(0, 0));
+        // Row 1 has no surface-connected void neighbor
+        assert!(!board.is_selectable(1, 0));
+        // Row 2 is void, not a thread
+        assert!(!board.is_selectable(2, 0));
+        // Row 3 borders a void at (2,0), but that void is NOT connected to top → not selectable
+        assert!(!board.is_selectable(3, 0));
+    }
+
+    #[test]
+    fn test_connected_void_chain_grants_selectability() {
+        // A chain of voids from top row should still grant selectability.
+        let board = GameBoard {
+            board: vec![
+                vec![BoardEntity::Void],                 // row 0: void (seed)
+                vec![BoardEntity::Void],                 // row 1: void connected to seed
+                vec![BoardEntity::Thread(Color::Green)], // row 2: has connected void above
+            ],
+            height: 3,
+            width: 1,
+            knit_volume: 1,
+        };
+        // Row 2 borders void at (1,0), which connects to (0,0) → selectable
+        assert!(board.is_selectable(2, 0));
+    }
+
+    #[test]
+    fn test_surface_connected_voids_computation() {
+        let board = GameBoard {
+            board: vec![
+                vec![BoardEntity::Void,                BoardEntity::Thread(Color::Red)],
+                vec![BoardEntity::Void,                BoardEntity::Thread(Color::Blue)],
+                vec![BoardEntity::Thread(Color::Green), BoardEntity::Void],
+            ],
+            height: 3,
+            width: 2,
+            knit_volume: 1,
+        };
+        let connected = board.surface_connected_voids();
+        // (0,0) is a void in row 0 → connected
+        assert!(connected.contains(&(0, 0)));
+        // (1,0) is void adjacent to (0,0) → connected
+        assert!(connected.contains(&(1, 0)));
+        // (2,1) is void but not connected to any top-row void → NOT connected
+        assert!(!connected.contains(&(2, 1)));
     }
 }

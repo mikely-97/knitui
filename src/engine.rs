@@ -358,15 +358,24 @@ impl GameEngine {
 
         self.bonuses.balloons -= 1;
 
-        for column in &mut self.yarn.board {
-            let mut lifted = Vec::new();
-            for _ in 0..self.bonuses.balloon_count {
-                if let Some(patch) = column.pop() {
-                    lifted.push(patch);
+        // Lift individual patches into fixed balloon slots.
+        // Left side: pop from leftmost non-empty column(s)
+        let left_count = (self.bonuses.balloon_count / 2) as usize;
+        for _ in 0..left_count {
+            if let Some(idx) = self.yarn.board.iter().position(|c| !c.is_empty()) {
+                if let Some(patch) = self.yarn.board[idx].pop() {
+                    self.yarn.balloon_columns.push(Some(patch));
                 }
             }
-            if !lifted.is_empty() {
-                self.yarn.balloon_columns.push(lifted);
+        }
+
+        // Right side: pop from rightmost non-empty column(s)
+        let right_count = ((self.bonuses.balloon_count + 1) / 2) as usize;
+        for _ in 0..right_count {
+            if let Some(idx) = self.yarn.board.iter().rposition(|c| !c.is_empty()) {
+                if let Some(patch) = self.yarn.board[idx].pop() {
+                    self.yarn.balloon_columns.push(Some(patch));
+                }
             }
         }
 
@@ -466,7 +475,7 @@ pub struct GameStateSnapshot {
     #[serde(default)]
     pub balloon_count: u16,
     #[serde(default)]
-    pub balloon_columns: Vec<Vec<YarnPatchSnap>>,
+    pub balloon_columns: Vec<Option<YarnPatchSnap>>,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -508,10 +517,10 @@ impl GameStateSnapshot {
             scissors_threads: e.bonuses.scissors_threads,
             balloon_count: e.bonuses.balloon_count,
             balloon_columns: e.yarn.balloon_columns.iter()
-                .map(|col| col.iter().map(|p| YarnPatchSnap {
+                .map(|opt| opt.as_ref().map(|p| YarnPatchSnap {
                     color: color_serde::color_to_str(&p.color),
                     locked: p.locked,
-                }).collect())
+                }))
                 .collect(),
         }
     }
@@ -540,12 +549,12 @@ impl GameStateSnapshot {
             .collect();
         let threads = threads?;
 
-        let balloon_cols: Result<Vec<Vec<Patch>>, String> = self.balloon_columns.iter()
-            .map(|col| col.iter().map(|p| {
+        let balloon_cols: Result<Vec<Option<Patch>>, String> = self.balloon_columns.iter()
+            .map(|opt| opt.as_ref().map(|p| {
                 let color = color_serde::str_to_color(&p.color)
                     .ok_or_else(|| format!("bad color: {}", p.color))?;
                 Ok(Patch { color, locked: p.locked })
-            }).collect())
+            }).transpose())
             .collect();
         let balloon_cols = balloon_cols?;
 
@@ -767,8 +776,10 @@ mod tests {
     #[test]
     fn move_cursor_down_succeeds() {
         let mut e = default_engine();
-        // Place a Void at (2,0) so Thread at (1,0) becomes selectable → focusable
-        e.board.board[2][0] = BoardEntity::Void;
+        // Place a Void at (0,0) — surface void in row 0.
+        // Thread at (1,0) now has a surface-connected void neighbor → selectable → focusable.
+        e.board.board[0][0] = BoardEntity::Void;
+        // Cursor starts at (0,0) which is Void (focusable).
         assert!(e.move_cursor(Direction::Down).is_ok());
         assert_eq!(e.cursor_row, 1);
     }
@@ -786,13 +797,39 @@ mod tests {
     }
     #[test]
     fn move_cursor_skips_non_focusable_knits() {
-        let mut e = default_engine();
-        // Row 1 col 0 is a buried Thread (not selectable → not focusable).
-        // Place a Void at (2,0) so (1,0) gains a void neighbor → becomes focusable.
-        // But first verify skipping: put void only at (2,1) so (1,0) stays buried.
-        e.board.board[2][1] = BoardEntity::Void;
-        // Now (2,0) is Thread(Red) with void neighbor at (2,1) → selectable → focusable.
-        // (1,0) is Thread(Blue) with no void neighbor → NOT focusable. Cursor skips it.
+        // Build a 3×3 board where:
+        //   row 0: [Thread, Void,     Void    ]  ← cursor starts at (0,0)
+        //   row 1: [Thread, Obstacle, Void    ]  ← (1,0) has no void neighbor → NOT focusable
+        //   row 2: [Thread, Void,     Void    ]  ← (2,0) has void neighbor (2,1) connected
+        //                                            via (2,2)→(1,2)→(0,2) → surface-connected
+        let board = GameBoard {
+            board: vec![
+                vec![BoardEntity::Thread(Color::Red),  BoardEntity::Void,     BoardEntity::Void],
+                vec![BoardEntity::Thread(Color::Blue), BoardEntity::Obstacle, BoardEntity::Void],
+                vec![BoardEntity::Thread(Color::Red),  BoardEntity::Void,     BoardEntity::Void],
+            ],
+            height: 3,
+            width: 3,
+            knit_volume: 1,
+        };
+        let mut e = GameEngine {
+            board,
+            yarn: Yarn {
+                board: vec![vec![Patch { color: Color::Red, locked: false }]],
+                yarn_lines: 1, visible_patches: 3,
+                balloon_columns: Vec::new(),
+            },
+            active_threads: vec![],
+            cursor_row: 0, cursor_col: 0,
+            knit_volume: 1, active_threads_limit: 5,
+            bonuses: BonusInventory {
+                scissors: 0, tweezers: 0, balloons: 0,
+                scissors_threads: 1, balloon_count: 2,
+            },
+            bonus_state: BonusState::None,
+        };
+        // (1,0) Thread(Blue): neighbors (0,0)=Thread, (1,1)=Obstacle, (2,0)=Thread → no void → NOT focusable
+        // (2,0) Thread(Red): neighbor (2,1)=Void, connected to surface → focusable
         assert!(e.move_cursor(Direction::Down).is_ok());
         assert_eq!(e.cursor_row, 2); // skipped row 1
         assert_eq!(e.cursor_col, 0);
@@ -1425,7 +1462,7 @@ mod tests {
         assert!(!e.yarn.balloon_columns.is_empty());
         // Total patches should be conserved (moved, not destroyed)
         let total_regular: usize = e.yarn.board.iter().map(|c| c.len()).sum();
-        let total_balloon: usize = e.yarn.balloon_columns.iter().map(|c| c.len()).sum();
+        let total_balloon = e.yarn.balloon_columns.iter().filter(|s| s.is_some()).count();
         assert_eq!(total_before, total_regular + total_balloon);
     }
 
@@ -1454,13 +1491,13 @@ mod tests {
         e.bonuses.scissors = 3;
         e.bonuses.tweezers = 2;
         e.bonuses.balloons = 1;
-        e.yarn.balloon_columns = vec![vec![Patch { color: Color::Red, locked: false }]];
+        e.yarn.balloon_columns = vec![Some(Patch { color: Color::Red, locked: false })];
         let json = e.to_json();
         let e2 = GameEngine::from_json(&json).expect("roundtrip");
         assert_eq!(e2.bonuses.scissors, 3);
         assert_eq!(e2.bonuses.tweezers, 2);
         assert_eq!(e2.bonuses.balloons, 1);
         assert_eq!(e2.yarn.balloon_columns.len(), 1);
-        assert_eq!(e2.yarn.balloon_columns[0][0].color, Color::Red);
+        assert_eq!(e2.yarn.balloon_columns[0].as_ref().unwrap().color, Color::Red);
     }
 }

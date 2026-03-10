@@ -27,7 +27,7 @@ pub struct Yarn {
     pub board: Vec<Vec<Patch>>,
     pub yarn_lines: u16,
     pub visible_patches: u16,
-    pub balloon_columns: Vec<Vec<Patch>>,
+    pub balloon_columns: Vec<Option<Patch>>,
 }
 
 impl Yarn {
@@ -76,20 +76,25 @@ impl Yarn {
             }
         }
 
-        // Then check balloon columns (same logic, but no locked patches expected)
-        for column in &mut self.balloon_columns {
-            let Some(last) = column.last() else { continue };
-            if last.color == thread.color {
-                column.pop();
-                thread.knit_on();
-                return;
+        // Then check balloon slots (fixed positions, not a queue)
+        for slot in &mut self.balloon_columns {
+            if let Some(patch) = slot {
+                if patch.color == thread.color {
+                    *slot = None;
+                    thread.knit_on();
+                    return;
+                }
             }
         }
     }
 
-    /// Remove empty balloon columns.
+    /// Clear balloon slots once all patches have been processed.
     pub fn cleanup_balloon_columns(&mut self) {
-        self.balloon_columns.retain(|col| !col.is_empty());
+        if !self.balloon_columns.is_empty()
+            && self.balloon_columns.iter().all(|s| s.is_none())
+        {
+            self.balloon_columns.clear();
+        }
     }
 
     pub fn process_sequence(&mut self, threads: &mut Vec<Thread>) {
@@ -100,15 +105,40 @@ impl Yarn {
 
     /// Deep-scan all yarn columns (and balloon columns) for a matching patch.
     /// Unlike process_one, this ignores queue order — it searches ALL patches
-    /// in each column, not just the front. Removes the first match found.
+    /// in each column, not just the front.
+    ///
+    /// Uses BFS across columns: checks depth 0 (front) of ALL columns first,
+    /// then depth 1 of all columns, etc. This ensures the visually closest
+    /// match across all columns is consumed first, rather than exhausting
+    /// one column before checking the next.
     /// Locked patches are skipped entirely.
     pub fn deep_scan_process(&mut self, thread: &mut Thread) {
-        // Search regular columns first, then balloon columns
-        for column in self.board.iter_mut().chain(self.balloon_columns.iter_mut()) {
-            if let Some(pos) = column.iter().position(|p| !p.locked && p.color == thread.color) {
-                column.remove(pos);
-                thread.knit_on();
-                return;
+        let max_len = self.board.iter()
+            .map(|c| c.len()).max().unwrap_or(0);
+
+        for depth in 0..max_len {
+            // Check regular columns at this depth
+            for col_idx in 0..self.board.len() {
+                let col = &self.board[col_idx];
+                if col.len() <= depth { continue; }
+                let pos = col.len() - 1 - depth;
+                if !col[pos].locked && col[pos].color == thread.color {
+                    self.board[col_idx].remove(pos);
+                    thread.knit_on();
+                    return;
+                }
+            }
+            // Balloon slots are flat (exposed patches) — check at depth 0 only
+            if depth == 0 {
+                for slot in &mut self.balloon_columns {
+                    if let Some(patch) = slot {
+                        if !patch.locked && patch.color == thread.color {
+                            *slot = None;
+                            thread.knit_on();
+                            return;
+                        }
+                    }
+                }
             }
         }
     }
@@ -356,16 +386,77 @@ mod tests {
             ]],
             yarn_lines: 1,
             visible_patches: 3,
-            balloon_columns: vec![vec![
-                Patch { color: Color::Blue, locked: false },
-            ]],
+            balloon_columns: vec![
+                Some(Patch { color: Color::Blue, locked: false }),
+            ],
         };
 
         let mut thread = Thread { color: Color::Blue, status: 1, has_key: false };
         yarn.deep_scan_process(&mut thread);
 
         assert_eq!(thread.status, 2);
-        assert_eq!(yarn.balloon_columns[0].len(), 0);
+        assert!(yarn.balloon_columns[0].is_none());
+    }
+
+    #[test]
+    fn test_deep_scan_bfs_prefers_front_across_columns() {
+        // Col 0: [Blue(bottom), Red(top)]  — Blue at depth 1
+        // Col 1: [Red(bottom), Blue(top)]  — Blue at depth 0 (front)
+        // BFS should pick the Blue from col 1 (depth 0) before col 0 (depth 1).
+        let mut yarn = Yarn {
+            board: vec![
+                vec![
+                    Patch { color: Color::Blue, locked: false },  // depth 1
+                    Patch { color: Color::Red, locked: false },   // depth 0 (front)
+                ],
+                vec![
+                    Patch { color: Color::Red, locked: false },   // depth 1
+                    Patch { color: Color::Blue, locked: false },  // depth 0 (front)
+                ],
+            ],
+            yarn_lines: 2,
+            visible_patches: 3,
+            balloon_columns: Vec::new(),
+        };
+
+        let mut thread = Thread { color: Color::Blue, status: 1, has_key: false };
+        yarn.deep_scan_process(&mut thread);
+
+        assert_eq!(thread.status, 2);
+        // Col 1 front (Blue) should have been consumed, not col 0 deep (Blue)
+        assert_eq!(yarn.board[0].len(), 2); // col 0 untouched
+        assert_eq!(yarn.board[1].len(), 1); // col 1 had its front removed
+        assert_eq!(yarn.board[1][0].color, Color::Red); // Red remains at bottom
+    }
+
+    #[test]
+    fn test_deep_scan_bfs_skips_locked_at_front() {
+        // Col 0: [Blue(locked, front)] — locked, should be skipped
+        // Col 1: [Blue(unlocked, deep), Red(front)]
+        // BFS depth 0: col 0 locked → skip, col 1 front is Red → no match
+        // BFS depth 1: col 1 deep is Blue → match
+        let mut yarn = Yarn {
+            board: vec![
+                vec![
+                    Patch { color: Color::Blue, locked: true },   // depth 0, locked
+                ],
+                vec![
+                    Patch { color: Color::Blue, locked: false },  // depth 1
+                    Patch { color: Color::Red, locked: false },   // depth 0 (front)
+                ],
+            ],
+            yarn_lines: 2,
+            visible_patches: 3,
+            balloon_columns: Vec::new(),
+        };
+
+        let mut thread = Thread { color: Color::Blue, status: 1, has_key: false };
+        yarn.deep_scan_process(&mut thread);
+
+        assert_eq!(thread.status, 2);
+        assert_eq!(yarn.board[0].len(), 1); // col 0 untouched (locked)
+        assert_eq!(yarn.board[1].len(), 1); // col 1 deep Blue removed
+        assert_eq!(yarn.board[1][0].color, Color::Red); // Red remains at front
     }
 
     #[test]
@@ -387,17 +478,17 @@ mod tests {
             ]],
             yarn_lines: 1,
             visible_patches: 3,
-            balloon_columns: vec![vec![
-                Patch { color: Color::Blue, locked: false },
-            ]],
+            balloon_columns: vec![
+                Some(Patch { color: Color::Blue, locked: false }),
+            ],
         };
 
         let mut thread = Thread { color: Color::Blue, status: 1, has_key: false };
         yarn.process_one(&mut thread);
 
-        // Should match against balloon column, not regular column
+        // Should match against balloon slot, not regular column
         assert_eq!(thread.status, 2);
-        assert_eq!(yarn.balloon_columns[0].len(), 0);
+        assert!(yarn.balloon_columns[0].is_none());
         assert_eq!(yarn.board[0].len(), 1); // regular column unchanged
     }
 
@@ -409,9 +500,9 @@ mod tests {
             ]],
             yarn_lines: 1,
             visible_patches: 3,
-            balloon_columns: vec![vec![
-                Patch { color: Color::Red, locked: false },
-            ]],
+            balloon_columns: vec![
+                Some(Patch { color: Color::Red, locked: false }),
+            ],
         };
 
         let mut thread = Thread { color: Color::Red, status: 1, has_key: false };
@@ -420,6 +511,6 @@ mod tests {
         // Regular columns checked first
         assert_eq!(thread.status, 2);
         assert_eq!(yarn.board[0].len(), 0); // regular consumed
-        assert_eq!(yarn.balloon_columns[0].len(), 1); // balloon untouched
+        assert!(yarn.balloon_columns[0].is_some()); // balloon untouched
     }
 }

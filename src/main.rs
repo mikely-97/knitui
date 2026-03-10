@@ -36,6 +36,9 @@ enum Layout {
     Horizontal,
 }
 
+#[derive(Clone, Copy)]
+enum FlankSide { Left, Right }
+
 fn detect_layout(config_layout: &str, visible_patches: u16, board_height: u16, scale: u16) -> Layout {
     match config_layout {
         "horizontal" => Layout::Horizontal,
@@ -58,7 +61,10 @@ fn detect_layout(config_layout: &str, visible_patches: u16, board_height: u16, s
 // ── Scaled rendering helpers ─────────────────────────────────────────────────
 
 /// Render yarn patches into a region starting at (x0, y0), scaled with spacing.
-fn render_yarn(stdout: &mut Stdout, engine: &GameEngine, x0: u16, y0: u16, scale: u16) -> io::Result<()> {
+/// `with_balloons`: if true, render balloon columns to the right of regular
+/// yarn (used in vertical layout). If false, caller handles balloon rendering
+/// separately (used in horizontal layout to avoid overlap).
+fn render_yarn(stdout: &mut Stdout, engine: &GameEngine, x0: u16, y0: u16, scale: u16, with_balloons: bool) -> io::Result<()> {
     let sh = scale;
     let sw = scale * 2;
     for offset in 0..(engine.yarn.visible_patches as usize) {
@@ -80,25 +86,102 @@ fn render_yarn(stdout: &mut Stdout, engine: &GameEngine, x0: u16, y0: u16, scale
         }
     }
 
-    // Render balloon columns (if any) to the right with a separator
-    if !engine.yarn.balloon_columns.is_empty() {
-        let regular_w = engine.yarn.yarn_lines * sw
-            + engine.yarn.yarn_lines.saturating_sub(1) * YARN_HGAP;
-        let balloon_x0 = x0 + regular_w + COMP_GAP;
+    // Render balloon columns to the right (vertical layout only)
+    if with_balloons {
+        render_balloon_columns(stdout, engine, x0, y0, scale)?;
+    }
 
-        for offset in 0..(engine.yarn.visible_patches as usize) {
-            let true_offset = (engine.yarn.visible_patches as usize) - offset;
-            let row_y = y0 + (offset as u16) * (sh + YARN_VGAP);
-            for sy in 0..sh {
-                stdout.queue(MoveTo(balloon_x0, row_y + sy))?;
-                for (ci, column) in engine.yarn.balloon_columns.iter().enumerate() {
-                    if ci > 0 {
-                        for _ in 0..YARN_HGAP { stdout.queue(Print(' '))?; }
+    Ok(())
+}
+
+/// Render balloon pseudo-columns at (x0, y0), to the right of regular yarn.
+/// Uses compact height based on actual balloon content so patches are
+/// visible right at y0, aligned to the bottom of the yarn area.
+fn render_balloon_columns(stdout: &mut Stdout, engine: &GameEngine, yarn_x0: u16, y0: u16, scale: u16) -> io::Result<()> {
+    if engine.yarn.balloon_columns.is_empty() {
+        return Ok(());
+    }
+    let sh = scale;
+    let sw = scale * 2;
+    let regular_w = engine.yarn.yarn_lines * sw
+        + engine.yarn.yarn_lines.saturating_sub(1) * YARN_HGAP;
+    let balloon_x0 = yarn_x0 + regular_w + COMP_GAP;
+
+    // Single row of fixed slots, bottom-aligned with yarn
+    let yarn_h = engine.yarn.visible_patches * (sh + YARN_VGAP) - YARN_VGAP;
+    let y_start = y0 + yarn_h - sh;
+
+    for sy in 0..sh {
+        stdout.queue(MoveTo(balloon_x0, y_start + sy))?;
+        for (ci, slot) in engine.yarn.balloon_columns.iter().enumerate() {
+            if ci > 0 {
+                for _ in 0..YARN_HGAP { stdout.queue(Print(' '))?; }
+            }
+            match slot {
+                Some(patch) => {
+                    for _ in 0..sw { stdout.queue(Print(patch))?; }
+                }
+                None => {
+                    for _ in 0..sw { stdout.queue(Print(' '))?; }
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
+/// Render a single flanking balloon cell (left or right of yarn).
+/// Each flank is one patch wide (sw). Left shows patches lifted from the
+/// leftmost yarn column, right shows patches from the rightmost.
+/// balloon_columns[0] = left patches, balloon_columns[last] = right patches.
+/// Shows dim ░ placeholders when balloons available but unused.
+fn render_balloon_flank(
+    stdout: &mut Stdout,
+    engine: &GameEngine,
+    x0: u16,
+    y0: u16,
+    scale: u16,
+    side: FlankSide,
+) -> io::Result<()> {
+    let sh = scale;
+    let sw = scale * 2;
+    let balloon_count = engine.bonuses.balloon_count as usize;
+
+    // Left flank gets first left_count slots, right gets the rest
+    let (start_idx, count) = match side {
+        FlankSide::Left  => (0, balloon_count / 2),
+        FlankSide::Right => (balloon_count / 2, (balloon_count + 1) / 2),
+    };
+    if count == 0 { return Ok(()); }
+
+    let show = engine.bonuses.balloons > 0 || !engine.yarn.balloon_columns.is_empty();
+    if !show { return Ok(()); }
+
+    let slots = &engine.yarn.balloon_columns;
+
+    // Bottom-align with yarn visible area
+    let yarn_h = engine.yarn.visible_patches * (sh + YARN_VGAP) - YARN_VGAP;
+    let flank_h = count as u16 * (sh + YARN_VGAP) - YARN_VGAP;
+    let y_start = y0 + yarn_h.saturating_sub(flank_h);
+
+    for i in 0..count {
+        let row_y = y_start + (i as u16) * (sh + YARN_VGAP);
+        let slot_idx = start_idx + i;
+        for sy in 0..sh {
+            stdout.queue(MoveTo(x0, row_y + sy))?;
+            if slots.is_empty() {
+                // Balloons available but unused — show placeholder
+                for _ in 0..sw { stdout.queue(Print("░".dark_grey()))?; }
+            } else {
+                match slots.get(slot_idx) {
+                    Some(Some(patch)) => {
+                        for _ in 0..sw { stdout.queue(Print(patch))?; }
                     }
-                    if true_offset <= column.len() {
-                        let pos = column.len() - true_offset;
-                        for _ in 0..sw { stdout.queue(Print(&column[pos]))?; }
-                    } else {
+                    Some(None) => {
+                        // Processed — empty space
+                        for _ in 0..sw { stdout.queue(Print(' '))?; }
+                    }
+                    None => {
                         for _ in 0..sw { stdout.queue(Print(' '))?; }
                     }
                 }
@@ -340,7 +423,7 @@ fn render(
     stdout.queue(Hide)?;
     stdout.queue(Clear(ClearType::All))?;
 
-    render_yarn(stdout, engine, 0, 0, scale)?;
+    render_yarn(stdout, engine, 0, 0, scale, true)?;
     render_active_h(stdout, engine, 0, active_y, scale)?;
     render_board(stdout, engine, 0, board_y, scale)?;
 
@@ -376,19 +459,34 @@ fn render_overlay(
 fn render_horizontal(
     stdout: &mut Stdout,
     engine: &GameEngine,
+    yarn_x: u16,
     board_x: u16,
     scale: u16,
 ) -> io::Result<()> {
+    let sh = scale;
     let sw = scale * 2;
     let yarn_w = engine.yarn.yarn_lines * sw
         + engine.yarn.yarn_lines.saturating_sub(1) * YARN_HGAP;
-    let active_x = yarn_w + COMP_GAP;
+    let active_x = board_x - COMP_GAP - sw;
 
     stdout.queue(BeginSynchronizedUpdate)?;
     stdout.queue(Hide)?;
     stdout.queue(Clear(ClearType::All))?;
 
-    render_yarn(stdout, engine, 0, 0, scale)?;
+    // Left balloon flank (deeper patches)
+    if yarn_x > 0 {
+        render_balloon_flank(stdout, engine, 0, 0, scale, FlankSide::Left)?;
+    }
+
+    // Yarn columns
+    render_yarn(stdout, engine, yarn_x, 0, scale, false)?;
+
+    // Right balloon flank (front patches)
+    let right_flank_x = yarn_x + yarn_w + YARN_HGAP;
+    if right_flank_x < active_x {
+        render_balloon_flank(stdout, engine, right_flank_x, 0, scale, FlankSide::Right)?;
+    }
+
     render_active_v(stdout, engine, active_x, 0, scale)?;
     render_board(stdout, engine, board_x, 0, scale)?;
 
@@ -406,11 +504,12 @@ fn render_horizontal(
 fn render_horizontal_overlay(
     stdout: &mut Stdout,
     engine: &GameEngine,
+    yarn_x: u16,
     board_x: u16,
     scale: u16,
     status: &GameStatus,
 ) -> io::Result<()> {
-    render_horizontal(stdout, engine, board_x, scale)?;
+    render_horizontal(stdout, engine, yarn_x, board_x, scale)?;
     let message = match status {
         GameStatus::Stuck => "You're lost! Press R to restart, Q to quit",
         GameStatus::Won   => "You won! Press R to play again, Q to quit",
@@ -425,13 +524,14 @@ fn do_render(
     stdout: &mut Stdout,
     engine: &GameEngine,
     layout: Layout,
+    yarn_x: u16,
     board_x: u16,
     board_y: u16,
     scale: u16,
 ) -> io::Result<()> {
     match layout {
         Layout::Vertical => render(stdout, engine, board_y, scale),
-        Layout::Horizontal => render_horizontal(stdout, engine, board_x, scale),
+        Layout::Horizontal => render_horizontal(stdout, engine, yarn_x, board_x, scale),
     }
 }
 
@@ -439,6 +539,7 @@ fn do_render_overlay(
     stdout: &mut Stdout,
     engine: &GameEngine,
     layout: Layout,
+    yarn_x: u16,
     board_x: u16,
     board_y: u16,
     scale: u16,
@@ -446,7 +547,7 @@ fn do_render_overlay(
 ) -> io::Result<()> {
     match layout {
         Layout::Vertical => render_overlay(stdout, engine, board_y, scale, status),
-        Layout::Horizontal => render_horizontal_overlay(stdout, engine, board_x, scale, status),
+        Layout::Horizontal => render_horizontal_overlay(stdout, engine, yarn_x, board_x, scale, status),
     }
 }
 
@@ -469,14 +570,27 @@ fn main() -> std::io::Result<()> {
     let yarn_h = config.visible_patches * sh + config.visible_patches.saturating_sub(1) * YARN_VGAP;
     let board_y: u16 = yarn_h + COMP_GAP + sh + COMP_GAP; // yarn + gap + active row + gap
 
-    // Horizontal layout offsets
+    // Horizontal layout offsets — reserve flanking columns for balloon patches
     let yarn_w = config.yarn_lines * sw + config.yarn_lines.saturating_sub(1) * YARN_HGAP;
-    let board_x: u16 = yarn_w + COMP_GAP + sw + COMP_GAP; // yarn + gap + active col + gap
+    let has_flanks = config.balloons > 0 && config.balloon_count > 0;
+    let (yarn_x, board_x) = if has_flanks {
+        let has_left  = config.balloon_count / 2 > 0;
+        let has_right = (config.balloon_count + 1) / 2 > 0;
+        let left_w  = if has_left  { sw } else { 0 };  // single column width
+        let right_w = if has_right { sw } else { 0 };
+        let left_gap  = if has_left  { YARN_HGAP } else { 0 };
+        let right_gap = if has_right { YARN_HGAP } else { 0 };
+        let yx = left_w + left_gap;
+        let bx = yx + yarn_w + right_gap + right_w + COMP_GAP + sw + COMP_GAP;
+        (yx, bx)
+    } else {
+        (0u16, yarn_w + COMP_GAP + sw + COMP_GAP)
+    };
 
     let mut engine = GameEngine::new(&config);
     let mut tui_state = TuiState::Playing;
 
-    do_render(&mut stdout, &engine, layout, board_x, board_y, scale)?;
+    do_render(&mut stdout, &engine, layout, yarn_x, board_x, board_y, scale)?;
 
     loop {
         if poll(Duration::from_millis(150))? {
@@ -487,7 +601,7 @@ fn main() -> std::io::Result<()> {
                             KeyCode::Char('r') | KeyCode::Char('R') => {
                                 engine = GameEngine::new(&config);
                                 tui_state = TuiState::Playing;
-                                do_render(&mut stdout, &engine, layout, board_x, board_y, scale)?;
+                                do_render(&mut stdout, &engine, layout, yarn_x, board_x, board_y, scale)?;
                             }
                             KeyCode::Char('q') | KeyCode::Char('Q') | KeyCode::Esc => break,
                             _ => {}
@@ -495,7 +609,7 @@ fn main() -> std::io::Result<()> {
                     }
                     TuiState::Help => {
                         tui_state = TuiState::Playing;
-                        do_render(&mut stdout, &engine, layout, board_x, board_y, scale)?;
+                        do_render(&mut stdout, &engine, layout, yarn_x, board_x, board_y, scale)?;
                     }
                     TuiState::Playing => {
                         match event.code {
@@ -516,7 +630,7 @@ fn main() -> std::io::Result<()> {
                                     match engine.status() {
                                         GameStatus::Playing => {}
                                         s => {
-                                            do_render_overlay(&mut stdout, &engine, layout, board_x, board_y, scale, &s)?;
+                                            do_render_overlay(&mut stdout, &engine, layout, yarn_x, board_x, board_y, scale, &s)?;
                                             tui_state = TuiState::GameOver(s);
                                             continue;
                                         }
@@ -543,16 +657,16 @@ fn main() -> std::io::Result<()> {
                         }
 
                         // Re-render to update bracket cursor markers
-                        do_render(&mut stdout, &engine, layout, board_x, board_y, scale)?;
+                        do_render(&mut stdout, &engine, layout, yarn_x, board_x, board_y, scale)?;
                     }
                 }
             }
         } else if matches!(tui_state, TuiState::Playing) && !engine.active_threads.is_empty() {
             engine.process_all_active();
             match engine.status() {
-                GameStatus::Playing => do_render(&mut stdout, &engine, layout, board_x, board_y, scale)?,
+                GameStatus::Playing => do_render(&mut stdout, &engine, layout, yarn_x, board_x, board_y, scale)?,
                 s => {
-                    do_render_overlay(&mut stdout, &engine, layout, board_x, board_y, scale, &s)?;
+                    do_render_overlay(&mut stdout, &engine, layout, yarn_x, board_x, board_y, scale, &s)?;
                     tui_state = TuiState::GameOver(s);
                 }
             };
