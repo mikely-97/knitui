@@ -686,6 +686,50 @@ pub fn render_level_intro(
     stdout.flush()
 }
 
+/// Render the endless mode game-over screen (shown when stuck).
+pub fn render_endless_gameover(
+    stdout: &mut Stdout,
+    wave: usize,
+    best_wave: usize,
+) -> io::Result<()> {
+    stdout.queue(BeginSynchronizedUpdate)?;
+    stdout.queue(Hide)?;
+    stdout.queue(Clear(ClearType::All))?;
+
+    let (term_w, term_h) = terminal::size().unwrap_or((80, 24));
+    let start_y = term_h / 2 - 3;
+
+    let title = "═══ ENDLESS MODE ═══";
+    let tx = (term_w.saturating_sub(title.chars().count() as u16)) / 2;
+    stdout.queue(MoveTo(tx, start_y))?;
+    stdout.queue(Print(title))?;
+
+    let wave_str = format!("You reached wave {}", wave);
+    let wx = (term_w.saturating_sub(wave_str.chars().count() as u16)) / 2;
+    stdout.queue(MoveTo(wx, start_y + 2))?;
+    stdout.queue(Print(&wave_str))?;
+
+    if wave >= best_wave {
+        let record_str = "New record!";
+        let rx = (term_w.saturating_sub(record_str.chars().count() as u16)) / 2;
+        stdout.queue(MoveTo(rx, start_y + 3))?;
+        stdout.queue(Print(record_str))?;
+    } else {
+        let best_str = format!("Best: wave {}", best_wave);
+        let bx = (term_w.saturating_sub(best_str.chars().count() as u16)) / 2;
+        stdout.queue(MoveTo(bx, start_y + 3))?;
+        stdout.queue(Print(best_str.dark_grey()))?;
+    }
+
+    let hint = "R:Play Again  M:Menu  Q:Quit";
+    let hx = (term_w.saturating_sub(hint.chars().count() as u16)) / 2;
+    stdout.queue(MoveTo(hx, start_y + 5))?;
+    stdout.queue(Print(hint.dark_grey()))?;
+
+    stdout.queue(EndSynchronizedUpdate)?;
+    stdout.flush()
+}
+
 pub fn render_bonus_display_h(stdout: &mut Stdout, engine: &GameEngine, x: u16, y: u16) -> io::Result<()> {
     stdout.queue(MoveTo(x, y))?;
     let bonuses = [

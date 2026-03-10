@@ -15,3 +15,4 @@ pub mod preset;
 pub mod settings;
 pub mod campaign;
 pub mod campaign_levels;
+pub mod endless;

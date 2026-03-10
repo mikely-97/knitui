@@ -16,6 +16,7 @@ use knitui::ad_content;
 use knitui::board_entity::Direction;
 use knitui::campaign::{CampaignSaves, CampaignState};
 use knitui::campaign_levels::{self, TRACK_NAMES, TRACK_COUNT};
+use knitui::endless::{EndlessState, EndlessHighScore};
 use knitui::config::Config;
 use knitui::engine::{GameEngine, GameStatus, BonusState};
 use knitui::preset::PRESETS;
@@ -135,6 +136,20 @@ fn was_cli_set(matches: &clap::ArgMatches, name: &str) -> bool {
     matches.value_source(name) == Some(ValueSource::CommandLine)
 }
 
+fn advance_endless_wave(
+    endless_ctx: &mut Option<EndlessState>,
+    game_config: &mut knitui::config::Config,
+    cli_config: &knitui::config::Config,
+    geo: &mut LayoutGeometry,
+    engine: &mut Option<GameEngine>,
+) {
+    let ctx = endless_ctx.as_mut().unwrap();
+    ctx.advance();
+    *game_config = ctx.to_config(cli_config);
+    *geo = LayoutGeometry::compute(game_config);
+    *engine = Some(GameEngine::new(game_config));
+}
+
 fn campaign_overlay_msg(ctx: &Option<CampaignState>, status: &GameStatus) -> Option<String> {
     let ctx = ctx.as_ref()?;
     let level_label = format!("[{}/{}]", ctx.current_level + 1, ctx.total_levels());
@@ -169,6 +184,8 @@ fn main() -> std::io::Result<()> {
 
     let mut campaign_saves = CampaignSaves::load();
     let mut campaign_ctx: Option<CampaignState> = None;
+    let mut endless_ctx: Option<EndlessState> = None;
+    let mut endless_hs = EndlessHighScore::load();
 
     let mut game_config = cli_config.clone();
     let mut geo = LayoutGeometry::compute(&game_config);
@@ -223,8 +240,18 @@ fn main() -> std::io::Result<()> {
                                         tui_state = TuiState::CampaignSelect { selected: 0 };
                                     }
                                     3 => {
-                                        // Endless — coming soon
-                                        *flash = Some("Coming soon!".to_string());
+                                        // Endless — start immediately
+                                        let state = EndlessState::new();
+                                        game_config = state.to_config(&cli_config);
+                                        geo = LayoutGeometry::compute(&game_config);
+                                        engine = Some(GameEngine::new(&game_config));
+                                        endless_ctx = Some(state);
+                                        tui_state = TuiState::Playing;
+                                        renderer::do_render(
+                                            &mut stdout, engine.as_ref().unwrap(),
+                                            geo.layout, geo.yarn_x, geo.board_x, geo.board_y, geo.scale,
+                                        )?;
+                                        continue;
                                     }
                                     4 => {
                                         // Options
@@ -456,7 +483,17 @@ fn main() -> std::io::Result<()> {
                                 }
                             }
                             KeyCode::Char('r') | KeyCode::Char('R') | KeyCode::Char('n') | KeyCode::Char('N') => {
-                                if let Some(ref mut ctx) = campaign_ctx {
+                                if endless_ctx.is_some() {
+                                    // Restart a fresh Endless run
+                                    endless_ctx = None;
+                                    let state = EndlessState::new();
+                                    game_config = state.to_config(&cli_config);
+                                    geo = LayoutGeometry::compute(&game_config);
+                                    engine = Some(GameEngine::new(&game_config));
+                                    endless_ctx = Some(state);
+                                    tui_state = TuiState::Playing;
+                                    renderer::do_render(&mut stdout, engine.as_ref().unwrap(), geo.layout, geo.yarn_x, geo.board_x, geo.board_y, geo.scale)?;
+                                } else if let Some(ref mut ctx) = campaign_ctx {
                                     if *status == GameStatus::Won {
                                         // Advance to next level
                                         let done = ctx.complete_level();
@@ -504,11 +541,11 @@ fn main() -> std::io::Result<()> {
                             }
                             KeyCode::Char('m') | KeyCode::Char('M') | KeyCode::Esc => {
                                 if campaign_ctx.is_some() {
-                                    // Save campaign progress before returning
                                     campaign_saves.upsert(campaign_ctx.as_ref().unwrap().clone());
                                     campaign_saves.save();
                                     campaign_ctx = None;
                                 }
+                                endless_ctx = None;
                                 tui_state = TuiState::MainMenu { selected: 0, flash: None };
                                 renderer::render_main_menu(&mut stdout, 0, None)?;
                                 continue;
@@ -569,9 +606,22 @@ fn main() -> std::io::Result<()> {
                                 if engine.as_mut().unwrap().pick_up().is_ok() {
                                     match engine.as_ref().unwrap().status() {
                                         GameStatus::Playing => {}
+                                        GameStatus::Won if endless_ctx.is_some() => {
+                                            advance_endless_wave(&mut endless_ctx, &mut game_config, &cli_config, &mut geo, &mut engine);
+                                            renderer::do_render(&mut stdout, engine.as_ref().unwrap(), geo.layout, geo.yarn_x, geo.board_x, geo.board_y, geo.scale)?;
+                                            continue;
+                                        }
                                         s => {
-                                            let overlay = campaign_overlay_msg(&campaign_ctx, &s);
-                                            renderer::do_render_overlay(&mut stdout, engine.as_ref().unwrap(), geo.layout, geo.yarn_x, geo.board_x, geo.board_y, geo.scale, &s, overlay.as_deref())?;
+                                            if endless_ctx.is_some() && s == GameStatus::Stuck {
+                                                let wave = endless_ctx.as_ref().unwrap().wave;
+                                                endless_hs.update(wave);
+                                                endless_hs.save();
+                                                renderer::render_endless_gameover(&mut stdout, wave, endless_hs.best_wave)?;
+                                                // keep endless_ctx alive so R handler can restart
+                                            } else {
+                                                let overlay = campaign_overlay_msg(&campaign_ctx, &s);
+                                                renderer::do_render_overlay(&mut stdout, engine.as_ref().unwrap(), geo.layout, geo.yarn_x, geo.board_x, geo.board_y, geo.scale, &s, overlay.as_deref())?;
+                                            }
                                             tui_state = TuiState::GameOver(s);
                                             continue;
                                         }
@@ -616,9 +666,21 @@ fn main() -> std::io::Result<()> {
             engine.as_mut().unwrap().process_all_active();
             match engine.as_ref().unwrap().status() {
                 GameStatus::Playing => renderer::do_render(&mut stdout, engine.as_ref().unwrap(), geo.layout, geo.yarn_x, geo.board_x, geo.board_y, geo.scale)?,
+                GameStatus::Won if endless_ctx.is_some() => {
+                    advance_endless_wave(&mut endless_ctx, &mut game_config, &cli_config, &mut geo, &mut engine);
+                    renderer::do_render(&mut stdout, engine.as_ref().unwrap(), geo.layout, geo.yarn_x, geo.board_x, geo.board_y, geo.scale)?;
+                }
                 s => {
-                    let overlay = campaign_overlay_msg(&campaign_ctx, &s);
-                    renderer::do_render_overlay(&mut stdout, engine.as_ref().unwrap(), geo.layout, geo.yarn_x, geo.board_x, geo.board_y, geo.scale, &s, overlay.as_deref())?;
+                    if endless_ctx.is_some() && s == GameStatus::Stuck {
+                        let wave = endless_ctx.as_ref().unwrap().wave;
+                        endless_hs.update(wave);
+                        endless_hs.save();
+                        renderer::render_endless_gameover(&mut stdout, wave, endless_hs.best_wave)?;
+                        // keep endless_ctx alive so R handler can restart
+                    } else {
+                        let overlay = campaign_overlay_msg(&campaign_ctx, &s);
+                        renderer::do_render_overlay(&mut stdout, engine.as_ref().unwrap(), geo.layout, geo.yarn_x, geo.board_x, geo.board_y, geo.scale, &s, overlay.as_deref())?;
+                    }
                     tui_state = TuiState::GameOver(s);
                 }
             };
