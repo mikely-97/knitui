@@ -979,6 +979,7 @@ mod tests {
             scale: 1,
             scissors: 0, tweezers: 0, balloons: 0,
             scissors_threads: 1, balloon_count: 2,
+            ad_file: None,
         };
         let e = GameEngine::new(&config);
         assert_eq!(e.board.height, 4);

@@ -215,6 +215,7 @@ fn main() {
                 balloons:             args.balloons.unwrap_or(0),
                 scissors_threads:     args.scissors_threads.unwrap_or(1),
                 balloon_count:        args.balloon_count.unwrap_or(2),
+                ad_file:              None,
             };
 
             let engine = GameEngine::new(&config);

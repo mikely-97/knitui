@@ -26,6 +26,7 @@ fn make_config(
         scale: 1,
         scissors: 0, tweezers: 0, balloons: 0,
         scissors_threads: 1, balloon_count: 2,
+        ad_file: None,
     }
 }
 

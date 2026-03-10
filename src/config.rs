@@ -1,4 +1,5 @@
 use clap::Parser;
+use std::path::PathBuf;
 use crate::palette::ColorMode;
 
 #[derive(Parser)]
@@ -57,6 +58,9 @@ pub struct Config {
 
     #[arg(long, default_value_t = 2, help = "Patches lifted per yarn column per balloons use")]
     pub balloon_count: u16,
+
+    #[arg(long, help = "Path to ad quotes file (one per line, default: ~/.config/knitui/ads.txt)")]
+    pub ad_file: Option<PathBuf>,
 }
 
 impl Config {
