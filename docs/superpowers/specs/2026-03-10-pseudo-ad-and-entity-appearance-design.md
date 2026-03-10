@@ -146,10 +146,11 @@ At scale > 1, the `[` `]` cursor markers span the full height of the cell. For s
 | `src/main.rs` | Extract rendering code out; add `WatchingAd` state, ad hotkey handling, ad file loading |
 | `src/renderer.rs` | **New** — all rendering functions moved from `main.rs`, plus ad overlay renderer |
 | `src/glyphs.rs` | **New** — entity glyph lookup table |
-| `src/engine.rs` | Add `grant_scissors()`, `can_watch_ad()`, `ad_limit`, `ads_used` fields |
+| `src/engine.rs` | Add `watch_ad()`, `can_watch_ad()`, `ad_limit`, `ads_used` fields |
+| `src/ad_content.rs` | **New** — ad quote file parser with fallback |
 | `src/config.rs` | Add `--ad-file` flag |
 | `src/bin/knitui_ni.rs` | Add `ad` command |
-| `src/lib.rs` | Add `pub mod renderer; pub mod glyphs;` |
+| `src/lib.rs` | Add `pub mod renderer; pub mod glyphs; pub mod ad_content;` |
 
 ---
 
