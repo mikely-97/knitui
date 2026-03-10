@@ -9,3 +9,4 @@ pub mod solvability;
 pub mod color_serde;
 pub mod engine;
 pub mod renderer;
+pub mod glyphs;
