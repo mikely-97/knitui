@@ -49,6 +49,8 @@ enum NiCommand {
     Tweezers,
     /// Use balloons bonus
     Balloons,
+    /// Watch a fake ad (grants +1 scissors, no timer)
+    Ad,
 }
 
 #[derive(Clone, ValueEnum)]
@@ -180,6 +182,13 @@ fn main() {
                         err_response("bonus_failed", &msg);
                         return;
                     }
+                }
+                Some(NiCommand::Ad) => {
+                    if !engine.can_watch_ad() {
+                        err_response("ad_limit_reached", "ad limit reached for this game");
+                        return;
+                    }
+                    engine.watch_ad();
                 }
                 None => {
                     err_response("no_command", "provide a subcommand: move, pick, or process");
