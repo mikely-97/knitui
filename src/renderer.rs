@@ -438,6 +438,110 @@ pub fn render_keybar(stdout: &mut Stdout, engine: &GameEngine, y: u16) -> io::Re
     Ok(())
 }
 
+/// Render the main menu screen.
+pub fn render_main_menu(stdout: &mut Stdout, selected: usize, flash: Option<&str>) -> io::Result<()> {
+    stdout.queue(BeginSynchronizedUpdate)?;
+    stdout.queue(Hide)?;
+    stdout.queue(Clear(ClearType::All))?;
+
+    let items = ["Quick Game", "Custom Game", "Campaign", "Endless", "Quit"];
+    let (term_w, term_h) = terminal::size().unwrap_or((80, 24));
+    let start_y = term_h / 2 - (items.len() as u16 + 4) / 2;
+
+    // Title
+    let title = "═══ KNITUI ═══";
+    let title_x = (term_w.saturating_sub(title.chars().count() as u16)) / 2;
+    stdout.queue(MoveTo(title_x, start_y))?;
+    stdout.queue(Print(title))?;
+
+    // Menu items
+    for (i, item) in items.iter().enumerate() {
+        let y = start_y + 2 + i as u16;
+        let prefix = if i == selected { "> " } else { "  " };
+        let line = format!("{}{}", prefix, item);
+        let x = (term_w.saturating_sub(line.chars().count() as u16 + 4)) / 2;
+        stdout.queue(MoveTo(x, y))?;
+        if i == selected {
+            stdout.queue(SetAttribute(Attribute::Reverse))?;
+            stdout.queue(Print(&line))?;
+            stdout.queue(SetAttribute(Attribute::Reset))?;
+        } else {
+            stdout.queue(Print(&line))?;
+        }
+    }
+
+    // Flash message
+    if let Some(msg) = flash {
+        let flash_y = start_y + 2 + items.len() as u16 + 1;
+        let flash_x = (term_w.saturating_sub(msg.chars().count() as u16)) / 2;
+        stdout.queue(MoveTo(flash_x, flash_y))?;
+        stdout.queue(Print(msg.dark_grey()))?;
+    }
+
+    stdout.queue(EndSynchronizedUpdate)?;
+    stdout.flush()
+}
+
+/// Render the custom game configuration screen.
+pub fn render_custom_game(
+    stdout: &mut Stdout,
+    preset_name: &str,
+    fields: &[(&str, u16)],
+    selected_field: usize,
+) -> io::Result<()> {
+    stdout.queue(BeginSynchronizedUpdate)?;
+    stdout.queue(Hide)?;
+    stdout.queue(Clear(ClearType::All))?;
+
+    let (term_w, term_h) = terminal::size().unwrap_or((80, 24));
+    let total_lines = 4 + fields.len() as u16 + 2; // title + preset + gap + fields + gap + hint
+    let start_y = term_h / 2 - total_lines / 2;
+
+    // Title
+    let title = "═══ CUSTOM GAME ═══";
+    let title_x = (term_w.saturating_sub(title.chars().count() as u16)) / 2;
+    stdout.queue(MoveTo(title_x, start_y))?;
+    stdout.queue(Print(title))?;
+
+    // Preset selector
+    let preset_line = format!("Preset: ← [{}] →", preset_name);
+    let preset_x = (term_w.saturating_sub(preset_line.chars().count() as u16)) / 2;
+    stdout.queue(MoveTo(preset_x, start_y + 2))?;
+    if selected_field == 0 {
+        stdout.queue(SetAttribute(Attribute::Reverse))?;
+        stdout.queue(Print(&preset_line))?;
+        stdout.queue(SetAttribute(Attribute::Reset))?;
+    } else {
+        stdout.queue(Print(&preset_line))?;
+    }
+
+    // Fields (selected_field 1..=fields.len() maps to fields[0..])
+    let col_x = (term_w.saturating_sub(30)) / 2;
+    for (i, (name, value)) in fields.iter().enumerate() {
+        let y = start_y + 4 + i as u16;
+        let prefix = if i + 1 == selected_field { "> " } else { "  " };
+        let line = format!("{}{:<20}{:>4}", prefix, name, value);
+        stdout.queue(MoveTo(col_x, y))?;
+        if i + 1 == selected_field {
+            stdout.queue(SetAttribute(Attribute::Reverse))?;
+            stdout.queue(Print(&line))?;
+            stdout.queue(SetAttribute(Attribute::Reset))?;
+        } else {
+            stdout.queue(Print(&line))?;
+        }
+    }
+
+    // Hint line
+    let hint = "↑↓ Navigate  ←→ Adjust  Enter: Start  Esc: Back";
+    let hint_x = (term_w.saturating_sub(hint.chars().count() as u16)) / 2;
+    let hint_y = start_y + 4 + fields.len() as u16 + 1;
+    stdout.queue(MoveTo(hint_x, hint_y))?;
+    stdout.queue(Print(hint.dark_grey()))?;
+
+    stdout.queue(EndSynchronizedUpdate)?;
+    stdout.flush()
+}
+
 pub fn render_bonus_display_h(stdout: &mut Stdout, engine: &GameEngine, x: u16, y: u16) -> io::Result<()> {
     stdout.queue(MoveTo(x, y))?;
     let bonuses = [
