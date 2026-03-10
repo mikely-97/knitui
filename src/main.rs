@@ -25,48 +25,68 @@ enum TuiState {
     WatchingAd { started_at: Instant, quote: String },
 }
 
+struct LayoutGeometry {
+    layout: Layout,
+    yarn_x: u16,
+    board_x: u16,
+    board_y: u16,
+    scale: u16,
+}
+
+impl LayoutGeometry {
+    fn compute(config: &Config) -> Self {
+        let scale = config.scale;
+        let sh = scale;
+        let sw = scale * 2;
+
+        let layout = renderer::detect_layout(
+            &config.layout, config.visible_patches, config.board_height, scale,
+        );
+
+        // Vertical layout offsets
+        let yarn_h = config.visible_patches * sh
+            + config.visible_patches.saturating_sub(1) * YARN_VGAP;
+        let board_y: u16 = yarn_h + COMP_GAP + sh + COMP_GAP;
+
+        // Horizontal layout offsets — reserve flanking columns for balloon patches
+        let yarn_w = config.yarn_lines * sw
+            + config.yarn_lines.saturating_sub(1) * YARN_HGAP;
+        let has_flanks = config.balloons > 0 && config.balloon_count > 0;
+        let (yarn_x, board_x) = if has_flanks {
+            let has_left  = config.balloon_count / 2 > 0;
+            let has_right = (config.balloon_count + 1) / 2 > 0;
+            let left_w  = if has_left  { sw } else { 0 };
+            let right_w = if has_right { sw } else { 0 };
+            let left_gap  = if has_left  { YARN_HGAP } else { 0 };
+            let right_gap = if has_right { YARN_HGAP } else { 0 };
+            let yx = left_w + left_gap;
+            let bx = yx + yarn_w + right_gap + right_w + COMP_GAP + sw + COMP_GAP;
+            (yx, bx)
+        } else {
+            (0u16, yarn_w + COMP_GAP + sw + COMP_GAP)
+        };
+
+        Self { layout, yarn_x, board_x, board_y, scale }
+    }
+}
+
 // ── Main ──────────────────────────────────────────────────────────────────────
 
 fn main() -> std::io::Result<()> {
     let config = Config::parse();
     let ad_quotes = ad_content::load_quotes(&config.ad_file);
     const AD_DURATION_SECS: u64 = 15;
-    let scale = config.scale;
 
     let mut stdout = stdout();
     execute!(stdout, EnterAlternateScreen)?;
     enable_raw_mode()?;
 
-    let sh = scale;
-    let sw = scale * 2;
-
-    let layout = renderer::detect_layout(&config.layout, config.visible_patches, config.board_height, scale);
-
-    // Vertical layout offsets
-    let yarn_h = config.visible_patches * sh + config.visible_patches.saturating_sub(1) * YARN_VGAP;
-    let board_y: u16 = yarn_h + COMP_GAP + sh + COMP_GAP; // yarn + gap + active row + gap
-
-    // Horizontal layout offsets — reserve flanking columns for balloon patches
-    let yarn_w = config.yarn_lines * sw + config.yarn_lines.saturating_sub(1) * YARN_HGAP;
-    let has_flanks = config.balloons > 0 && config.balloon_count > 0;
-    let (yarn_x, board_x) = if has_flanks {
-        let has_left  = config.balloon_count / 2 > 0;
-        let has_right = (config.balloon_count + 1) / 2 > 0;
-        let left_w  = if has_left  { sw } else { 0 };  // single column width
-        let right_w = if has_right { sw } else { 0 };
-        let left_gap  = if has_left  { YARN_HGAP } else { 0 };
-        let right_gap = if has_right { YARN_HGAP } else { 0 };
-        let yx = left_w + left_gap;
-        let bx = yx + yarn_w + right_gap + right_w + COMP_GAP + sw + COMP_GAP;
-        (yx, bx)
-    } else {
-        (0u16, yarn_w + COMP_GAP + sw + COMP_GAP)
-    };
+    let geo = LayoutGeometry::compute(&config);
 
     let mut engine = GameEngine::new(&config);
     let mut tui_state = TuiState::Playing;
 
-    renderer::do_render(&mut stdout, &engine, layout, yarn_x, board_x, board_y, scale)?;
+    renderer::do_render(&mut stdout, &engine, geo.layout, geo.yarn_x, geo.board_x, geo.board_y, geo.scale)?;
 
     loop {
         if poll(Duration::from_millis(150))? {
@@ -86,7 +106,7 @@ fn main() -> std::io::Result<()> {
                             KeyCode::Char('r') | KeyCode::Char('R') => {
                                 engine = GameEngine::new(&config);
                                 tui_state = TuiState::Playing;
-                                renderer::do_render(&mut stdout, &engine, layout, yarn_x, board_x, board_y, scale)?;
+                                renderer::do_render(&mut stdout, &engine, geo.layout, geo.yarn_x, geo.board_x, geo.board_y, geo.scale)?;
                             }
                             KeyCode::Char('q') | KeyCode::Char('Q') | KeyCode::Esc => break,
                             _ => {}
@@ -94,7 +114,7 @@ fn main() -> std::io::Result<()> {
                     }
                     TuiState::Help => {
                         tui_state = TuiState::Playing;
-                        renderer::do_render(&mut stdout, &engine, layout, yarn_x, board_x, board_y, scale)?;
+                        renderer::do_render(&mut stdout, &engine, geo.layout, geo.yarn_x, geo.board_x, geo.board_y, geo.scale)?;
                     }
                     TuiState::WatchingAd { ref started_at, .. } => {
                         match event.code {
@@ -106,7 +126,7 @@ fn main() -> std::io::Result<()> {
                                         GameStatus::Playing => TuiState::Playing,
                                         _ => TuiState::GameOver(status),
                                     };
-                                    renderer::do_render(&mut stdout, &engine, layout, yarn_x, board_x, board_y, scale)?;
+                                    renderer::do_render(&mut stdout, &engine, geo.layout, geo.yarn_x, geo.board_x, geo.board_y, geo.scale)?;
                                 }
                                 // If timer not done, ignore ESC
                             }
@@ -132,7 +152,7 @@ fn main() -> std::io::Result<()> {
                                     match engine.status() {
                                         GameStatus::Playing => {}
                                         s => {
-                                            renderer::do_render_overlay(&mut stdout, &engine, layout, yarn_x, board_x, board_y, scale, &s)?;
+                                            renderer::do_render_overlay(&mut stdout, &engine, geo.layout, geo.yarn_x, geo.board_x, geo.board_y, geo.scale, &s)?;
                                             tui_state = TuiState::GameOver(s);
                                             continue;
                                         }
@@ -169,16 +189,16 @@ fn main() -> std::io::Result<()> {
                         }
 
                         // Re-render to update bracket cursor markers
-                        renderer::do_render(&mut stdout, &engine, layout, yarn_x, board_x, board_y, scale)?;
+                        renderer::do_render(&mut stdout, &engine, geo.layout, geo.yarn_x, geo.board_x, geo.board_y, geo.scale)?;
                     }
                 }
             }
         } else if matches!(tui_state, TuiState::Playing) && !engine.active_threads.is_empty() {
             engine.process_all_active();
             match engine.status() {
-                GameStatus::Playing => renderer::do_render(&mut stdout, &engine, layout, yarn_x, board_x, board_y, scale)?,
+                GameStatus::Playing => renderer::do_render(&mut stdout, &engine, geo.layout, geo.yarn_x, geo.board_x, geo.board_y, geo.scale)?,
                 s => {
-                    renderer::do_render_overlay(&mut stdout, &engine, layout, yarn_x, board_x, board_y, scale, &s)?;
+                    renderer::do_render_overlay(&mut stdout, &engine, geo.layout, geo.yarn_x, geo.board_x, geo.board_y, geo.scale, &s)?;
                     tui_state = TuiState::GameOver(s);
                 }
             };
