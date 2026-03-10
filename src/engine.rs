@@ -66,6 +66,8 @@ pub struct GameEngine {
     pub active_threads_limit: usize,
     pub bonuses: BonusInventory,
     pub bonus_state: BonusState,
+    pub ad_limit: Option<u16>,
+    pub ads_used: u16,
 }
 
 impl GameEngine {
@@ -124,6 +126,8 @@ impl GameEngine {
                 balloon_count: config.balloon_count,
             },
             bonus_state: BonusState::None,
+            ad_limit: None,
+            ads_used: 0,
         }
     }
 
@@ -478,6 +482,10 @@ pub struct GameStateSnapshot {
     pub balloon_count: u16,
     #[serde(default)]
     pub balloon_columns: Vec<Option<YarnPatchSnap>>,
+    #[serde(default)]
+    pub ad_limit: Option<u16>,
+    #[serde(default)]
+    pub ads_used: u16,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -524,6 +532,8 @@ impl GameStateSnapshot {
                     locked: p.locked,
                 }))
                 .collect(),
+            ad_limit: e.ad_limit,
+            ads_used: e.ads_used,
         }
     }
 
@@ -586,6 +596,8 @@ impl GameStateSnapshot {
                 balloon_count: if self.balloon_count == 0 { 2 } else { self.balloon_count },
             },
             bonus_state: BonusState::None,
+            ad_limit: self.ad_limit,
+            ads_used: self.ads_used,
         })
     }
 }
@@ -688,6 +700,8 @@ mod tests {
                 scissors_threads: 1, balloon_count: 2,
             },
             bonus_state: BonusState::None,
+            ad_limit: None,
+            ads_used: 0,
         }
     }
 
@@ -829,6 +843,8 @@ mod tests {
                 scissors_threads: 1, balloon_count: 2,
             },
             bonus_state: BonusState::None,
+            ad_limit: None,
+            ads_used: 0,
         };
         // (1,0) Thread(Blue): neighbors (0,0)=Thread, (1,1)=Obstacle, (2,0)=Thread → no void → NOT focusable
         // (2,0) Thread(Red): neighbor (2,1)=Void, connected to surface → focusable
@@ -912,6 +928,8 @@ mod tests {
                 scissors_threads: 1, balloon_count: 2,
             },
             bonus_state: BonusState::None,
+            ad_limit: None,
+            ads_used: 0,
         };
         assert!(e.is_won());
     }
@@ -1080,6 +1098,8 @@ mod tests {
                 scissors_threads: 1, balloon_count: 2,
             },
             bonus_state: BonusState::None,
+            ad_limit: None,
+            ads_used: 0,
         };
         assert_eq!(e.status(), GameStatus::Won);
     }
@@ -1105,6 +1125,8 @@ mod tests {
                 scissors_threads: 1, balloon_count: 2,
             },
             bonus_state: BonusState::None,
+            ad_limit: None,
+            ads_used: 0,
         };
         assert_eq!(e.status(), GameStatus::Stuck);
     }
@@ -1133,6 +1155,8 @@ mod tests {
                 scissors_threads: 1, balloon_count: 2,
             },
             bonus_state: BonusState::None,
+            ad_limit: None,
+            ads_used: 0,
         };
         assert_eq!(e.status(), GameStatus::Stuck);
     }
@@ -1158,6 +1182,8 @@ mod tests {
                 scissors_threads: 1, balloon_count: 2,
             },
             bonus_state: BonusState::None,
+            ad_limit: None,
+            ads_used: 0,
         };
         assert_eq!(e.status(), GameStatus::Playing);
     }
@@ -1183,6 +1209,8 @@ mod tests {
                 scissors_threads: 1, balloon_count: 2,
             },
             bonus_state: BonusState::None,
+            ad_limit: None,
+            ads_used: 0,
         };
         assert_eq!(e.status(), GameStatus::Stuck);
     }
@@ -1208,6 +1236,8 @@ mod tests {
                 scissors_threads: 1, balloon_count: 2,
             },
             bonus_state: BonusState::None,
+            ad_limit: None,
+            ads_used: 0,
         };
         assert_eq!(e.status(), GameStatus::Playing);
     }
@@ -1236,6 +1266,8 @@ mod tests {
                 scissors_threads: 1, balloon_count: 2,
             },
             bonus_state: BonusState::None,
+            ad_limit: None,
+            ads_used: 0,
         };
         assert_eq!(e.status(), GameStatus::Playing);
     }
@@ -1264,6 +1296,8 @@ mod tests {
                 scissors_threads: 1, balloon_count: 2,
             },
             bonus_state: BonusState::None,
+            ad_limit: None,
+            ads_used: 0,
         };
         assert_eq!(e.status(), GameStatus::Stuck);
     }
@@ -1292,6 +1326,8 @@ mod tests {
                 scissors_threads: 1, balloon_count: 2,
             },
             bonus_state: BonusState::None,
+            ad_limit: None,
+            ads_used: 0,
         };
         assert_eq!(e.status(), GameStatus::Playing);
     }
@@ -1319,6 +1355,8 @@ mod tests {
                 scissors_threads: 1, balloon_count: 2,
             },
             bonus_state: BonusState::None,
+            ad_limit: None,
+            ads_used: 0,
         };
         assert_eq!(e.status(), GameStatus::Stuck);
     }

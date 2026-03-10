@@ -144,6 +144,8 @@ fn test_engine_cursor_traversal() {
             scissors_threads: 1, balloon_count: 2,
         },
         bonus_state: BonusState::None,
+        ad_limit: None,
+        ads_used: 0,
     };
 
     // Traverse to bottom-right corner
@@ -185,6 +187,8 @@ fn test_engine_json_roundtrip_preserves_game_state() {
             scissors_threads: 1, balloon_count: 2,
         },
         bonus_state: BonusState::None,
+        ad_limit: None,
+        ads_used: 0,
     };
 
     // Make some moves
@@ -265,6 +269,8 @@ fn test_input_during_processing() {
             scissors_threads: 1, balloon_count: 2,
         },
         bonus_state: BonusState::None,
+        ad_limit: None,
+        ads_used: 0,
     };
 
     // Pick up a thread
