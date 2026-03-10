@@ -30,7 +30,8 @@ CustomGame { preset_idx: usize, editing_field: Option<usize>, config: Config }
 | 1 | Custom Game | Transition to `CustomGame` with Medium preset |
 | 2 | Campaign | Show "Coming soon!" flash, stay in `MainMenu` |
 | 3 | Endless | Show "Coming soon!" flash, stay in `MainMenu` |
-| 4 | Quit | Exit program |
+| 4 | Options | Transition to `Options` screen (scale, color mode) |
+| 5 | Quit | Exit program |
 
 ### Navigation
 
@@ -58,7 +59,6 @@ pub struct GamePreset {
     pub color_number: u16,
     pub obstacle_percentage: u16,
     pub generator_percentage: u16,
-    pub scale: u16,
     pub scissors: u16,
     pub tweezers: u16,
     pub balloons: u16,
@@ -67,12 +67,12 @@ pub struct GamePreset {
 
 ### Named presets
 
-| Preset | Board | Colors | Obstacles | Generators | Scale | Bonuses |
-|--------|-------|--------|-----------|------------|-------|---------|
-| Small | 4×4 | 4 | 0% | 0% | 1 | 0/0/0 |
-| Medium | 6×6 | 6 | 5% | 5% | 1 | 0/0/0 |
-| Large | 8×8 | 8 | 10% | 10% | 1 | 1/1/1 |
-| Chaos | 10×10 | 8 | 20% | 15% | 1 | 2/2/2 |
+| Preset | Board | Colors | Obstacles | Generators | Bonuses |
+|--------|-------|--------|-----------|------------|---------|
+| Small | 4×4 | 4 | 0% | 0% | 0/0/0 |
+| Medium | 6×6 | 6 | 5% | 5% | 0/0/0 |
+| Large | 8×8 | 8 | 10% | 10% | 1/1/1 |
+| Chaos | 10×10 | 8 | 20% | 15% | 2/2/2 |
 
 ### to_config() conversion
 
@@ -83,13 +83,38 @@ pub struct GamePreset {
 The `CustomGame` state shows:
 
 1. Preset selector at top: `← Small | [Medium] | Large | Chaos →` — switch with `←`/`→`
-2. Editable field list below (9 fields):
-   - Board Height, Board Width, Color Count, Obstacle %, Generator %, Scale, Scissors, Tweezers, Balloons
+2. Editable field list below (8 fields):
+   - Board Height, Board Width, Color Count, Obstacle %, Generator %, Scissors, Tweezers, Balloons
+   - Note: Scale and Color Mode are display preferences managed in Options, not per-game settings
 3. Navigate fields with `↑`/`↓`, adjust values with `←`/`→` (decrement/increment by 1)
 4. `Enter`: start game with current values
 5. `Esc`: return to main menu
 
 Selecting a different preset resets all fields to that preset's values. Tweaking any field is independent — no "modified" indicator needed.
+
+---
+
+## 3a. Options & Persistent Settings
+
+### Options screen
+
+Accessible from main menu index 4. Shows two settings:
+- **Scale** (1–5): `←`/`→` to adjust
+- **Color Mode**: cycles through `dark → bright → colorblind → dark-rgb → bright-rgb → colorblind-rgb`
+
+`↑`/`↓` navigates, `Esc` saves and returns to menu. Changes take effect immediately.
+
+### Persistence
+
+Settings saved to `~/.config/knitui/settings.json` via `UserSettings` struct (serde_json). Loaded at startup. Three-tier merge:
+
+1. Hard defaults (scale=1, color_mode="dark")
+2. Saved settings file overrides defaults
+3. CLI args (`--scale`, `--color-mode`) override saved settings for that session only
+
+### CLI skip-menu behavior
+
+Game-specific args (`--board-height`, `--scissors`, etc.) skip the menu and launch directly. Display-only args (`--scale`, `--color-mode`) do not skip the menu — they override the saved settings for that session.
 
 ---
 
@@ -122,6 +147,7 @@ Centered text list. Selected item in reverse video (same technique as cursor hig
           Custom Game
           Campaign
           Endless
+          Options
           Quit
 
         Coming soon!
@@ -141,7 +167,6 @@ Two-column layout. Preset selector at top. Fields below with current values. Sel
    > Color Count      6
      Obstacle %       5
      Generator %      5
-     Scale            1
      Scissors         0
      Tweezers         0
      Balloons         0
@@ -157,18 +182,22 @@ Both screens are minimal text — no box drawing, consistent with help overlay.
 
 | File | Change |
 |------|--------|
-| `src/preset.rs` | **New** — `GamePreset` struct, `PRESETS` array, `to_config()` |
-| `src/main.rs` | Add `MainMenu`, `CustomGame` to `TuiState`; start in `MainMenu`; menu/custom keybindings; game-over `M` option; `Esc` in `Playing` → menu |
-| `src/renderer.rs` | Add `render_main_menu()`, `render_custom_game()` |
-| `src/lib.rs` | Add `pub mod preset;` |
+| `src/preset.rs` | **New** — `GamePreset` struct (no scale), `PRESETS` array, `to_config()` |
+| `src/settings.rs` | **New** — `UserSettings` with `load()`/`save()` to `~/.config/knitui/settings.json`, color mode cycling |
+| `src/main.rs` | Add `MainMenu`, `CustomGame`, `Options` to `TuiState`; settings merge; start in `MainMenu`; CLI skip-menu detection; game-over `M` option; `Esc` in `Playing` → menu |
+| `src/renderer.rs` | Add `render_main_menu()`, `render_custom_game()`, `render_options()` |
+| `src/lib.rs` | Add `pub mod preset; pub mod settings;` |
 
 ---
 
 ## 8. Testing
 
 - `preset::to_config()` — preset values override base config correctly
-- `preset::to_config()` — non-preset fields (color_mode, ad_file, etc.) inherited from base
+- `preset::to_config()` — non-preset fields (color_mode, scale, ad_file, etc.) inherited from base
+- `preset::to_config()` — scale and color_mode preserved from base config
 - `preset::PRESETS` — all presets have valid field ranges (board ≥ 2, colors ≥ 2, etc.)
+- `settings::UserSettings` — serialization roundtrip
+- `settings::next_color_mode()` / `prev_color_mode()` — cycling works correctly
 - State transitions — unit-testable if we extract transition logic into functions
 
 ---
