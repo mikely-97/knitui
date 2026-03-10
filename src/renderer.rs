@@ -376,8 +376,8 @@ pub fn render_help(stdout: &mut Stdout) -> io::Result<()> {
         "",
         "  Movement:   ← → ↑ ↓   Move cursor",
         "  Pick up:    Enter       Pick up thread at cursor",
-        "  Quit:       Esc / Q     Exit game",
-        "  Restart:    R           New game",
+        "  Menu:       Esc         Return to main menu",
+        "  Restart:    R           New game (from game-over)",
         "  Help:       H           Show this screen",
         "",
         "  ─── Bonuses ───",
@@ -434,7 +434,7 @@ pub fn render_keybar(stdout: &mut Stdout, engine: &GameEngine, y: u16) -> io::Re
     stdout.queue(Print("Ad ".white()))?;
 
     stdout.queue(Print("Esc ".dark_grey()))?;
-    stdout.queue(Print("Quit".white()))?;
+    stdout.queue(Print("Menu".white()))?;
     Ok(())
 }
 
@@ -618,8 +618,8 @@ pub fn render_vertical_overlay(
 ) -> io::Result<()> {
     render_vertical(stdout, engine, board_y, scale)?;
     let message = match status {
-        GameStatus::Stuck => "You're lost! Press R to restart, Q to quit",
-        GameStatus::Won   => "You won! Press R to play again, Q to quit",
+        GameStatus::Stuck => "You're lost! R:Restart  M:Menu  Q:Quit",
+        GameStatus::Won   => "You won! R:Restart  M:Menu  Q:Quit",
         _ => return Ok(()),
     };
     stdout.queue(MoveTo(0, 0))?;
@@ -682,8 +682,8 @@ pub fn render_horizontal_overlay(
 ) -> io::Result<()> {
     render_horizontal(stdout, engine, yarn_x, board_x, scale)?;
     let message = match status {
-        GameStatus::Stuck => "You're lost! Press R to restart, Q to quit",
-        GameStatus::Won   => "You won! Press R to play again, Q to quit",
+        GameStatus::Stuck => "You're lost! R:Restart  M:Menu  Q:Quit",
+        GameStatus::Won   => "You won! R:Restart  M:Menu  Q:Quit",
         _ => return Ok(()),
     };
     stdout.queue(MoveTo(0, 0))?;
