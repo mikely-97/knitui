@@ -369,6 +369,7 @@ pub fn render_help(stdout: &mut Stdout) -> io::Result<()> {
         "  [Z] ✂ Scissors    Auto-knit thread by deep-scanning yarn",
         "  [X] ⊹ Tweezers    Pick any thread from the board",
         "  [C] ⊛ Balloons    Lift front patches, expose patches behind",
+        "  [A] ⊟ Watch ad    Watch a fake ad for +1 scissors",
         "",
         "              Press any key to close",
     ];
@@ -413,6 +414,9 @@ pub fn render_keybar(stdout: &mut Stdout, engine: &GameEngine, y: u16) -> io::Re
     } else {
         stdout.queue(Print("C ⊛x0 ".dark_grey()))?;
     }
+
+    stdout.queue(Print("A ".dark_grey()))?;
+    stdout.queue(Print("Ad ".white()))?;
 
     stdout.queue(Print("Esc ".dark_grey()))?;
     stdout.queue(Print("Quit".white()))?;
