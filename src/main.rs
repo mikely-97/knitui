@@ -10,7 +10,7 @@ use crossterm::{
     event::{poll, read, Event, KeyCode},
 };
 
-use clap::Parser;
+use clap::{CommandFactory, Parser, parser::ValueSource};
 
 use knitui::ad_content;
 use knitui::board_entity::Direction;
@@ -110,9 +110,24 @@ fn adjust_custom_field(config: &mut Config, field: usize, delta: i16) {
     }
 }
 
+/// Game-specific args: if any were explicitly passed, skip the menu.
+const GAME_ARGS: &[&str] = &[
+    "board_height", "board_width", "color_number",
+    "obstacle_percentage", "generator_percentage",
+    "scissors", "tweezers", "balloons",
+];
+
+fn has_game_args() -> bool {
+    let matches = Config::command().get_matches_from(std::env::args_os());
+    GAME_ARGS.iter().any(|name| {
+        matches.value_source(name) == Some(ValueSource::CommandLine)
+    })
+}
+
 // ── Main ──────────────────────────────────────────────────────────────────────
 
 fn main() -> std::io::Result<()> {
+    let skip_menu = has_game_args();
     let cli_config = Config::parse();
     let ad_quotes = ad_content::load_quotes(&cli_config.ad_file);
     const AD_DURATION_SECS: u64 = 15;
@@ -123,10 +138,15 @@ fn main() -> std::io::Result<()> {
 
     let mut game_config = cli_config.clone();
     let mut geo = LayoutGeometry::compute(&game_config);
-    let mut engine: Option<GameEngine> = None;
-    let mut tui_state = TuiState::MainMenu { selected: 0, flash: None };
 
-    renderer::render_main_menu(&mut stdout, 0, None)?;
+    let (mut engine, mut tui_state): (Option<GameEngine>, TuiState) = if skip_menu {
+        let e = GameEngine::new(&game_config);
+        renderer::do_render(&mut stdout, &e, geo.layout, geo.yarn_x, geo.board_x, geo.board_y, geo.scale)?;
+        (Some(e), TuiState::Playing)
+    } else {
+        renderer::render_main_menu(&mut stdout, 0, None)?;
+        (None, TuiState::MainMenu { selected: 0, flash: None })
+    };
 
     loop {
         if poll(Duration::from_millis(150))? {
