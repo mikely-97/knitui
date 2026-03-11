@@ -17,7 +17,7 @@ use knitui::board_entity::Direction;
 use knitui::campaign::{CampaignSaves, CampaignState};
 use knitui::campaign_levels::{self, TRACK_NAMES, TRACK_COUNT};
 use knitui::endless::{EndlessState, EndlessHighScore};
-use knitui::config::Config;
+use knitui::config::{Config, MAX_BOARD_DIM};
 use knitui::engine::{GameEngine, GameStatus, BonusState};
 use knitui::preset::PRESETS;
 use knitui::renderer::{self, Layout, COMP_GAP, YARN_HGAP, YARN_VGAP};
@@ -103,8 +103,8 @@ fn adjust_custom_field(config: &mut Config, field: usize, delta: i16) {
         *val = new;
     };
     match field {
-        1 => apply(&mut config.board_height, 2, 20),
-        2 => apply(&mut config.board_width, 2, 20),
+        1 => apply(&mut config.board_height, 2, MAX_BOARD_DIM),
+        2 => apply(&mut config.board_width, 2, MAX_BOARD_DIM),
         3 => apply(&mut config.color_number, 2, 8),
         4 => apply(&mut config.obstacle_percentage, 0, 50),
         5 => apply(&mut config.conveyor_percentage, 0, 50),

@@ -35,17 +35,17 @@ pub const SHORT_CAMPAIGN: &[CampaignLevel] = &[
     // 9
     CampaignLevel { board_height: 6, board_width: 6, color_number: 6, obstacle_percentage: 15, conveyor_percentage: 10, scissors: 0, tweezers: 0, balloons: 0, ad_limit: 1, reward_scissors: 1, reward_tweezers: 0, reward_balloons: 0 },
     // 10
-    CampaignLevel { board_height: 6, board_width: 7, color_number: 7, obstacle_percentage: 10, conveyor_percentage: 10, scissors: 0, tweezers: 0, balloons: 0, ad_limit: 1, reward_scissors: 1, reward_tweezers: 1, reward_balloons: 0 },
+    CampaignLevel { board_height: 6, board_width: 6, color_number: 8, obstacle_percentage: 10, conveyor_percentage: 10, scissors: 0, tweezers: 0, balloons: 0, ad_limit: 1, reward_scissors: 1, reward_tweezers: 1, reward_balloons: 0 },
     // 11
-    CampaignLevel { board_height: 7, board_width: 7, color_number: 7, obstacle_percentage: 15, conveyor_percentage: 10, scissors: 0, tweezers: 0, balloons: 0, ad_limit: 1, reward_scissors: 1, reward_tweezers: 0, reward_balloons: 1 },
+    CampaignLevel { board_height: 6, board_width: 6, color_number: 8, obstacle_percentage: 15, conveyor_percentage: 10, scissors: 0, tweezers: 0, balloons: 0, ad_limit: 1, reward_scissors: 1, reward_tweezers: 0, reward_balloons: 1 },
     // 12
-    CampaignLevel { board_height: 7, board_width: 8, color_number: 7, obstacle_percentage: 15, conveyor_percentage: 15, scissors: 0, tweezers: 0, balloons: 0, ad_limit: 1, reward_scissors: 1, reward_tweezers: 1, reward_balloons: 0 },
+    CampaignLevel { board_height: 6, board_width: 6, color_number: 8, obstacle_percentage: 15, conveyor_percentage: 15, scissors: 0, tweezers: 0, balloons: 0, ad_limit: 1, reward_scissors: 1, reward_tweezers: 1, reward_balloons: 0 },
     // 13: Endgame
-    CampaignLevel { board_height: 8, board_width: 8, color_number: 8, obstacle_percentage: 15, conveyor_percentage: 15, scissors: 0, tweezers: 0, balloons: 0, ad_limit: 1, reward_scissors: 1, reward_tweezers: 1, reward_balloons: 1 },
+    CampaignLevel { board_height: 6, board_width: 6, color_number: 8, obstacle_percentage: 15, conveyor_percentage: 15, scissors: 0, tweezers: 0, balloons: 0, ad_limit: 1, reward_scissors: 1, reward_tweezers: 1, reward_balloons: 1 },
     // 14
-    CampaignLevel { board_height: 8, board_width: 8, color_number: 8, obstacle_percentage: 20, conveyor_percentage: 15, scissors: 0, tweezers: 0, balloons: 0, ad_limit: 0, reward_scissors: 1, reward_tweezers: 1, reward_balloons: 0 },
+    CampaignLevel { board_height: 6, board_width: 6, color_number: 8, obstacle_percentage: 20, conveyor_percentage: 15, scissors: 0, tweezers: 0, balloons: 0, ad_limit: 0, reward_scissors: 1, reward_tweezers: 1, reward_balloons: 0 },
     // 15: Final
-    CampaignLevel { board_height: 9, board_width: 9, color_number: 8, obstacle_percentage: 20, conveyor_percentage: 15, scissors: 1, tweezers: 1, balloons: 1, ad_limit: 0, reward_scissors: 0, reward_tweezers: 0, reward_balloons: 0 },
+    CampaignLevel { board_height: 6, board_width: 6, color_number: 8, obstacle_percentage: 20, conveyor_percentage: 15, scissors: 1, tweezers: 1, balloons: 1, ad_limit: 0, reward_scissors: 0, reward_tweezers: 0, reward_balloons: 0 },
 ];
 
 /// Medium campaign: 25 levels, moderate ramp with plateau zones.
@@ -67,21 +67,21 @@ pub const MEDIUM_CAMPAIGN: &[CampaignLevel] = &[
     CampaignLevel { board_height: 6, board_width: 6, color_number: 6, obstacle_percentage: 10, conveyor_percentage: 10, scissors: 0, tweezers: 0, balloons: 0, ad_limit: 2, reward_scissors: 1, reward_tweezers: 1, reward_balloons: 0 },
     CampaignLevel { board_height: 6, board_width: 6, color_number: 6, obstacle_percentage: 10, conveyor_percentage: 10, scissors: 0, tweezers: 0, balloons: 0, ad_limit: 2, reward_scissors: 1, reward_tweezers: 0, reward_balloons: 0 },
     CampaignLevel { board_height: 6, board_width: 6, color_number: 6, obstacle_percentage: 15, conveyor_percentage: 10, scissors: 0, tweezers: 0, balloons: 0, ad_limit: 1, reward_scissors: 0, reward_tweezers: 1, reward_balloons: 0 },
-    CampaignLevel { board_height: 6, board_width: 7, color_number: 6, obstacle_percentage: 15, conveyor_percentage: 10, scissors: 0, tweezers: 0, balloons: 0, ad_limit: 1, reward_scissors: 1, reward_tweezers: 0, reward_balloons: 1 },
+    CampaignLevel { board_height: 6, board_width: 6, color_number: 7, obstacle_percentage: 15, conveyor_percentage: 10, scissors: 0, tweezers: 0, balloons: 0, ad_limit: 1, reward_scissors: 1, reward_tweezers: 0, reward_balloons: 1 },
     // 15-18: Higher colors
-    CampaignLevel { board_height: 6, board_width: 7, color_number: 7, obstacle_percentage: 10, conveyor_percentage: 10, scissors: 0, tweezers: 0, balloons: 0, ad_limit: 1, reward_scissors: 1, reward_tweezers: 0, reward_balloons: 0 },
-    CampaignLevel { board_height: 7, board_width: 7, color_number: 7, obstacle_percentage: 10, conveyor_percentage: 10, scissors: 0, tweezers: 0, balloons: 0, ad_limit: 1, reward_scissors: 0, reward_tweezers: 1, reward_balloons: 0 },
-    CampaignLevel { board_height: 7, board_width: 7, color_number: 7, obstacle_percentage: 15, conveyor_percentage: 10, scissors: 0, tweezers: 0, balloons: 0, ad_limit: 1, reward_scissors: 1, reward_tweezers: 0, reward_balloons: 1 },
-    CampaignLevel { board_height: 7, board_width: 7, color_number: 7, obstacle_percentage: 15, conveyor_percentage: 15, scissors: 0, tweezers: 0, balloons: 0, ad_limit: 1, reward_scissors: 1, reward_tweezers: 1, reward_balloons: 0 },
+    CampaignLevel { board_height: 6, board_width: 6, color_number: 7, obstacle_percentage: 10, conveyor_percentage: 10, scissors: 0, tweezers: 0, balloons: 0, ad_limit: 1, reward_scissors: 1, reward_tweezers: 0, reward_balloons: 0 },
+    CampaignLevel { board_height: 6, board_width: 6, color_number: 8, obstacle_percentage: 10, conveyor_percentage: 10, scissors: 0, tweezers: 0, balloons: 0, ad_limit: 1, reward_scissors: 0, reward_tweezers: 1, reward_balloons: 0 },
+    CampaignLevel { board_height: 6, board_width: 6, color_number: 8, obstacle_percentage: 15, conveyor_percentage: 10, scissors: 0, tweezers: 0, balloons: 0, ad_limit: 1, reward_scissors: 1, reward_tweezers: 0, reward_balloons: 1 },
+    CampaignLevel { board_height: 6, board_width: 6, color_number: 8, obstacle_percentage: 15, conveyor_percentage: 15, scissors: 0, tweezers: 0, balloons: 0, ad_limit: 1, reward_scissors: 1, reward_tweezers: 1, reward_balloons: 0 },
     // 19-22: Endgame ramp
-    CampaignLevel { board_height: 7, board_width: 8, color_number: 8, obstacle_percentage: 15, conveyor_percentage: 10, scissors: 0, tweezers: 0, balloons: 0, ad_limit: 1, reward_scissors: 1, reward_tweezers: 0, reward_balloons: 0 },
-    CampaignLevel { board_height: 8, board_width: 8, color_number: 8, obstacle_percentage: 15, conveyor_percentage: 15, scissors: 0, tweezers: 0, balloons: 0, ad_limit: 1, reward_scissors: 0, reward_tweezers: 1, reward_balloons: 1 },
-    CampaignLevel { board_height: 8, board_width: 8, color_number: 8, obstacle_percentage: 20, conveyor_percentage: 15, scissors: 0, tweezers: 0, balloons: 0, ad_limit: 1, reward_scissors: 1, reward_tweezers: 1, reward_balloons: 0 },
-    CampaignLevel { board_height: 8, board_width: 9, color_number: 8, obstacle_percentage: 20, conveyor_percentage: 15, scissors: 0, tweezers: 0, balloons: 0, ad_limit: 0, reward_scissors: 1, reward_tweezers: 0, reward_balloons: 1 },
+    CampaignLevel { board_height: 6, board_width: 6, color_number: 8, obstacle_percentage: 15, conveyor_percentage: 10, scissors: 0, tweezers: 0, balloons: 0, ad_limit: 1, reward_scissors: 1, reward_tweezers: 0, reward_balloons: 0 },
+    CampaignLevel { board_height: 6, board_width: 6, color_number: 8, obstacle_percentage: 15, conveyor_percentage: 15, scissors: 0, tweezers: 0, balloons: 0, ad_limit: 1, reward_scissors: 0, reward_tweezers: 1, reward_balloons: 1 },
+    CampaignLevel { board_height: 6, board_width: 6, color_number: 8, obstacle_percentage: 20, conveyor_percentage: 15, scissors: 0, tweezers: 0, balloons: 0, ad_limit: 1, reward_scissors: 1, reward_tweezers: 1, reward_balloons: 0 },
+    CampaignLevel { board_height: 6, board_width: 6, color_number: 8, obstacle_percentage: 20, conveyor_percentage: 15, scissors: 0, tweezers: 0, balloons: 0, ad_limit: 0, reward_scissors: 1, reward_tweezers: 0, reward_balloons: 1 },
     // 23-25: Final stretch
-    CampaignLevel { board_height: 9, board_width: 9, color_number: 8, obstacle_percentage: 20, conveyor_percentage: 15, scissors: 0, tweezers: 0, balloons: 0, ad_limit: 0, reward_scissors: 1, reward_tweezers: 1, reward_balloons: 0 },
-    CampaignLevel { board_height: 9, board_width: 9, color_number: 8, obstacle_percentage: 20, conveyor_percentage: 20, scissors: 0, tweezers: 0, balloons: 0, ad_limit: 0, reward_scissors: 1, reward_tweezers: 1, reward_balloons: 1 },
-    CampaignLevel { board_height: 10, board_width: 10, color_number: 8, obstacle_percentage: 20, conveyor_percentage: 20, scissors: 1, tweezers: 1, balloons: 1, ad_limit: 0, reward_scissors: 0, reward_tweezers: 0, reward_balloons: 0 },
+    CampaignLevel { board_height: 6, board_width: 6, color_number: 8, obstacle_percentage: 20, conveyor_percentage: 15, scissors: 0, tweezers: 0, balloons: 0, ad_limit: 0, reward_scissors: 1, reward_tweezers: 1, reward_balloons: 0 },
+    CampaignLevel { board_height: 6, board_width: 6, color_number: 8, obstacle_percentage: 20, conveyor_percentage: 20, scissors: 0, tweezers: 0, balloons: 0, ad_limit: 0, reward_scissors: 1, reward_tweezers: 1, reward_balloons: 1 },
+    CampaignLevel { board_height: 6, board_width: 6, color_number: 8, obstacle_percentage: 20, conveyor_percentage: 20, scissors: 1, tweezers: 1, balloons: 1, ad_limit: 0, reward_scissors: 0, reward_tweezers: 0, reward_balloons: 0 },
 ];
 
 /// Long campaign: 40 levels, gentle ramp with breathing room.
@@ -109,31 +109,31 @@ pub const LONG_CAMPAIGN: &[CampaignLevel] = &[
     CampaignLevel { board_height: 6, board_width: 6, color_number: 6, obstacle_percentage: 10, conveyor_percentage: 10, scissors: 0, tweezers: 0, balloons: 0, ad_limit: 2, reward_scissors: 1, reward_tweezers: 0, reward_balloons: 0 },
     CampaignLevel { board_height: 6, board_width: 6, color_number: 6, obstacle_percentage: 10, conveyor_percentage: 10, scissors: 0, tweezers: 0, balloons: 0, ad_limit: 2, reward_scissors: 0, reward_tweezers: 0, reward_balloons: 1 },
     CampaignLevel { board_height: 6, board_width: 6, color_number: 6, obstacle_percentage: 15, conveyor_percentage: 10, scissors: 0, tweezers: 0, balloons: 0, ad_limit: 2, reward_scissors: 1, reward_tweezers: 1, reward_balloons: 0 },
-    CampaignLevel { board_height: 6, board_width: 7, color_number: 6, obstacle_percentage: 15, conveyor_percentage: 10, scissors: 0, tweezers: 0, balloons: 0, ad_limit: 1, reward_scissors: 1, reward_tweezers: 0, reward_balloons: 0 },
-    CampaignLevel { board_height: 6, board_width: 7, color_number: 6, obstacle_percentage: 15, conveyor_percentage: 10, scissors: 0, tweezers: 0, balloons: 0, ad_limit: 1, reward_scissors: 0, reward_tweezers: 1, reward_balloons: 0 },
-    CampaignLevel { board_height: 6, board_width: 7, color_number: 7, obstacle_percentage: 10, conveyor_percentage: 10, scissors: 0, tweezers: 0, balloons: 0, ad_limit: 1, reward_scissors: 1, reward_tweezers: 0, reward_balloons: 1 },
+    CampaignLevel { board_height: 6, board_width: 6, color_number: 7, obstacle_percentage: 15, conveyor_percentage: 10, scissors: 0, tweezers: 0, balloons: 0, ad_limit: 1, reward_scissors: 1, reward_tweezers: 0, reward_balloons: 0 },
+    CampaignLevel { board_height: 6, board_width: 6, color_number: 7, obstacle_percentage: 15, conveyor_percentage: 10, scissors: 0, tweezers: 0, balloons: 0, ad_limit: 1, reward_scissors: 0, reward_tweezers: 1, reward_balloons: 0 },
+    CampaignLevel { board_height: 6, board_width: 6, color_number: 8, obstacle_percentage: 10, conveyor_percentage: 10, scissors: 0, tweezers: 0, balloons: 0, ad_limit: 1, reward_scissors: 1, reward_tweezers: 0, reward_balloons: 1 },
     // 23-28: Higher colors plateau
-    CampaignLevel { board_height: 7, board_width: 7, color_number: 7, obstacle_percentage: 10, conveyor_percentage: 10, scissors: 0, tweezers: 0, balloons: 0, ad_limit: 1, reward_scissors: 1, reward_tweezers: 0, reward_balloons: 0 },
-    CampaignLevel { board_height: 7, board_width: 7, color_number: 7, obstacle_percentage: 15, conveyor_percentage: 10, scissors: 0, tweezers: 0, balloons: 0, ad_limit: 1, reward_scissors: 0, reward_tweezers: 1, reward_balloons: 0 },
-    CampaignLevel { board_height: 7, board_width: 7, color_number: 7, obstacle_percentage: 15, conveyor_percentage: 10, scissors: 0, tweezers: 0, balloons: 0, ad_limit: 1, reward_scissors: 1, reward_tweezers: 0, reward_balloons: 1 },
-    CampaignLevel { board_height: 7, board_width: 7, color_number: 7, obstacle_percentage: 15, conveyor_percentage: 15, scissors: 0, tweezers: 0, balloons: 0, ad_limit: 1, reward_scissors: 0, reward_tweezers: 1, reward_balloons: 0 },
-    CampaignLevel { board_height: 7, board_width: 8, color_number: 7, obstacle_percentage: 15, conveyor_percentage: 15, scissors: 0, tweezers: 0, balloons: 0, ad_limit: 1, reward_scissors: 1, reward_tweezers: 0, reward_balloons: 0 },
-    CampaignLevel { board_height: 7, board_width: 8, color_number: 8, obstacle_percentage: 15, conveyor_percentage: 10, scissors: 0, tweezers: 0, balloons: 0, ad_limit: 1, reward_scissors: 1, reward_tweezers: 1, reward_balloons: 0 },
+    CampaignLevel { board_height: 6, board_width: 6, color_number: 8, obstacle_percentage: 10, conveyor_percentage: 10, scissors: 0, tweezers: 0, balloons: 0, ad_limit: 1, reward_scissors: 1, reward_tweezers: 0, reward_balloons: 0 },
+    CampaignLevel { board_height: 6, board_width: 6, color_number: 8, obstacle_percentage: 15, conveyor_percentage: 10, scissors: 0, tweezers: 0, balloons: 0, ad_limit: 1, reward_scissors: 0, reward_tweezers: 1, reward_balloons: 0 },
+    CampaignLevel { board_height: 6, board_width: 6, color_number: 8, obstacle_percentage: 15, conveyor_percentage: 10, scissors: 0, tweezers: 0, balloons: 0, ad_limit: 1, reward_scissors: 1, reward_tweezers: 0, reward_balloons: 1 },
+    CampaignLevel { board_height: 6, board_width: 6, color_number: 8, obstacle_percentage: 15, conveyor_percentage: 15, scissors: 0, tweezers: 0, balloons: 0, ad_limit: 1, reward_scissors: 0, reward_tweezers: 1, reward_balloons: 0 },
+    CampaignLevel { board_height: 6, board_width: 6, color_number: 8, obstacle_percentage: 15, conveyor_percentage: 15, scissors: 0, tweezers: 0, balloons: 0, ad_limit: 1, reward_scissors: 1, reward_tweezers: 0, reward_balloons: 0 },
+    CampaignLevel { board_height: 6, board_width: 6, color_number: 8, obstacle_percentage: 15, conveyor_percentage: 10, scissors: 0, tweezers: 0, balloons: 0, ad_limit: 1, reward_scissors: 1, reward_tweezers: 1, reward_balloons: 0 },
     // 29-34: Endgame ramp
-    CampaignLevel { board_height: 8, board_width: 8, color_number: 8, obstacle_percentage: 15, conveyor_percentage: 10, scissors: 0, tweezers: 0, balloons: 0, ad_limit: 1, reward_scissors: 1, reward_tweezers: 0, reward_balloons: 1 },
-    CampaignLevel { board_height: 8, board_width: 8, color_number: 8, obstacle_percentage: 15, conveyor_percentage: 15, scissors: 0, tweezers: 0, balloons: 0, ad_limit: 1, reward_scissors: 0, reward_tweezers: 1, reward_balloons: 0 },
-    CampaignLevel { board_height: 8, board_width: 8, color_number: 8, obstacle_percentage: 20, conveyor_percentage: 15, scissors: 0, tweezers: 0, balloons: 0, ad_limit: 1, reward_scissors: 1, reward_tweezers: 0, reward_balloons: 0 },
-    CampaignLevel { board_height: 8, board_width: 9, color_number: 8, obstacle_percentage: 20, conveyor_percentage: 15, scissors: 0, tweezers: 0, balloons: 0, ad_limit: 0, reward_scissors: 1, reward_tweezers: 1, reward_balloons: 0 },
-    CampaignLevel { board_height: 8, board_width: 9, color_number: 8, obstacle_percentage: 20, conveyor_percentage: 15, scissors: 0, tweezers: 0, balloons: 0, ad_limit: 0, reward_scissors: 0, reward_tweezers: 0, reward_balloons: 1 },
-    CampaignLevel { board_height: 9, board_width: 9, color_number: 8, obstacle_percentage: 20, conveyor_percentage: 15, scissors: 0, tweezers: 0, balloons: 0, ad_limit: 0, reward_scissors: 1, reward_tweezers: 1, reward_balloons: 0 },
+    CampaignLevel { board_height: 6, board_width: 6, color_number: 8, obstacle_percentage: 15, conveyor_percentage: 10, scissors: 0, tweezers: 0, balloons: 0, ad_limit: 1, reward_scissors: 1, reward_tweezers: 0, reward_balloons: 1 },
+    CampaignLevel { board_height: 6, board_width: 6, color_number: 8, obstacle_percentage: 15, conveyor_percentage: 15, scissors: 0, tweezers: 0, balloons: 0, ad_limit: 1, reward_scissors: 0, reward_tweezers: 1, reward_balloons: 0 },
+    CampaignLevel { board_height: 6, board_width: 6, color_number: 8, obstacle_percentage: 20, conveyor_percentage: 15, scissors: 0, tweezers: 0, balloons: 0, ad_limit: 1, reward_scissors: 1, reward_tweezers: 0, reward_balloons: 0 },
+    CampaignLevel { board_height: 6, board_width: 6, color_number: 8, obstacle_percentage: 20, conveyor_percentage: 15, scissors: 0, tweezers: 0, balloons: 0, ad_limit: 0, reward_scissors: 1, reward_tweezers: 1, reward_balloons: 0 },
+    CampaignLevel { board_height: 6, board_width: 6, color_number: 8, obstacle_percentage: 20, conveyor_percentage: 15, scissors: 0, tweezers: 0, balloons: 0, ad_limit: 0, reward_scissors: 0, reward_tweezers: 0, reward_balloons: 1 },
+    CampaignLevel { board_height: 6, board_width: 6, color_number: 8, obstacle_percentage: 20, conveyor_percentage: 15, scissors: 0, tweezers: 0, balloons: 0, ad_limit: 0, reward_scissors: 1, reward_tweezers: 1, reward_balloons: 0 },
     // 35-38: Final gauntlet
-    CampaignLevel { board_height: 9, board_width: 9, color_number: 8, obstacle_percentage: 20, conveyor_percentage: 20, scissors: 0, tweezers: 0, balloons: 0, ad_limit: 0, reward_scissors: 1, reward_tweezers: 0, reward_balloons: 1 },
-    CampaignLevel { board_height: 9, board_width: 10, color_number: 8, obstacle_percentage: 20, conveyor_percentage: 20, scissors: 0, tweezers: 0, balloons: 0, ad_limit: 0, reward_scissors: 0, reward_tweezers: 1, reward_balloons: 0 },
-    CampaignLevel { board_height: 10, board_width: 10, color_number: 8, obstacle_percentage: 20, conveyor_percentage: 20, scissors: 0, tweezers: 0, balloons: 0, ad_limit: 0, reward_scissors: 1, reward_tweezers: 1, reward_balloons: 1 },
-    CampaignLevel { board_height: 10, board_width: 10, color_number: 8, obstacle_percentage: 25, conveyor_percentage: 20, scissors: 0, tweezers: 0, balloons: 0, ad_limit: 0, reward_scissors: 1, reward_tweezers: 0, reward_balloons: 0 },
+    CampaignLevel { board_height: 6, board_width: 6, color_number: 8, obstacle_percentage: 20, conveyor_percentage: 20, scissors: 0, tweezers: 0, balloons: 0, ad_limit: 0, reward_scissors: 1, reward_tweezers: 0, reward_balloons: 1 },
+    CampaignLevel { board_height: 6, board_width: 6, color_number: 8, obstacle_percentage: 20, conveyor_percentage: 20, scissors: 0, tweezers: 0, balloons: 0, ad_limit: 0, reward_scissors: 0, reward_tweezers: 1, reward_balloons: 0 },
+    CampaignLevel { board_height: 6, board_width: 6, color_number: 8, obstacle_percentage: 20, conveyor_percentage: 20, scissors: 0, tweezers: 0, balloons: 0, ad_limit: 0, reward_scissors: 1, reward_tweezers: 1, reward_balloons: 1 },
+    CampaignLevel { board_height: 6, board_width: 6, color_number: 8, obstacle_percentage: 25, conveyor_percentage: 20, scissors: 0, tweezers: 0, balloons: 0, ad_limit: 0, reward_scissors: 1, reward_tweezers: 0, reward_balloons: 0 },
     // 39-40: Victory lap
-    CampaignLevel { board_height: 10, board_width: 10, color_number: 8, obstacle_percentage: 25, conveyor_percentage: 20, scissors: 0, tweezers: 0, balloons: 0, ad_limit: 0, reward_scissors: 1, reward_tweezers: 1, reward_balloons: 1 },
-    CampaignLevel { board_height: 10, board_width: 10, color_number: 8, obstacle_percentage: 25, conveyor_percentage: 25, scissors: 1, tweezers: 1, balloons: 1, ad_limit: 0, reward_scissors: 0, reward_tweezers: 0, reward_balloons: 0 },
+    CampaignLevel { board_height: 6, board_width: 6, color_number: 8, obstacle_percentage: 25, conveyor_percentage: 20, scissors: 0, tweezers: 0, balloons: 0, ad_limit: 0, reward_scissors: 1, reward_tweezers: 1, reward_balloons: 1 },
+    CampaignLevel { board_height: 6, board_width: 6, color_number: 8, obstacle_percentage: 25, conveyor_percentage: 25, scissors: 1, tweezers: 1, balloons: 1, ad_limit: 0, reward_scissors: 0, reward_tweezers: 0, reward_balloons: 0 },
 ];
 
 /// Get the levels slice for a given track index (0=Short, 1=Medium, 2=Long).
@@ -174,6 +174,19 @@ mod tests {
                 assert!(level.board_height >= 2, "level {}: board_height too small", i);
                 assert!(level.board_width >= 2, "level {}: board_width too small", i);
                 assert!(level.color_number >= 2, "level {}: color_number too small", i);
+            }
+        }
+    }
+
+    #[test]
+    fn all_levels_respect_max_board_dim() {
+        use crate::config::MAX_BOARD_DIM;
+        for levels in [SHORT_CAMPAIGN, MEDIUM_CAMPAIGN, LONG_CAMPAIGN] {
+            for (i, level) in levels.iter().enumerate() {
+                assert!(level.board_height <= MAX_BOARD_DIM,
+                    "level {}: board_height {} exceeds max {}", i, level.board_height, MAX_BOARD_DIM);
+                assert!(level.board_width <= MAX_BOARD_DIM,
+                    "level {}: board_width {} exceeds max {}", i, level.board_width, MAX_BOARD_DIM);
             }
         }
     }

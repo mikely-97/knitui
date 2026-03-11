@@ -2,6 +2,9 @@ use clap::Parser;
 use std::path::PathBuf;
 use crate::palette::ColorMode;
 
+/// Hard cap on board dimensions (height and width).
+pub const MAX_BOARD_DIM: u16 = 6;
+
 #[derive(Parser, Clone)]
 #[command(name = "knitui", about = "Terminal knitting puzzle game")]
 pub struct Config {

@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::PathBuf;
 
-use crate::config::Config;
+use crate::config::{Config, MAX_BOARD_DIM};
 
 const ENDLESS_FILE: &str = "endless.json";
 
@@ -39,9 +39,9 @@ impl EndlessState {
     pub fn to_config(&self, base: &Config) -> Config {
         let w = self.wave as u16;
         let mut cfg = base.clone();
-        // Board grows from 4×4 up to 10×10
-        cfg.board_height = (4 + w / 3).min(10);
-        cfg.board_width  = (4 + w / 3).min(10);
+        // Board grows from 4×4 up to MAX_BOARD_DIM×MAX_BOARD_DIM
+        cfg.board_height = (4 + w / 3).min(MAX_BOARD_DIM);
+        cfg.board_width  = (4 + w / 3).min(MAX_BOARD_DIM);
         // Colors grow from 3 up to 8
         cfg.color_number = (2 + w / 4).min(8).max(2);
         // Obstacles and conveyors grow from 0 up to 20%
