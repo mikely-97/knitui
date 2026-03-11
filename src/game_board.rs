@@ -96,6 +96,25 @@ impl GameBoard {
             board[r][c] = BoardEntity::Spool(*selected_palette.choose(&mut rng).unwrap());
         }
 
+        // Pass 4: convert some spools to KeySpools (auto-scaled)
+        let spool_positions: Vec<(usize, usize)> = (0..h)
+            .flat_map(|r| (0..w).map(move |c| (r, c)))
+            .filter(|&(r, c)| matches!(board[r][c], BoardEntity::Spool(_)))
+            .collect();
+        let total_spools = spool_positions.len();
+        let key_count = total_spools / 12; // ~1 key per 12 spools
+        if key_count > 0 {
+            let chosen: Vec<(usize, usize)> = spool_positions
+                .choose_multiple(&mut rng, key_count)
+                .cloned()
+                .collect();
+            for (r, c) in chosen {
+                if let BoardEntity::Spool(color) = board[r][c] {
+                    board[r][c] = BoardEntity::KeySpool(color);
+                }
+            }
+        }
+
         Self { board, height, width, spool_capacity }
     }
 
@@ -316,6 +335,28 @@ mod tests {
 
         let total: u16 = counter.color_hashmap.values().sum();
         assert!(total >= 48 && total <= 50);
+    }
+
+    #[test]
+    fn test_keys_spawn_on_large_boards() {
+        let palette = vec![Color::Red, Color::Blue, Color::Green];
+        // 6x6 board with 0 obstacles → ~36 spools → should get ~3 keys
+        let board = GameBoard::make_random(6, 6, &palette, 0, 2, 0, 0);
+        let key_count = board.board.iter().flatten().filter(|e| {
+            matches!(e, BoardEntity::KeySpool(_))
+        }).count();
+        assert!(key_count > 0, "expected at least 1 KeySpool on a 6x6 board");
+    }
+
+    #[test]
+    fn test_no_keys_on_tiny_boards() {
+        let palette = vec![Color::Red];
+        // 2x2 board → 4 spools → below threshold of 12
+        let board = GameBoard::make_random(2, 2, &palette, 0, 1, 0, 0);
+        let key_count = board.board.iter().flatten().filter(|e| {
+            matches!(e, BoardEntity::KeySpool(_))
+        }).count();
+        assert_eq!(key_count, 0, "tiny boards should not have keys");
     }
 
     #[test]
