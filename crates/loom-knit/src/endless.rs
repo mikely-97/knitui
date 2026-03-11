@@ -1,14 +1,6 @@
-use serde::{Deserialize, Serialize};
-use std::fs;
-use std::path::PathBuf;
+pub use loom_engine::endless::EndlessHighScore;
 
 use crate::config::{Config, MAX_BOARD_DIM};
-
-const ENDLESS_FILE: &str = "endless.json";
-
-fn endless_path() -> Option<PathBuf> {
-    dirs::config_dir().map(|d| d.join("knitui").join(ENDLESS_FILE))
-}
 
 /// Per-session state for an Endless run.
 pub struct EndlessState {
@@ -52,42 +44,6 @@ impl EndlessState {
         cfg.tweezers = self.banked_tweezers;
         cfg.balloons = self.banked_balloons;
         cfg
-    }
-}
-
-/// Persistent high score for Endless mode.
-#[derive(Serialize, Deserialize, Default)]
-pub struct EndlessHighScore {
-    pub best_wave: usize,
-}
-
-impl EndlessHighScore {
-    pub fn load() -> Self {
-        let Some(path) = endless_path() else { return Self::default() };
-        match fs::read_to_string(&path) {
-            Ok(s) => serde_json::from_str(&s).unwrap_or_default(),
-            Err(_) => Self::default(),
-        }
-    }
-
-    pub fn save(&self) {
-        let Some(path) = endless_path() else { return };
-        if let Some(parent) = path.parent() {
-            let _ = fs::create_dir_all(parent);
-        }
-        if let Ok(json) = serde_json::to_string_pretty(self) {
-            let _ = fs::write(&path, json);
-        }
-    }
-
-    /// Update if current wave beats the record. Returns true if new record.
-    pub fn update(&mut self, wave: usize) -> bool {
-        if wave > self.best_wave {
-            self.best_wave = wave;
-            true
-        } else {
-            false
-        }
     }
 }
 
@@ -140,7 +96,7 @@ mod tests {
     #[test]
     fn high_score_update_initial_record() {
         let mut hs = EndlessHighScore::default();
-        assert!(hs.update(3)); // 3 > 0 → new record
+        assert!(hs.update(3));
         assert_eq!(hs.best_wave, 3);
     }
 
@@ -149,8 +105,8 @@ mod tests {
         let mut hs = EndlessHighScore::default();
         assert!(hs.update(5));
         assert_eq!(hs.best_wave, 5);
-        assert!(!hs.update(3)); // not better
-        assert!(hs.update(7)); // new record
+        assert!(!hs.update(3));
+        assert!(hs.update(7));
         assert_eq!(hs.best_wave, 7);
     }
 

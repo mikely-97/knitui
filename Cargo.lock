@@ -204,18 +204,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "92ecc6618181def0457392ccd0ee51198e065e016d1d527a7ac1b6dc7c1f09d2"
 
 [[package]]
-name = "knitui"
-version = "0.1.0"
-dependencies = [
- "clap",
- "crossterm",
- "dirs",
- "rand",
- "serde",
- "serde_json",
-]
-
-[[package]]
 name = "libc"
 version = "0.2.175"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -245,6 +233,65 @@ name = "log"
 version = "0.4.28"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "34080505efa8e45a4b816c349525ebe327ceaa8559756f0356cba97ef3bf7432"
+
+[[package]]
+name = "loom"
+version = "0.1.0"
+dependencies = [
+ "crossterm",
+ "loom-knit",
+ "loom-match3",
+ "loom-merge2",
+]
+
+[[package]]
+name = "loom-engine"
+version = "0.1.0"
+dependencies = [
+ "crossterm",
+ "dirs",
+ "rand",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "loom-knit"
+version = "0.1.0"
+dependencies = [
+ "clap",
+ "crossterm",
+ "dirs",
+ "loom-engine",
+ "rand",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "loom-match3"
+version = "0.1.0"
+dependencies = [
+ "clap",
+ "crossterm",
+ "dirs",
+ "loom-engine",
+ "rand",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "loom-merge2"
+version = "0.1.0"
+dependencies = [
+ "clap",
+ "crossterm",
+ "dirs",
+ "loom-engine",
+ "serde",
+ "serde_json",
+]
 
 [[package]]
 name = "memchr"

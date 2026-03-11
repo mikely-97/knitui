@@ -69,6 +69,16 @@ pub struct Config {
     pub max_solutions: Option<u64>,
 }
 
+impl loom_engine::game::GameConfig for Config {
+    fn board_width(&self) -> usize { self.board_width as usize }
+    fn board_height(&self) -> usize { self.board_height as usize }
+    fn color_count(&self) -> usize { self.color_number as usize }
+    fn scale(&self) -> u16 { self.scale }
+    fn color_mode(&self) -> &str { &self.color_mode }
+    fn set_scale(&mut self, s: u16) { self.scale = s; }
+    fn set_color_mode(&mut self, m: String) { self.color_mode = m; }
+}
+
 impl Config {
     pub fn parsed_color_mode(&self) -> ColorMode {
         match self.color_mode.to_lowercase().as_str() {

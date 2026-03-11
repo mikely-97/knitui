@@ -19,14 +19,14 @@ impl Default for UserSettings {
     }
 }
 
-fn settings_path() -> Option<PathBuf> {
-    dirs::config_dir().map(|d| d.join("knitui").join(SETTINGS_FILE))
+fn settings_path(config_dir: &str) -> Option<PathBuf> {
+    dirs::config_dir().map(|d| d.join(config_dir).join(SETTINGS_FILE))
 }
 
 impl UserSettings {
     /// Load settings from disk. Returns defaults if file is missing or corrupt.
-    pub fn load() -> Self {
-        let Some(path) = settings_path() else {
+    pub fn load(config_dir: &str) -> Self {
+        let Some(path) = settings_path(config_dir) else {
             return Self::default();
         };
         match fs::read_to_string(&path) {
@@ -36,8 +36,8 @@ impl UserSettings {
     }
 
     /// Save settings to disk. Creates the config directory if needed.
-    pub fn save(&self) {
-        let Some(path) = settings_path() else { return };
+    pub fn save(&self, config_dir: &str) {
+        let Some(path) = settings_path(config_dir) else { return };
         if let Some(parent) = path.parent() {
             let _ = fs::create_dir_all(parent);
         }

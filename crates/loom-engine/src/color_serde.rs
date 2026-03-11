@@ -64,7 +64,7 @@ pub fn str_to_color(s: &str) -> Option<Color> {
     Some(c)
 }
 
-/// Use with `#[serde(with = "crate::color_serde")]` on `Color` fields.
+/// Use with `#[serde(with = "loom_engine::color_serde")]` on `Color` fields.
 pub fn serialize<S: Serializer>(color: &Color, s: S) -> Result<S::Ok, S::Error> {
     s.serialize_str(&color_to_str(color))
 }

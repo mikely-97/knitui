@@ -1,0 +1,29 @@
+[package]
+name = "loom-knit"
+version = "0.1.0"
+edition = "2024"
+
+[lib]
+name = "knitui"
+path = "src/lib.rs"
+
+[[bin]]
+name = "knitui"
+path = "src/main.rs"
+
+[[bin]]
+name = "knitui-ni"
+path = "src/bin/knitui_ni.rs"
+
+[[bin]]
+name = "knitui-solvcheck"
+path = "src/bin/knitui_solvcheck.rs"
+
+[dependencies]
+loom-engine = { path = "../loom-engine" }
+crossterm = { workspace = true }
+rand = { workspace = true }
+clap = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+dirs = { workspace = true }

@@ -7,13 +7,13 @@ const FALLBACK_QUOTE: &str = "You are watching a fake ad. Touch grass.";
 /// Load ad quotes from the configured file path.
 /// Returns a Vec of quote strings. If the file is missing or empty,
 /// returns a single fallback quote.
-pub fn load_quotes(ad_file: &Option<PathBuf>) -> Vec<String> {
+pub fn load_quotes(ad_file: &Option<PathBuf>, config_dir: &str) -> Vec<String> {
     let path = match ad_file {
         Some(p) => p.clone(),
         None => {
-            let config_dir = dirs::config_dir()
+            let config_dir_path = dirs::config_dir()
                 .unwrap_or_else(|| PathBuf::from("."));
-            config_dir.join("knitui").join("ads.txt")
+            config_dir_path.join(config_dir).join("ads.txt")
         }
     };
 
@@ -51,21 +51,21 @@ mod tests {
     #[test]
     fn load_quotes_missing_file_returns_fallback() {
         let path = Some(PathBuf::from("/nonexistent/path/ads.txt"));
-        let quotes = load_quotes(&path);
+        let quotes = load_quotes(&path, "test");
         assert_eq!(quotes.len(), 1);
         assert_eq!(quotes[0], FALLBACK_QUOTE);
     }
 
     #[test]
     fn load_quotes_none_path_uses_default() {
-        let quotes = load_quotes(&None);
+        let quotes = load_quotes(&None, "loom_test");
         assert_eq!(quotes.len(), 1);
         assert_eq!(quotes[0], FALLBACK_QUOTE);
     }
 
     #[test]
     fn load_quotes_parses_file_skipping_comments_and_blanks() {
-        let dir = std::env::temp_dir().join("knitui_test_ads");
+        let dir = std::env::temp_dir().join("loom_test_ads");
         std::fs::create_dir_all(&dir).unwrap();
         let file_path = dir.join("test_ads.txt");
         let mut f = std::fs::File::create(&file_path).unwrap();
@@ -76,7 +76,7 @@ mod tests {
         writeln!(f, "Second quote").unwrap();
         drop(f);
 
-        let quotes = load_quotes(&Some(file_path.clone()));
+        let quotes = load_quotes(&Some(file_path.clone()), "test");
         assert_eq!(quotes, vec!["First quote", "Second quote"]);
 
         std::fs::remove_dir_all(&dir).ok();
@@ -84,12 +84,12 @@ mod tests {
 
     #[test]
     fn load_quotes_empty_file_returns_fallback() {
-        let dir = std::env::temp_dir().join("knitui_test_empty_ads");
+        let dir = std::env::temp_dir().join("loom_test_empty_ads");
         std::fs::create_dir_all(&dir).unwrap();
         let file_path = dir.join("empty.txt");
         std::fs::File::create(&file_path).unwrap();
 
-        let quotes = load_quotes(&Some(file_path.clone()));
+        let quotes = load_quotes(&Some(file_path.clone()), "test");
         assert_eq!(quotes.len(), 1);
         assert_eq!(quotes[0], FALLBACK_QUOTE);
 

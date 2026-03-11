@@ -1,15 +1,10 @@
 use serde::{Deserialize, Serialize};
-use std::fs;
-use std::path::PathBuf;
+
+use loom_engine::campaign::CampaignEntry;
+pub use loom_engine::campaign::CampaignSaves;
 
 use crate::campaign_levels::levels_for_track;
 use crate::config::Config;
-
-const CAMPAIGN_FILE: &str = "campaign.json";
-
-fn campaign_path() -> Option<PathBuf> {
-    dirs::config_dir().map(|d| d.join("knitui").join(CAMPAIGN_FILE))
-}
 
 #[derive(Serialize, Deserialize, Clone)]
 pub struct CampaignState {
@@ -19,6 +14,13 @@ pub struct CampaignState {
     pub banked_tweezers: u16,
     pub banked_balloons: u16,
     pub completed: bool,
+}
+
+impl CampaignEntry for CampaignState {
+    fn track_idx(&self) -> usize { self.track_idx }
+    fn current_level(&self) -> usize { self.current_level }
+    fn total_levels(&self) -> usize { levels_for_track(self.track_idx).len() }
+    fn is_completed(&self) -> bool { self.completed }
 }
 
 impl CampaignState {
@@ -76,62 +78,6 @@ impl CampaignState {
     }
 }
 
-/// Persistent storage for all campaign saves (one per track).
-#[derive(Serialize, Deserialize, Default)]
-pub struct CampaignSaves {
-    pub saves: Vec<CampaignState>,
-}
-
-impl CampaignSaves {
-    pub fn load() -> Self {
-        let Some(path) = campaign_path() else {
-            return Self::default();
-        };
-        match fs::read_to_string(&path) {
-            Ok(contents) => serde_json::from_str(&contents).unwrap_or_default(),
-            Err(_) => Self::default(),
-        }
-    }
-
-    pub fn save(&self) {
-        let Some(path) = campaign_path() else { return };
-        if let Some(parent) = path.parent() {
-            let _ = fs::create_dir_all(parent);
-        }
-        if let Ok(json) = serde_json::to_string_pretty(self) {
-            let _ = fs::write(&path, json);
-        }
-    }
-
-    /// Get saved state for a track, if any.
-    pub fn get(&self, track_idx: usize) -> Option<&CampaignState> {
-        self.saves.iter().find(|s| s.track_idx == track_idx)
-    }
-
-    /// Update or insert a campaign state for a track.
-    pub fn upsert(&mut self, state: CampaignState) {
-        if let Some(existing) = self.saves.iter_mut().find(|s| s.track_idx == state.track_idx) {
-            *existing = state;
-        } else {
-            self.saves.push(state);
-        }
-    }
-
-    /// Reset a track to fresh state.
-    pub fn reset(&mut self, track_idx: usize) {
-        self.saves.retain(|s| s.track_idx != track_idx);
-    }
-
-    /// Summary string for a track: "Level 5/15" or "Complete" or empty.
-    pub fn progress_label(&self, track_idx: usize) -> String {
-        match self.get(track_idx) {
-            Some(s) if s.completed => "Complete".to_string(),
-            Some(s) => format!("Level {}/{}", s.current_level + 1, s.total_levels()),
-            None => String::new(),
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -152,41 +98,39 @@ mod tests {
 
     #[test]
     fn to_config_applies_level_and_banked_bonuses() {
-        let mut s = CampaignState::new(0); // Short
+        let mut s = CampaignState::new(0);
         s.banked_scissors = 2;
         s.banked_tweezers = 1;
         let cfg = s.to_config(&default_config());
-        // Level 0 of short: 3x3, 3 colors, scissors=0
         assert_eq!(cfg.board_height, 3);
         assert_eq!(cfg.board_width, 3);
         assert_eq!(cfg.color_number, 3);
-        assert_eq!(cfg.scissors, 2); // 0 + banked 2
-        assert_eq!(cfg.tweezers, 1); // 0 + banked 1
+        assert_eq!(cfg.scissors, 2);
+        assert_eq!(cfg.tweezers, 1);
     }
 
     #[test]
     fn complete_level_advances_and_banks_rewards() {
-        let mut s = CampaignState::new(0); // Short campaign
+        let mut s = CampaignState::new(0);
         let done = s.complete_level();
         assert!(!done);
         assert_eq!(s.current_level, 1);
-        // Short level 0 rewards: 1 scissors, 0 tweezers, 0 balloons
         assert_eq!(s.banked_scissors, 1);
     }
 
     #[test]
     fn complete_level_marks_campaign_done_on_last() {
-        let mut s = CampaignState::new(0); // Short = 15 levels
+        let mut s = CampaignState::new(0);
         for _ in 0..14 {
             assert!(!s.complete_level());
         }
-        assert!(s.complete_level()); // Level 15 → completed
+        assert!(s.complete_level());
         assert!(s.completed);
     }
 
     #[test]
     fn campaign_saves_upsert_and_get() {
-        let mut saves = CampaignSaves::default();
+        let mut saves = CampaignSaves::<CampaignState>::default();
         let state = CampaignState::new(1);
         saves.upsert(state);
         assert!(saves.get(1).is_some());
@@ -195,7 +139,7 @@ mod tests {
 
     #[test]
     fn campaign_saves_reset() {
-        let mut saves = CampaignSaves::default();
+        let mut saves = CampaignSaves::<CampaignState>::default();
         saves.upsert(CampaignState::new(0));
         saves.upsert(CampaignState::new(1));
         saves.reset(0);
@@ -205,7 +149,7 @@ mod tests {
 
     #[test]
     fn progress_label_shows_level() {
-        let mut saves = CampaignSaves::default();
+        let mut saves = CampaignSaves::<CampaignState>::default();
         let mut s = CampaignState::new(0);
         s.current_level = 4;
         saves.upsert(s);
@@ -214,7 +158,7 @@ mod tests {
 
     #[test]
     fn progress_label_shows_complete() {
-        let mut saves = CampaignSaves::default();
+        let mut saves = CampaignSaves::<CampaignState>::default();
         let mut s = CampaignState::new(0);
         s.completed = true;
         saves.upsert(s);
@@ -223,19 +167,19 @@ mod tests {
 
     #[test]
     fn progress_label_empty_for_no_save() {
-        let saves = CampaignSaves::default();
+        let saves = CampaignSaves::<CampaignState>::default();
         assert_eq!(saves.progress_label(0), "");
     }
 
     #[test]
     fn serialization_roundtrip() {
-        let mut saves = CampaignSaves::default();
+        let mut saves = CampaignSaves::<CampaignState>::default();
         let mut s = CampaignState::new(1);
         s.current_level = 3;
         s.banked_scissors = 5;
         saves.upsert(s);
         let json = serde_json::to_string(&saves).unwrap();
-        let loaded: CampaignSaves = serde_json::from_str(&json).unwrap();
+        let loaded: CampaignSaves<CampaignState> = serde_json::from_str(&json).unwrap();
         let s = loaded.get(1).unwrap();
         assert_eq!(s.current_level, 3);
         assert_eq!(s.banked_scissors, 5);

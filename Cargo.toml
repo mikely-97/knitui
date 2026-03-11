@@ -1,24 +1,31 @@
-[package]
-name = "knitui"
-version = "0.1.0"
-edition = "2024"
+[workspace]
+members = [
+    "crates/loom-engine",
+    "crates/loom-knit",
+    "crates/loom-match3",
+    "crates/loom-merge2",
+]
+resolver = "3"
 
-[[bin]]
-name = "knitui"
-path = "src/main.rs"
-
-[[bin]]
-name = "knitui-ni"
-path = "src/bin/knitui_ni.rs"
-
-[[bin]]
-name = "knitui-solvcheck"
-path = "src/bin/knitui_solvcheck.rs"
-
-[dependencies]
+[workspace.dependencies]
 crossterm = "0.27"
 rand = "0.9.2"
 clap = { version = "4", features = ["derive"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 dirs = "5"
+
+[package]
+name = "loom"
+version = "0.1.0"
+edition = "2024"
+
+[[bin]]
+name = "loom"
+path = "src/main.rs"
+
+[dependencies]
+crossterm = { workspace = true }
+loom-knit = { path = "crates/loom-knit" }
+loom-match3 = { path = "crates/loom-match3" }
+loom-merge2 = { path = "crates/loom-merge2" }

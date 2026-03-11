@@ -1,10 +1,6 @@
-// tbh it's vibe palette selection, mb will rework later lol 
-// also i don't know much about color blindness, so i just hope the ai knows what it's talking about 
 use rand::prelude::IndexedRandom;
 use crossterm::style::Color;
 
-
-// <VIBE_CODE>
 // dark terminal palette (ANSI — terminal theme can remap these)
 const DARK_PALETTE: [Color; 8] = [
     Color::White,
@@ -74,7 +70,6 @@ const GREY_RGB_PALETTE: [Color; 8] = [
     Color::Rgb { r: 240, g: 240, b: 240 }, // bright white
     Color::Rgb { r:  20, g:  20, b:  20 }, // near black
 ];
-// </VIBE_CODE>
 
 pub enum ColorMode {
     Bright,
@@ -136,8 +131,6 @@ mod tests {
     #[test]
     fn test_select_palette_dark_contains_valid_colors() {
         let colors = select_palette(ColorMode::Dark, 8);
-
-        // All colors should be from DARK_PALETTE
         for color in &colors {
             assert!(DARK_PALETTE.contains(color));
         }
@@ -146,8 +139,6 @@ mod tests {
     #[test]
     fn test_select_palette_bright_contains_valid_colors() {
         let colors = select_palette(ColorMode::Bright, 8);
-
-        // All colors should be from LIGHT_PALETTE
         for color in &colors {
             assert!(LIGHT_PALETTE.contains(color));
         }
@@ -156,8 +147,6 @@ mod tests {
     #[test]
     fn test_select_palette_colorblind_contains_valid_colors() {
         let colors = select_palette(ColorMode::Colorblind, 8);
-
-        // All colors should be from GREY_PALETTE
         for color in &colors {
             assert!(GREY_PALETTE.contains(color));
         }
@@ -166,12 +155,9 @@ mod tests {
     #[test]
     fn test_select_palette_no_duplicates() {
         let colors = select_palette(ColorMode::Dark, 5);
-
-        // Since we're choosing from a palette, there should be no duplicates
         let mut unique_colors = colors.clone();
         unique_colors.sort_by_key(|c| format!("{:?}", c));
         unique_colors.dedup();
-
         assert_eq!(colors.len(), unique_colors.len());
     }
 

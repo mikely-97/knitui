@@ -1,16 +1,18 @@
-# knitui
+# Loom
 
-A terminal-based puzzle game inspired by mobile yarn/knitting games. Match colored spools on the board against a scrolling yarn queue to clear the board.
+A multi-game terminal puzzle engine built with Rust and crossterm. Currently ships two playable games — **Knit** (spool-knitting puzzle) and **Match-3** (classic gem-matching) — plus a **Merge-2** stub, all selectable from a single binary.
 
-Three binaries:
-- **knitui** — interactive TUI (crossterm)
-- **knitui-ni** — non-interactive CLI driver (JSON in/out, for scripting and AI agents)
-- **knitui-solvcheck** — independent solvability checker (reads NDJSON, runs DFS verification)
+Binaries:
+- **loom** — game selector menu → launches Knit, Match-3, or Merge-2
+- **knitui** — launch Knit directly (interactive TUI)
+- **knitui-ni** — non-interactive CLI driver for Knit (JSON in/out, for scripting and AI agents)
+- **knitui-solvcheck** — independent solvability checker for Knit (reads NDJSON, runs DFS verification)
 
 Clone and run:
 
 ```
-cargo run --bin knitui
+cargo run                  # game selector
+cargo run --bin knitui     # knit directly
 ```
 
 Pass `--help` to see all options:
@@ -211,71 +213,100 @@ cargo run --bin knitui -- --scale 2 --color-mode dark-rgb --layout horizontal
 
 ## Architecture
 
+Loom is a Cargo workspace with a shared engine crate and per-game crates:
+
 ```
+Cargo.toml                  — workspace root + loom binary
 src/
-├── main.rs           — TUI binary: rendering (vertical/horizontal layout,
-│                       scaled cells, box-drawn grid, bracket cursor), input
-├── bin/
-│   ├── knitui_ni.rs  — NI binary: CLI arg parsing, JSON I/O, XDG persistence,
-│   │                    campaign/endless/batch-generate support
-│   └── knitui_solvcheck.rs — solvability checker: reads NDJSON, runs DFS
-├── lib.rs            — module declarations
-├── engine.rs         — GameEngine: owns all game state, action methods,
-│                       JSON snapshot serialisation, conveyor helpers
-├── config.rs         — CLI config (clap)
-├── game_board.rs     — board generation, is_selectable, count_spools
-├── board_entity.rs   — BoardEntity enum: Spool | KeySpool | Obstacle | Void
-│                       | Conveyor(ConveyorData) | EmptyConveyor
-│                       Direction enum and ConveyorData struct
-├── yarn.rs           — Stitch (with locked flag), Yarn, process_one with lock logic
-├── spool.rs          — Spool: color, fill, has_key
-├── color_counter.rs  — ColorCounter: HashMap of Color → count, shuffled queue
-├── color_serde.rs    — serialize/deserialize crossterm::Color as strings
-├── palette.rs        — color palettes: Dark | Bright | Colorblind, each with
-│                       ANSI and RGB variants (8 colors each)
-└── solvability.rs    — board solvability checks (count balance, BFS reachability,
-                        active headroom, key-lock pairing)
+└── main.rs                 — game selector menu → dispatches to game crates
+
+crates/
+├── loom-engine/            — shared framework (lib: loom_engine)
+│   └── src/
+│       ├── game.rs         — Game, GameEngine, GameConfig traits
+│       ├── board.rs        — generic Board<C> 2D grid
+│       ├── direction.rs    — Direction enum + offset()
+│       ├── palette.rs      — 6 palettes (Dark/Bright/Colorblind × ANSI/RGB)
+│       ├── color_serde.rs  — crossterm::Color serde helpers
+│       ├── settings.rs     — UserSettings persistence
+│       ├── campaign.rs     — CampaignSaves<E> generic campaign framework
+│       ├── endless.rs      — EndlessHighScore generic persistence
+│       ├── renderer.rs     — layout detection, box drawing, menu chrome
+│       ├── glyphs.rs       — shared glyph utilities
+│       ├── bonus.rs        — BonusInventory generic framework
+│       └── ad_content.rs   — pseudo-ad quotes
+│
+├── loom-knit/              — Knit game (lib: knitui)
+│   └── src/
+│       ├── engine.rs       — KnitEngine: board + yarn + held_spools + processing
+│       ├── game_board.rs   — BoardEntity, random generation, selectability
+│       ├── yarn.rs         — Yarn, Stitch, lock/key mechanics
+│       ├── spool.rs        — Spool struct
+│       ├── solvability.rs  — 4 board validation checks
+│       ├── renderer.rs     — knit-specific TUI rendering
+│       ├── tui.rs          — knit TUI event loop + menus
+│       ├── game.rs         — impl Game for KnitGame
+│       └── ...             — config, campaign_levels, preset, glyphs, etc.
+│
+├── loom-match3/            — Match-3 game (lib: m3tui)
+│   └── src/
+│       ├── engine.rs       — M3Engine: phase machine (swap → cascade → refill)
+│       ├── board.rs        — Cell, CellContent, SpecialPiece, TileModifier
+│       ├── matches.rs      — match detection + shape classification
+│       ├── renderer.rs     — m3-specific TUI rendering
+│       ├── tui.rs          — match-3 TUI event loop + menus
+│       ├── game.rs         — impl Game for M3Game
+│       └── ...             — bonuses, campaign_levels, config, etc.
+│
+└── loom-merge2/            — Merge-2 game stub (lib: m2tui)
+    └── src/
+        └── game.rs         — impl Game for M2Game (placeholder)
 ```
 
-### Key data flow
+### Core traits (loom-engine)
+
+- **`Game`** — identity, config, campaign/endless level data, presets, help text
+- **`GameEngine`** — handle_key, tick, render, status, score
+- **`GameConfig`** — board_width/height, color_count, scale, color_mode
+
+Each game crate implements these traits, and the shared TUI framework in each game's `tui.rs` drives the event loop, menus, campaign/endless persistence, and rendering.
+
+### Knit data flow
 
 ```
-Config
-  → GameEngine::new()
-      → select_palette()
-      → GameBoard::make_random()               (retry loop until is_solvable)
-          → game_board.count_spools()          (color → spools × spool_capacity,
-                                                includes conveyor queues)
-              → Yarn::make_from_color_counter() (shuffled stitches across columns)
-
-TUI (main.rs):   GameEngine + crossterm rendering + background spool processing
-NI  (knitui_ni): GameEngine + JSON snapshot ↔ ~/.local/share/knitui/<hash>.json
+Config → KnitEngine::new()
+  → select_palette()
+  → GameBoard::make_random()            (retry loop until is_solvable)
+      → count_spools()                  (color → spools × spool_capacity)
+          → Yarn::make_from_color_counter()
 ```
 
-### Solvability checks (run on every generated board)
+### Knit solvability checks (run on every generated board)
 
-1. **Count balance** — yarn stitches per color == board spools × spool_capacity (including all conveyor outputs)
-2. **Spool reachability** — BFS from top row, simulating selections; every spool must be reachable via the void-bordering cascade
+1. **Count balance** — yarn stitches per color == board spools × spool_capacity (including conveyor outputs)
+2. **Spool reachability** — BFS from top row; every spool reachable via void-bordering cascade
 3. **Active headroom** — distinct colors on board ≤ spool limit
-4. **Key-lock pairing** — every locked yarn stitch has a matching Key spool on the board
+4. **Key-lock pairing** — every locked yarn stitch has a matching Key spool
 
 Boards that fail any check are regenerated (up to 100 retries).
 
 ## Development
 
 ```bash
-cargo run --bin knitui     # play the interactive game
-cargo run --bin knitui-ni  # create a non-interactive game
-cargo test                 # unit + integration tests
-cargo build --release      # build all three binaries
+cargo run                       # game selector
+cargo run --bin knitui          # play knit directly
+cargo run --bin knitui-ni       # non-interactive knit driver
+cargo test --workspace          # all tests across all crates
+cargo build --release           # build all binaries
 ```
 
 **Dependencies**: `crossterm 0.27`, `rand 0.9.2`, `clap 4`, `serde 1`, `serde_json 1`, `dirs 5`
 
 ## TODO
 
+- [ ] Wire up `GameEngine` trait implementations (currently `create_engine()` is stubbed)
+- [ ] Merge-2 game implementation
 - [ ] Puzzle editor / non-random board generation
-- [x] Bonuses: scissors, tweezers, balloons (hotkey-activated, configurable counts)
-- [ ] In-game pseudo-ads between rounds
+- [ ] Further unify shared code (game-configurable palettes and color modes)
 
-See [PLAN.md](PLAN.md) for design notes on remaining features.
+See [PLAN.md](PLAN.md) for design history and migration notes.
