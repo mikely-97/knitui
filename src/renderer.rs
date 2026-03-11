@@ -745,6 +745,18 @@ pub fn render_bonus_display_h(stdout: &mut Stdout, engine: &GameEngine, x: u16, 
             stdout.queue(Print(format!("[{}] {} x{}", key, icon, count).dark_grey()))?;
         }
     }
+    // Held spool counter
+    let held = engine.held_spools.len() as u16;
+    let limit = engine.spool_limit as u16;
+    stdout.queue(Print("  "))?;
+    let counter_str = format!("⊞ {}/{}", held, limit);
+    if held >= limit.saturating_sub(1) {
+        stdout.queue(Print(counter_str.red()))?;
+    } else if held >= limit.saturating_sub(2) {
+        stdout.queue(Print(counter_str.yellow()))?;
+    } else {
+        stdout.queue(Print(counter_str.white()))?;
+    }
     Ok(())
 }
 
@@ -761,6 +773,19 @@ pub fn render_bonus_panel(stdout: &mut Stdout, engine: &GameEngine, x: u16, y: u
         } else {
             stdout.queue(Print(format!("[{}] {} x{}", key, icon, count).dark_grey()))?;
         }
+    }
+    // Held spool counter
+    let held = engine.held_spools.len() as u16;
+    let limit = engine.spool_limit as u16;
+    let row = bonuses.len() as u16;
+    stdout.queue(MoveTo(x, y + row))?;
+    let counter_str = format!("⊞ {}/{}", held, limit);
+    if held >= limit.saturating_sub(1) {
+        stdout.queue(Print(counter_str.red()))?;
+    } else if held >= limit.saturating_sub(2) {
+        stdout.queue(Print(counter_str.yellow()))?;
+    } else {
+        stdout.queue(Print(counter_str.white()))?;
     }
     Ok(())
 }
