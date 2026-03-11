@@ -2,9 +2,10 @@
 
 A terminal-based puzzle game inspired by mobile yarn/knitting games. Match colored spools on the board against a scrolling yarn queue to clear the board.
 
-Two binaries:
+Three binaries:
 - **knitui** — interactive TUI (crossterm)
 - **knitui-ni** — non-interactive CLI driver (JSON in/out, for scripting and AI agents)
+- **knitui-solvcheck** — independent solvability checker (reads NDJSON, runs DFS verification)
 
 Clone and run:
 
@@ -95,6 +96,15 @@ cargo run --bin knitui-ni -- --board-height 3 --board-width 4  # custom
 
 Output: JSON with `"status": "ok"`, `"game": "<8-char hash>"`, and full `"state"`.
 
+### Create from campaign / endless mode
+
+```bash
+cargo run --bin knitui-ni -- --campaign --track 0 --level 5     # campaign level
+cargo run --bin knitui-ni -- --endless-wave 7                    # endless wave
+cargo run --bin knitui-ni -- --max-solutions 1                   # force single-solution puzzle
+cargo run --bin knitui-ni -- --ad-limit 3                        # set ad limit (campaign)
+```
+
 ### Execute commands
 
 ```bash
@@ -103,7 +113,9 @@ cargo run --bin knitui-ni -- --game <HASH> pick
 cargo run --bin knitui-ni -- --game <HASH> process
 cargo run --bin knitui-ni -- --game <HASH> scissors
 cargo run --bin knitui-ni -- --game <HASH> tweezers
+cargo run --bin knitui-ni -- --game <HASH> cancel-tweezers
 cargo run --bin knitui-ni -- --game <HASH> balloons
+cargo run --bin knitui-ni -- --game <HASH> ad
 ```
 
 Success response:
@@ -116,7 +128,38 @@ Error response (to stderr, exit code 1):
 {"status":"error","code":"not_selectable","message":"spool is not exposed"}
 ```
 
-Error codes: `out_of_bounds`, `not_selectable`, `not_a_spool`, `active_full`, `bonus_failed`, `load_failed`, `save_failed`, `no_command`.
+Error codes: `out_of_bounds`, `not_selectable`, `not_a_spool`, `active_full`, `bonus_failed`, `ad_limit_reached`, `load_failed`, `save_failed`, `no_command`.
+
+### Query and batch subcommands
+
+```bash
+cargo run --bin knitui-ni -- list-campaign              # JSON dump of all campaign tracks/levels
+cargo run --bin knitui-ni -- describe-wave 10            # config for endless wave 10
+cargo run --bin knitui-ni -- batch-generate --count 100  # generate 100 boards as NDJSON
+cargo run --bin knitui-ni -- --campaign --track 1 --level 3 batch-generate --count 50
+```
+
+## Solvability testing pipeline
+
+An independent pipeline verifies that every generated board is solvable without bonuses. It uses `knitui-ni batch-generate` to produce boards and `knitui-solvcheck` to verify each one via full DFS.
+
+```bash
+cargo build --release
+bash scripts/test_solvability.sh        # default: 50 boards per config
+bash scripts/test_solvability.sh 200    # 200 boards per config
+```
+
+The script tests:
+1. All campaign levels (3 tracks, 45 levels) with zero bonuses
+2. Endless waves 1–30 with zero bonuses
+3. Full parameter sweep (heights × widths × colors × obstacle%)
+4. Conveyor configurations
+
+You can also run the checker manually:
+
+```bash
+cargo run --bin knitui-ni -- batch-generate --count 100 | cargo run --bin knitui-solvcheck
+```
 
 ## Configuration
 
@@ -142,6 +185,7 @@ All parameters are settable via CLI flags (both binaries). Defaults:
 | `--balloons` | 0 | Starting balloons bonus count |
 | `--scissors-spools` | 1 | Spools wound per scissors use |
 | `--balloon-count` | 2 | Stitches lifted per yarn column per balloons use |
+| `--max-solutions` | — | Max distinct winning pick sequences (slower generation for small values) |
 
 The `-rgb` color modes use 24-bit true color escapes, which are immune to terminal theme overrides (useful for kitty, alacritty, etc. that remap ANSI palette slots).
 
@@ -172,7 +216,9 @@ src/
 ├── main.rs           — TUI binary: rendering (vertical/horizontal layout,
 │                       scaled cells, box-drawn grid, bracket cursor), input
 ├── bin/
-│   └── knitui_ni.rs  — NI binary: CLI arg parsing, JSON I/O, XDG persistence
+│   ├── knitui_ni.rs  — NI binary: CLI arg parsing, JSON I/O, XDG persistence,
+│   │                    campaign/endless/batch-generate support
+│   └── knitui_solvcheck.rs — solvability checker: reads NDJSON, runs DFS
 ├── lib.rs            — module declarations
 ├── engine.rs         — GameEngine: owns all game state, action methods,
 │                       JSON snapshot serialisation, conveyor helpers
@@ -220,8 +266,8 @@ Boards that fail any check are regenerated (up to 100 retries).
 ```bash
 cargo run --bin knitui     # play the interactive game
 cargo run --bin knitui-ni  # create a non-interactive game
-cargo test                 # 171 tests (140 unit + 31 integration)
-cargo build --release      # build both binaries
+cargo test                 # unit + integration tests
+cargo build --release      # build all three binaries
 ```
 
 **Dependencies**: `crossterm 0.27`, `rand 0.9.2`, `clap 4`, `serde 1`, `serde_json 1`, `dirs 5`

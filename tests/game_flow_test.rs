@@ -148,6 +148,7 @@ fn test_engine_cursor_traversal() {
         bonus_state: BonusState::None,
         ad_limit: None,
         ads_used: 0,
+        generation_attempts: 0,
     };
 
     // Traverse to bottom-right corner
@@ -191,6 +192,7 @@ fn test_engine_json_roundtrip_preserves_game_state() {
         bonus_state: BonusState::None,
         ad_limit: None,
         ads_used: 0,
+        generation_attempts: 0,
     };
 
     // Make some moves
@@ -273,6 +275,7 @@ fn test_input_during_processing() {
         bonus_state: BonusState::None,
         ad_limit: None,
         ads_used: 0,
+        generation_attempts: 0,
     };
 
     // Pick up a spool

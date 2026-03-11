@@ -11,6 +11,10 @@ path = "src/main.rs"
 name = "knitui-ni"
 path = "src/bin/knitui_ni.rs"
 
+[[bin]]
+name = "knitui-solvcheck"
+path = "src/bin/knitui_solvcheck.rs"
+
 [dependencies]
 crossterm = "0.27"
 rand = "0.9.2"

@@ -68,6 +68,8 @@ pub struct GameEngine {
     pub bonus_state: BonusState,
     pub ad_limit: Option<u16>,
     pub ads_used: u16,
+    /// How many board-generation attempts were needed (0 = first try).
+    pub generation_attempts: u32,
 }
 
 impl GameEngine {
@@ -163,6 +165,7 @@ impl GameEngine {
             bonus_state: BonusState::None,
             ad_limit: None,
             ads_used: 0,
+            generation_attempts: attempts,
         }
     }
 
@@ -542,6 +545,8 @@ pub struct GameStateSnapshot {
     pub ad_limit: Option<u16>,
     #[serde(default)]
     pub ads_used: u16,
+    #[serde(default)]
+    pub generation_attempts: u32,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -590,6 +595,7 @@ impl GameStateSnapshot {
                 .collect(),
             ad_limit: e.ad_limit,
             ads_used: e.ads_used,
+            generation_attempts: e.generation_attempts,
         }
     }
 
@@ -654,6 +660,7 @@ impl GameStateSnapshot {
             bonus_state: BonusState::None,
             ad_limit: self.ad_limit,
             ads_used: self.ads_used,
+            generation_attempts: self.generation_attempts,
         })
     }
 }
@@ -758,6 +765,7 @@ mod tests {
             bonus_state: BonusState::None,
             ad_limit: None,
             ads_used: 0,
+            generation_attempts: 0,
         }
     }
 
@@ -891,6 +899,7 @@ mod tests {
             bonus_state: BonusState::None,
             ad_limit: None,
             ads_used: 0,
+            generation_attempts: 0,
         };
         assert!(e.move_cursor(Direction::Down).is_ok());
         assert_eq!(e.cursor_row, 2); // skipped row 1
@@ -969,6 +978,7 @@ mod tests {
             bonus_state: BonusState::None,
             ad_limit: None,
             ads_used: 0,
+            generation_attempts: 0,
         };
         assert!(e.is_won());
     }
@@ -1132,6 +1142,7 @@ mod tests {
             bonus_state: BonusState::None,
             ad_limit: None,
             ads_used: 0,
+            generation_attempts: 0,
         };
         assert_eq!(e.status(), GameStatus::Won);
     }
@@ -1158,6 +1169,7 @@ mod tests {
             bonus_state: BonusState::None,
             ad_limit: None,
             ads_used: 0,
+            generation_attempts: 0,
         };
         assert_eq!(e.status(), GameStatus::Stuck);
     }
@@ -1187,6 +1199,7 @@ mod tests {
             bonus_state: BonusState::None,
             ad_limit: None,
             ads_used: 0,
+            generation_attempts: 0,
         };
         assert_eq!(e.status(), GameStatus::Stuck);
     }
@@ -1213,6 +1226,7 @@ mod tests {
             bonus_state: BonusState::None,
             ad_limit: None,
             ads_used: 0,
+            generation_attempts: 0,
         };
         assert_eq!(e.status(), GameStatus::Playing);
     }

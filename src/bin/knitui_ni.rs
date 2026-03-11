@@ -3,6 +3,9 @@ use clap::{Parser, Subcommand, ValueEnum};
 use knitui::engine::{GameEngine, GameStatus};
 use knitui::config::Config;
 use knitui::board_entity::Direction;
+use knitui::campaign::CampaignState;
+use knitui::campaign_levels::{self, TRACK_COUNT};
+use knitui::endless::EndlessState;
 
 // ── CLI types ─────────────────────────────────────────────────────────────────
 
@@ -33,6 +36,20 @@ struct Args {
     #[arg(long)] balloons:            Option<u16>,
     #[arg(long)] scissors_spools:     Option<u16>,
     #[arg(long)] balloon_count:       Option<u16>,
+    #[arg(long)] max_solutions:       Option<u64>,
+    #[arg(long)] ad_limit:            Option<u16>,
+
+    // Campaign-mode game creation
+    #[arg(long, help = "Create a game from a campaign level")]
+    campaign: bool,
+    #[arg(long, help = "Campaign track index (0-based)")]
+    track: Option<usize>,
+    #[arg(long, help = "Campaign level index (0-based)")]
+    level: Option<usize>,
+
+    // Endless-mode game creation
+    #[arg(long, help = "Create a game for an endless-mode wave number")]
+    endless_wave: Option<usize>,
 }
 
 #[derive(Subcommand)]
@@ -47,10 +64,24 @@ enum NiCommand {
     Scissors,
     /// Use tweezers bonus (enters tweezers mode)
     Tweezers,
+    /// Cancel tweezers mode without consuming the bonus
+    CancelTweezers,
     /// Use balloons bonus
     Balloons,
     /// Watch a fake ad (grants +1 scissors, no timer)
     Ad,
+    /// List all campaign tracks and levels as JSON
+    ListCampaign,
+    /// Describe the config for a given endless-mode wave
+    DescribeWave {
+        #[arg(help = "Wave number (1-based)")]
+        wave: usize,
+    },
+    /// Generate multiple boards and output as NDJSON (one JSON object per line)
+    BatchGenerate {
+        #[arg(long, default_value_t = 100, help = "Number of boards to generate")]
+        count: usize,
+    },
 }
 
 #[derive(Clone, ValueEnum)]
@@ -95,6 +126,101 @@ fn save_engine(hash: &str, engine: &GameEngine) -> Result<(), String> {
         .map_err(|e| format!("cannot write {}: {e}", path.display()))
 }
 
+// ── Config builder ───────────────────────────────────────────────────────────
+
+fn base_config() -> Config {
+    Config {
+        board_height: 6,
+        board_width: 6,
+        color_number: 6,
+        color_mode: "dark".into(),
+        spool_limit: 7,
+        spool_capacity: 3,
+        yarn_lines: 4,
+        obstacle_percentage: 5,
+        visible_stitches: 6,
+        conveyor_capacity: 3,
+        conveyor_percentage: 5,
+        layout: "auto".into(),
+        scale: 1,
+        scissors: 0,
+        tweezers: 0,
+        balloons: 0,
+        scissors_spools: 1,
+        balloon_count: 2,
+        ad_file: None,
+        max_solutions: None,
+    }
+}
+
+/// Build a Config from CLI args, optionally layering on top of a provided base.
+fn config_from_args(args: &Args, mut config: Config) -> Config {
+    if let Some(v) = args.board_height        { config.board_height = v; }
+    if let Some(v) = args.board_width         { config.board_width = v; }
+    if let Some(v) = args.color_number        { config.color_number = v; }
+    if let Some(ref v) = args.color_mode      { config.color_mode = v.clone(); }
+    if let Some(v) = args.spool_limit         { config.spool_limit = v; }
+    if let Some(v) = args.spool_capacity      { config.spool_capacity = v; }
+    if let Some(v) = args.yarn_lines          { config.yarn_lines = v; }
+    if let Some(v) = args.obstacle_percentage { config.obstacle_percentage = v; }
+    if let Some(v) = args.visible_stitches    { config.visible_stitches = v; }
+    if let Some(v) = args.conveyor_capacity   { config.conveyor_capacity = v; }
+    if let Some(v) = args.conveyor_percentage { config.conveyor_percentage = v; }
+    if let Some(v) = args.scissors            { config.scissors = v; }
+    if let Some(v) = args.tweezers            { config.tweezers = v; }
+    if let Some(v) = args.balloons            { config.balloons = v; }
+    if let Some(v) = args.scissors_spools     { config.scissors_spools = v; }
+    if let Some(v) = args.balloon_count       { config.balloon_count = v; }
+    if let Some(v) = args.max_solutions       { config.max_solutions = Some(v); }
+    config
+}
+
+/// Resolve the Config for game creation, handling campaign / endless / raw modes.
+fn resolve_config(args: &Args) -> Config {
+    if args.campaign {
+        let track = args.track.unwrap_or(0);
+        let level = args.level.unwrap_or(0);
+        let levels = campaign_levels::levels_for_track(track);
+        if level >= levels.len() {
+            err_response("bad_level", &format!(
+                "track {track} has {} levels, requested level {level}", levels.len()
+            ));
+            std::process::exit(1);
+        }
+        // Use CampaignState to build the config (with banked bonuses from CLI args)
+        let mut state = CampaignState::new(track);
+        state.current_level = level;
+        if let Some(s) = args.scissors { state.banked_scissors = s; }
+        if let Some(t) = args.tweezers { state.banked_tweezers = t; }
+        if let Some(b) = args.balloons { state.banked_balloons = b; }
+        let config = state.to_config(&base_config());
+        // Allow remaining CLI overrides (e.g. max_solutions)
+        config_from_args_limited(args, config)
+    } else if let Some(wave) = args.endless_wave {
+        let mut state = EndlessState::new();
+        for _ in 1..wave {
+            state.advance();
+        }
+        // Override wave to target
+        state.wave = wave;
+        let mut config = state.to_config(&base_config());
+        // Force bonuses to 0 for the base endless config (banked comes from advance)
+        // Allow CLI overrides
+        config = config_from_args(args, config);
+        config
+    } else {
+        config_from_args(args, base_config())
+    }
+}
+
+/// Limited config overlay: only applies non-gameplay overrides (max_solutions, color_mode)
+/// so campaign/endless core params are preserved.
+fn config_from_args_limited(args: &Args, mut config: Config) -> Config {
+    if let Some(ref v) = args.color_mode  { config.color_mode = v.clone(); }
+    if let Some(v) = args.max_solutions   { config.max_solutions = Some(v); }
+    config
+}
+
 // ── Output helpers ────────────────────────────────────────────────────────────
 
 fn ok_response(hash: &str, engine: &GameEngine) {
@@ -125,10 +251,114 @@ fn err_response(code: &str, message: &str) {
     std::process::exit(1);
 }
 
+// ── Standalone subcommand handlers ───────────────────────────────────────────
+
+fn handle_list_campaign() {
+    let mut tracks = Vec::new();
+    for track_idx in 0..TRACK_COUNT {
+        let levels = campaign_levels::levels_for_track(track_idx);
+        let name = campaign_levels::TRACK_NAMES[track_idx];
+        let level_data: Vec<serde_json::Value> = levels.iter().map(|l| {
+            serde_json::json!({
+                "board_height": l.board_height,
+                "board_width": l.board_width,
+                "color_number": l.color_number,
+                "obstacle_percentage": l.obstacle_percentage,
+                "conveyor_percentage": l.conveyor_percentage,
+                "scissors": l.scissors,
+                "tweezers": l.tweezers,
+                "balloons": l.balloons,
+                "ad_limit": l.ad_limit,
+                "reward_scissors": l.reward_scissors,
+                "reward_tweezers": l.reward_tweezers,
+                "reward_balloons": l.reward_balloons,
+            })
+        }).collect();
+        tracks.push(serde_json::json!({
+            "track_index": track_idx,
+            "name": name,
+            "level_count": levels.len(),
+            "levels": level_data,
+        }));
+    }
+    println!("{}", serde_json::to_string_pretty(&tracks).unwrap());
+}
+
+fn handle_describe_wave(wave: usize) {
+    let mut state = EndlessState::new();
+    for _ in 1..wave {
+        state.advance();
+    }
+    state.wave = wave;
+    let config = state.to_config(&base_config());
+    let desc = serde_json::json!({
+        "wave": wave,
+        "board_height": config.board_height,
+        "board_width": config.board_width,
+        "color_number": config.color_number,
+        "obstacle_percentage": config.obstacle_percentage,
+        "conveyor_percentage": config.conveyor_percentage,
+        "scissors": config.scissors,
+        "tweezers": config.tweezers,
+        "balloons": config.balloons,
+    });
+    println!("{}", serde_json::to_string_pretty(&desc).unwrap());
+}
+
+fn handle_batch_generate(args: &Args, count: usize) {
+    let config = resolve_config(args);
+    for _ in 0..count {
+        let engine = GameEngine::new(&config);
+        let state_json = engine.to_json();
+        let mut state_val: serde_json::Value = serde_json::from_str(&state_json).unwrap();
+        // Inject generation_attempts at top level for easy access
+        if let serde_json::Value::Object(ref mut map) = state_val {
+            map.insert("generation_attempts".into(),
+                       serde_json::Value::Number(engine.generation_attempts.into()));
+        }
+        let game_status = match engine.status() {
+            GameStatus::Playing => "playing",
+            GameStatus::Won     => "won",
+            GameStatus::Stuck   => "stuck",
+        };
+        let line = serde_json::json!({
+            "game_status": game_status,
+            "config": {
+                "board_height": config.board_height,
+                "board_width": config.board_width,
+                "color_number": config.color_number,
+                "obstacle_percentage": config.obstacle_percentage,
+                "conveyor_percentage": config.conveyor_percentage,
+                "spool_capacity": config.spool_capacity,
+                "spool_limit": config.spool_limit,
+            },
+            "state": state_val,
+        });
+        println!("{}", serde_json::to_string(&line).unwrap());
+    }
+}
+
 // ── Main ──────────────────────────────────────────────────────────────────────
 
 fn main() {
     let args = Args::parse();
+
+    // Handle standalone subcommands that don't need a game
+    match &args.command {
+        Some(NiCommand::ListCampaign) => {
+            handle_list_campaign();
+            return;
+        }
+        Some(NiCommand::DescribeWave { wave }) => {
+            handle_describe_wave(*wave);
+            return;
+        }
+        Some(NiCommand::BatchGenerate { count }) => {
+            handle_batch_generate(&args, *count);
+            return;
+        }
+        _ => {}
+    }
 
     match args.game {
         // ── Execute a command on an existing game ──────────────────────────
@@ -176,6 +406,9 @@ fn main() {
                         return;
                     }
                 }
+                Some(NiCommand::CancelTweezers) => {
+                    engine.cancel_tweezers();
+                }
                 Some(NiCommand::Balloons) => {
                     if let Err(e) = engine.use_balloons() {
                         let msg = format!("{:?}", e);
@@ -189,6 +422,11 @@ fn main() {
                         return;
                     }
                     engine.watch_ad();
+                }
+                Some(NiCommand::ListCampaign)
+                | Some(NiCommand::DescribeWave { .. })
+                | Some(NiCommand::BatchGenerate { .. }) => {
+                    unreachable!("handled above");
                 }
                 None => {
                     err_response("no_command", "provide a subcommand: move, pick, or process");
@@ -205,30 +443,22 @@ fn main() {
 
         // ── Create a new game ──────────────────────────────────────────────
         None => {
-            let config = Config {
-                board_height:        args.board_height.unwrap_or(6),
-                board_width:         args.board_width.unwrap_or(6),
-                color_number:        args.color_number.unwrap_or(6),
-                color_mode:          args.color_mode.unwrap_or_else(|| "dark".into()),
-                spool_limit:         args.spool_limit.unwrap_or(7),
-                spool_capacity:      args.spool_capacity.unwrap_or(3),
-                yarn_lines:          args.yarn_lines.unwrap_or(4),
-                obstacle_percentage: args.obstacle_percentage.unwrap_or(5),
-                visible_stitches:    args.visible_stitches.unwrap_or(6),
-                conveyor_capacity:   args.conveyor_capacity.unwrap_or(3),
-                conveyor_percentage: args.conveyor_percentage.unwrap_or(5),
-                layout:              "auto".into(),
-                scale:               1,
-                scissors:            args.scissors.unwrap_or(0),
-                tweezers:            args.tweezers.unwrap_or(0),
-                balloons:            args.balloons.unwrap_or(0),
-                scissors_spools:     args.scissors_spools.unwrap_or(1),
-                balloon_count:       args.balloon_count.unwrap_or(2),
-                ad_file:             None,
-                max_solutions:       None,
-            };
+            let config = resolve_config(&args);
+            let mut engine = GameEngine::new(&config);
 
-            let engine = GameEngine::new(&config);
+            // Apply ad_limit if specified (campaign levels set this)
+            if let Some(limit) = args.ad_limit {
+                engine.set_ad_limit(limit);
+            } else if args.campaign {
+                // Auto-set ad_limit from campaign level definition
+                let track = args.track.unwrap_or(0);
+                let level = args.level.unwrap_or(0);
+                let levels = campaign_levels::levels_for_track(track);
+                if level < levels.len() {
+                    engine.set_ad_limit(levels[level].ad_limit);
+                }
+            }
+
             let hash = GameEngine::generate_hash();
 
             if let Err(e) = save_engine(&hash, &engine) {
