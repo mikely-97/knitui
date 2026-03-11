@@ -106,6 +106,34 @@ impl GameEngine {
             attempts += 1;
             if attempts >= 100 { break; }
         }
+        // Lock yarn stitches to match KeySpools on the board
+        let mut key_colors: Vec<Color> = Vec::new();
+        for row in &board.board {
+            for cell in row {
+                if let BoardEntity::KeySpool(c) = cell {
+                    key_colors.push(*c);
+                }
+            }
+        }
+        for key_color in &key_colors {
+            // Find the deepest (last) unlocked stitch of this color in any yarn column
+            let mut best: Option<(usize, usize)> = None; // (col_idx, stitch_idx)
+            for (ci, col) in yarn.board.iter().enumerate() {
+                for (si, stitch) in col.iter().enumerate() {
+                    if stitch.color == *key_color && !stitch.locked {
+                        match best {
+                            None => best = Some((ci, si)),
+                            Some((_, prev_si)) if si > prev_si => best = Some((ci, si)),
+                            _ => {}
+                        }
+                    }
+                }
+            }
+            if let Some((ci, si)) = best {
+                yarn.board[ci][si].locked = true;
+            }
+        }
+
         // Find first focusable cell for initial cursor position
         let (mut init_row, mut init_col) = (0u16, 0u16);
         'find_cursor: for r in 0..board.height {
@@ -1338,5 +1366,32 @@ mod tests {
         assert_eq!(e2.bonuses.balloons, 1);
         assert_eq!(e2.yarn.balloon_columns.len(), 1);
         assert_eq!(e2.yarn.balloon_columns[0].as_ref().unwrap().color, Color::Red);
+    }
+
+    #[test]
+    fn new_engine_has_locked_stitches_when_keys_present() {
+        let config = Config {
+            board_height: 6, board_width: 6, color_number: 4,
+            color_mode: "dark".into(), spool_limit: 7,
+            spool_capacity: 2, yarn_lines: 4, obstacle_percentage: 0,
+            visible_stitches: 6, conveyor_capacity: 0, conveyor_percentage: 0,
+            layout: "auto".into(), scale: 1,
+            scissors: 0, tweezers: 0, balloons: 0,
+            scissors_spools: 1, balloon_count: 2, ad_file: None,
+            max_solutions: None,
+        };
+        let e = GameEngine::new(&config);
+
+        let key_count: usize = e.board.board.iter().flatten().filter(|c|
+            matches!(c, BoardEntity::KeySpool(_))
+        ).count();
+
+        let lock_count: usize = e.yarn.board.iter()
+            .flat_map(|col| col.iter())
+            .filter(|s| s.locked)
+            .count();
+
+        assert_eq!(key_count, lock_count,
+            "keys={} but locked_stitches={}", key_count, lock_count);
     }
 }
