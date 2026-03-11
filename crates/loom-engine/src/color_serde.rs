@@ -1,5 +1,5 @@
 use crossterm::style::Color;
-use serde::{Deserialize, Deserializer, Serialize, Serializer};
+use serde::{Deserialize, Deserializer, Serializer};
 use serde::de::Error as DeError;
 
 pub fn color_to_str(c: &Color) -> String {

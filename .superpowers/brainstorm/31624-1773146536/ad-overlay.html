@@ -1,0 +1,68 @@
+<h2>Pseudo-Ad Overlay: TUI Layout</h2>
+<p class="subtitle">How should the fake ad appear over the game screen?</p>
+
+<div class="options">
+  <div class="option" data-choice="a" onclick="toggleSelect(this)">
+    <div class="letter">A</div>
+    <div class="content">
+      <h3>Full-screen Takeover</h3>
+      <p>Clears the entire game screen and shows the ad in a centered box. Classic mobile-ad feel. Game is completely hidden.</p>
+      <div class="mockup" style="margin-top:12px">
+        <div class="mockup-header">Terminal</div>
+        <div class="mockup-body" style="font-family:monospace;font-size:13px;line-height:1.4;white-space:pre;background:#1a1a2e;color:#e0e0e0;padding:16px;border-radius:4px">
+╔══════════════════════════════════════════════╗
+║                                              ║
+║     🧶  SPECIAL OFFER  🧶                    ║
+║                                              ║
+║  "The only way to do great work is to love   ║
+║   what you do." — Steve Jobs                 ║
+║                                              ║
+║  ░░░░░░░░░░░░░░░░░░░░████████  73%          ║
+║                                              ║
+║         [ Press ESC when ready ]             ║
+║                                              ║
+╚══════════════════════════════════════════════╝</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="option" data-choice="b" onclick="toggleSelect(this)">
+    <div class="letter">B</div>
+    <div class="content">
+      <h3>Overlay Box (game dimmed)</h3>
+      <p>Game board stays visible but dimmed/greyed out behind a centered popup box. Like a modal dialog.</p>
+      <div class="mockup" style="margin-top:12px">
+        <div class="mockup-header">Terminal</div>
+        <div class="mockup-body" style="font-family:monospace;font-size:13px;line-height:1.4;white-space:pre;background:#1a1a2e;color:#444;padding:16px;border-radius:4px">
+  ▦ ▦ ▦ ▦   ┌─────────────────────────────┐
+  ▦ · ▦ ▦   │                             │
+  ▦ ▦ · ▦   │  <span style="color:#e0e0e0">Touch grass, not your phone.</span> │
+  · ▦ ▦ ▦   │                             │
+             │  <span style="color:#e0e0e0">░░░░░░░░░░░░████  60%</span>      │
+  [▦] ▦ ·   │                             │
+  ▦ ▦ ▦ ▦   │  <span style="color:#e0e0e0">Reward: ✂ Scissors ×1</span>      │
+             │  <span style="color:#888">[ 9s remaining ]</span>           │
+             └─────────────────────────────┘</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="option" data-choice="c" onclick="toggleSelect(this)">
+    <div class="letter">C</div>
+    <div class="content">
+      <h3>Bottom Banner</h3>
+      <p>Game stays fully visible. A banner slides in at the bottom with the quote and timer. Least intrusive, most "real ad" feel.</p>
+      <div class="mockup" style="margin-top:12px">
+        <div class="mockup-header">Terminal</div>
+        <div class="mockup-body" style="font-family:monospace;font-size:13px;line-height:1.4;white-space:pre;background:#1a1a2e;color:#e0e0e0;padding:16px;border-radius:4px">
+  ▦ ▦ ▦ ▦    ▦ ▦ ▦ ▦
+  ▦ · ▦ ▦    · ▦ · ▦
+  ▦ ▦ · ▦    ▦ ▦ ▦ ·
+  · ▦ ▦ ▦    ▦ · ▦ ▦
+
+  [▦] ▦ · ▦   Threads: ▦▦▦
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+ 📺 "Be yourself; everyone else is taken."
+    — Oscar Wilde
+    ░░░░░░░░░░░░░░░░██████  80%  [12s left]
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

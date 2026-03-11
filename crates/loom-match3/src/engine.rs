@@ -7,7 +7,25 @@ use crate::board::{Board, Cell, CellContent, Orientation, SpecialPiece, TileModi
 use crate::bonuses::{BonusInventory, BonusState};
 use crate::config::Config;
 use crate::matches::{self, MatchGroup};
+use crate::blessings;
 use crate::palette::select_palette;
+
+// ── Blessing flags ───────────────────────────────────────────────────────
+
+#[derive(Clone, Debug, Default)]
+pub struct BlessingFlags {
+    pub keen_eye: bool,
+    pub lucky_start: bool,
+    pub ice_breaker: bool,
+    pub cascade_master: bool,
+    pub crate_cracker: bool,
+    pub chain_reaction: bool,
+    pub color_surge: bool,
+    pub last_stand: bool,
+    pub last_stand_used: bool,
+    pub gem_magnet: bool,
+    pub double_score: bool,
+}
 
 // ── Phase ────────────────────────────────────────────────────────────────
 
@@ -56,6 +74,7 @@ pub struct GameEngine {
     pub bonus_state: BonusState,
     /// The pair swapped in the last player move (used to revert on Bouncing).
     pending_swap: Option<((usize, usize), (usize, usize))>,
+    pub blessing_flags: BlessingFlags,
 }
 
 impl GameEngine {
@@ -85,6 +104,77 @@ impl GameEngine {
             },
             bonus_state: BonusState::None,
             pending_swap: None,
+            blessing_flags: BlessingFlags::default(),
+        }
+    }
+
+    /// Populate blessing flags from a list of blessing IDs.
+    pub fn set_blessings(&mut self, ids: &[String]) {
+        self.blessing_flags = BlessingFlags {
+            keen_eye: blessings::has(ids, "keen_eye"),
+            lucky_start: blessings::has(ids, "lucky_start"),
+            ice_breaker: blessings::has(ids, "ice_breaker"),
+            cascade_master: blessings::has(ids, "cascade_master"),
+            crate_cracker: blessings::has(ids, "crate_cracker"),
+            chain_reaction: blessings::has(ids, "chain_reaction"),
+            color_surge: blessings::has(ids, "color_surge"),
+            last_stand: blessings::has(ids, "last_stand"),
+            last_stand_used: false,
+            gem_magnet: blessings::has(ids, "gem_magnet"),
+            double_score: blessings::has(ids, "double_score"),
+        };
+        // Apply lucky_start: seed 1 random special piece on the board
+        if self.blessing_flags.lucky_start {
+            self.seed_lucky_start();
+        }
+        // Apply ice_breaker / crate_cracker: reduce starting HP of modifiers
+        if self.blessing_flags.ice_breaker || self.blessing_flags.crate_cracker {
+            self.apply_modifier_blessings();
+        }
+    }
+
+    /// Reduce HP of Ice/Crate modifiers on the board per blessings.
+    fn apply_modifier_blessings(&mut self) {
+        for r in 0..self.board.height {
+            for c in 0..self.board.width {
+                let remove = match &mut self.board.cells[r][c].modifier {
+                    Some(TileModifier::Ice { hp }) if self.blessing_flags.ice_breaker => {
+                        *hp = hp.saturating_sub(1);
+                        *hp == 0
+                    }
+                    Some(TileModifier::Crate { hp }) if self.blessing_flags.crate_cracker => {
+                        *hp = hp.saturating_sub(1);
+                        *hp == 0
+                    }
+                    _ => false,
+                };
+                if remove {
+                    self.board.cells[r][c].modifier = None;
+                }
+            }
+        }
+    }
+
+    /// Place 1 random special piece on an existing gem.
+    fn seed_lucky_start(&mut self) {
+        let mut rng = rand::rng();
+        let mut candidates: Vec<(usize, usize)> = Vec::new();
+        for r in 0..self.board.height {
+            for c in 0..self.board.width {
+                if let CellContent::Gem { special: None, .. } = &self.board.cells[r][c].content {
+                    candidates.push((r, c));
+                }
+            }
+        }
+        if let Some(&(r, c)) = candidates.choose(&mut rng) {
+            let special = match rng.random_range(0u8..3) {
+                0 => SpecialPiece::LineBomb(Orientation::Horizontal),
+                1 => SpecialPiece::LineBomb(Orientation::Vertical),
+                _ => SpecialPiece::AreaBomb { radius: 1 },
+            };
+            if let CellContent::Gem { special: sp, .. } = &mut self.board.cells[r][c].content {
+                *sp = Some(special);
+            }
         }
     }
 
@@ -264,13 +354,39 @@ impl GameEngine {
                     self.collect_explosion(sp, r, c, &mut added);
                 }
             }
+            // chain_reaction blessing: also trigger specials adjacent to cleared cells
+            if self.blessing_flags.chain_reaction {
+                let border: Vec<(usize, usize)> = to_clear
+                    .iter()
+                    .flat_map(|&(r, c)| {
+                        [(r.wrapping_sub(1), c), (r + 1, c), (r, c.wrapping_sub(1)), (r, c + 1)]
+                            .into_iter()
+                            .filter(|&(nr, nc)| nr < self.board.height && nc < self.board.width)
+                            .filter(|pos| !to_clear.contains(pos))
+                    })
+                    .collect();
+                for (nr, nc) in border {
+                    if let CellContent::Gem { special: Some(ref sp), .. } = self.board.cells[nr][nc].content.clone() {
+                        added.insert((nr, nc));
+                        self.collect_explosion(sp, nr, nc, &mut added);
+                    }
+                }
+            }
             let before = to_clear.len();
             to_clear.extend(added);
             if to_clear.len() == before { break; } // no new cells added
         }
 
-        // 3. Score: 10 pts per gem cleared
-        self.score += (to_clear.len() as u32) * 10;
+        // 3. Score: 10 pts per gem cleared (with blessing modifiers)
+        let mut pts = (to_clear.len() as u32) * 10;
+        // cascade_master: cascades (non-player-initiated resolves) score 50% more
+        if self.blessing_flags.cascade_master && spawn_at.is_none() {
+            pts = pts * 3 / 2;
+        }
+        if self.blessing_flags.double_score {
+            pts *= 2;
+        }
+        self.score += pts;
 
         // 4. Damage modifiers adjacent to cleared cells (non-direct: Ice/Crate only)
         let adjacent: Vec<(usize, usize)> = to_clear
@@ -296,15 +412,49 @@ impl GameEngine {
             self.board.cells[r][c].content = CellContent::Empty;
         }
 
+        // 6b. color_surge: if any match group has 5+ cells, clear 2 extra random gems of that color
+        if self.blessing_flags.color_surge {
+            let mut rng = rand::rng();
+            for group in &match_groups {
+                if group.cells.len() >= 5 {
+                    let mut extras: Vec<(usize, usize)> = Vec::new();
+                    for r in 0..self.board.height {
+                        for c in 0..self.board.width {
+                            if !to_clear.contains(&(r, c)) {
+                                if self.board.cells[r][c].color() == Some(group.color) {
+                                    extras.push((r, c));
+                                }
+                            }
+                        }
+                    }
+                    extras.shuffle(&mut rng);
+                    for &(r, c) in extras.iter().take(2) {
+                        self.board.cells[r][c].content = CellContent::Empty;
+                        self.score += if self.blessing_flags.double_score { 20 } else { 10 };
+                    }
+                }
+            }
+        }
+
         // 7. Place special piece at spawn position (from the matching group that owns it)
         if let Some(pos) = spawn_at {
             for group in &match_groups {
                 if let Some(ref sp) = group.create_special {
                     if group.cells.contains(&pos) {
+                        // gem_magnet: 4-matches always produce AreaBombs
+                        let actual_sp = if self.blessing_flags.gem_magnet {
+                            if matches!(sp, SpecialPiece::LineBomb(_)) {
+                                SpecialPiece::AreaBomb { radius: 1 }
+                            } else {
+                                sp.clone()
+                            }
+                        } else {
+                            sp.clone()
+                        };
                         // Restore the cell with the special piece gem
                         self.board.cells[pos.0][pos.1].content = CellContent::Gem {
                             color: group.color,
-                            special: Some(sp.clone()),
+                            special: Some(actual_sp),
                         };
                         break;
                     }
@@ -514,8 +664,14 @@ impl GameEngine {
     /// depend on campaign objectives (score target, gem quota, clear-all-specials) which
     /// the engine has no knowledge of. The main loop in `main.rs` checks `objective_met()`
     /// directly and handles the "Won" case before calling this method.
-    pub fn game_status(&self) -> GameStatus {
+    pub fn game_status(&mut self) -> GameStatus {
         if self.moves_used >= self.move_limit {
+            // last_stand: grant 3 bonus moves once
+            if self.blessing_flags.last_stand && !self.blessing_flags.last_stand_used {
+                self.blessing_flags.last_stand_used = true;
+                self.move_limit += 3;
+                return GameStatus::Playing;
+            }
             return GameStatus::OutOfMoves;
         }
         if !self.has_valid_swap() {

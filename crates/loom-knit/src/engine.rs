@@ -7,6 +7,7 @@ use crate::game_board::GameBoard;
 use crate::yarn::{Yarn, Stitch};
 use crate::spool::Spool;
 use crate::config::Config;
+use crate::blessings;
 use crate::palette::select_palette;
 use crate::solvability::{is_solvable, count_solutions};
 use crate::color_serde;
@@ -40,6 +41,30 @@ pub enum BonusError {
     BalloonColumnsNotEmpty,
 }
 
+/// Runtime flags for active blessings that affect gameplay behavior.
+#[derive(Debug, Clone, Default)]
+pub struct BlessingFlags {
+    pub scouts_eye: bool,
+    pub wrap_around: bool,
+    pub tidy_workspace: bool,
+    pub conveyor_peek: bool,
+    pub color_count: bool,
+    pub match_hint: bool,
+}
+
+impl BlessingFlags {
+    pub fn from_ids(ids: &[String]) -> Self {
+        Self {
+            scouts_eye:     blessings::has(ids, "scouts_eye"),
+            wrap_around:    blessings::has(ids, "wrap_around"),
+            tidy_workspace: blessings::has(ids, "tidy_workspace"),
+            conveyor_peek:  blessings::has(ids, "conveyor_peek"),
+            color_count:    blessings::has(ids, "color_count"),
+            match_hint:     blessings::has(ids, "match_hint"),
+        }
+    }
+}
+
 #[derive(Debug, PartialEq, Clone)]
 pub enum BonusState {
     None,
@@ -66,6 +91,9 @@ pub struct GameEngine {
     pub spool_limit: usize,
     pub bonuses: BonusInventory,
     pub bonus_state: BonusState,
+    pub blessing_flags: BlessingFlags,
+    /// Color of last picked spool (for match_hint rendering). Cleared after one render.
+    pub last_picked_color: Option<Color>,
     pub ad_limit: Option<u16>,
     pub ads_used: u16,
     /// How many board-generation attempts were needed (0 = first try).
@@ -163,10 +191,17 @@ impl GameEngine {
                 balloon_count: config.balloon_count,
             },
             bonus_state: BonusState::None,
+            blessing_flags: BlessingFlags::default(),
+            last_picked_color: None,
             ad_limit: None,
             ads_used: 0,
             generation_attempts: attempts,
         }
+    }
+
+    /// Set blessing flags from a list of blessing IDs. Call after `new()`.
+    pub fn set_blessings(&mut self, ids: &[String]) {
+        self.blessing_flags = BlessingFlags::from_ids(ids);
     }
 
     /// Set the ad limit for campaign levels. Call after `new()`.
@@ -178,14 +213,20 @@ impl GameEngine {
 
     pub fn move_cursor(&mut self, dir: Direction) -> Result<(), MoveError> {
         let (dr, dc) = dir.offset();
+        let h = self.board.height as i32;
+        let w = self.board.width as i32;
         let mut new_row = self.cursor_row as i32 + dr;
         let mut new_col = self.cursor_col as i32 + dc;
         let tweezers = matches!(self.bonus_state, BonusState::TweezersActive { .. });
+        let wrap = self.blessing_flags.wrap_around;
         loop {
-            if new_row < 0 || new_row >= self.board.height as i32
-                || new_col < 0 || new_col >= self.board.width as i32
-            {
-                return Err(MoveError::OutOfBounds);
+            if new_row < 0 || new_row >= h || new_col < 0 || new_col >= w {
+                if wrap {
+                    new_row = ((new_row % h) + h) % h;
+                    new_col = ((new_col % w) + w) % w;
+                } else {
+                    return Err(MoveError::OutOfBounds);
+                }
             }
             if tweezers || self.board.is_focusable(new_row as usize, new_col as usize) {
                 self.cursor_row = new_row as u16;
@@ -194,6 +235,10 @@ impl GameEngine {
             }
             new_row += dr;
             new_col += dc;
+            // Prevent infinite loop on wrap-around if no focusable cell exists
+            if wrap && new_row == self.cursor_row as i32 && new_col == self.cursor_col as i32 {
+                return Err(MoveError::OutOfBounds);
+            }
         }
     }
 
@@ -215,6 +260,7 @@ impl GameEngine {
             return Err(PickError::ActiveFull);
         }
 
+        let picked_color = spool.color;
         self.held_spools.push(spool);
         self.board.board[row][col] = BoardEntity::Void;
 
@@ -228,6 +274,16 @@ impl GameEngine {
             self.cursor_col = saved_col;
             self.bonus_state = BonusState::None;
             self.bonuses.tweezers -= 1;
+        }
+
+        // Blessing: auto-sort held spools by color
+        if self.blessing_flags.tidy_workspace {
+            self.held_spools.sort_by_key(|s| format!("{:?}", s.color));
+        }
+
+        // Blessing: store picked color for match_hint rendering
+        if self.blessing_flags.match_hint {
+            self.last_picked_color = Some(picked_color);
         }
 
         Ok(())
@@ -658,6 +714,8 @@ impl GameStateSnapshot {
                 balloon_count: if self.balloon_count == 0 { 2 } else { self.balloon_count },
             },
             bonus_state: BonusState::None,
+            blessing_flags: BlessingFlags::default(),
+            last_picked_color: None,
             ad_limit: self.ad_limit,
             ads_used: self.ads_used,
             generation_attempts: self.generation_attempts,
@@ -763,6 +821,8 @@ mod tests {
                 scissors_spools: 1, balloon_count: 2,
             },
             bonus_state: BonusState::None,
+            blessing_flags: BlessingFlags::default(),
+            last_picked_color: None,
             ad_limit: None,
             ads_used: 0,
             generation_attempts: 0,
@@ -897,6 +957,8 @@ mod tests {
                 scissors_spools: 1, balloon_count: 2,
             },
             bonus_state: BonusState::None,
+            blessing_flags: BlessingFlags::default(),
+            last_picked_color: None,
             ad_limit: None,
             ads_used: 0,
             generation_attempts: 0,
@@ -976,6 +1038,8 @@ mod tests {
                 scissors_spools: 1, balloon_count: 2,
             },
             bonus_state: BonusState::None,
+            blessing_flags: BlessingFlags::default(),
+            last_picked_color: None,
             ad_limit: None,
             ads_used: 0,
             generation_attempts: 0,
@@ -1140,6 +1204,8 @@ mod tests {
                 scissors_spools: 1, balloon_count: 2,
             },
             bonus_state: BonusState::None,
+            blessing_flags: BlessingFlags::default(),
+            last_picked_color: None,
             ad_limit: None,
             ads_used: 0,
             generation_attempts: 0,
@@ -1167,6 +1233,8 @@ mod tests {
                 scissors_spools: 1, balloon_count: 2,
             },
             bonus_state: BonusState::None,
+            blessing_flags: BlessingFlags::default(),
+            last_picked_color: None,
             ad_limit: None,
             ads_used: 0,
             generation_attempts: 0,
@@ -1197,6 +1265,8 @@ mod tests {
                 scissors_spools: 1, balloon_count: 2,
             },
             bonus_state: BonusState::None,
+            blessing_flags: BlessingFlags::default(),
+            last_picked_color: None,
             ad_limit: None,
             ads_used: 0,
             generation_attempts: 0,
@@ -1224,6 +1294,8 @@ mod tests {
                 scissors_spools: 1, balloon_count: 2,
             },
             bonus_state: BonusState::None,
+            blessing_flags: BlessingFlags::default(),
+            last_picked_color: None,
             ad_limit: None,
             ads_used: 0,
             generation_attempts: 0,

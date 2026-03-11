@@ -71,6 +71,11 @@ impl<E: CampaignEntry> CampaignSaves<E> {
         self.saves.retain(|s| s.track_idx() != track_idx);
     }
 
+    /// Count how many tracks are fully completed.
+    pub fn completed_count(&self) -> usize {
+        self.saves.iter().filter(|s| s.is_completed()).count()
+    }
+
     /// Summary string for a track: "Level 5/15" or "Complete" or empty.
     pub fn progress_label(&self, track_idx: usize) -> String {
         match self.get(track_idx) {

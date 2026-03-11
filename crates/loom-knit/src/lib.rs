@@ -12,6 +12,7 @@ pub mod preset;
 pub mod campaign;
 pub mod campaign_levels;
 pub mod endless;
+pub mod blessings;
 pub mod game;
 pub mod tui;
 

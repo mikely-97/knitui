@@ -1,11 +1,9 @@
 /// Integration tests for game flow — exercising GameEngine end-to-end.
-use knitui::engine::{GameEngine, BonusInventory, BonusState};
+use knitui::engine::{GameEngine, BonusInventory, BonusState, BlessingFlags};
 use knitui::config::Config;
 use knitui::board_entity::{BoardEntity, Direction};
 use knitui::game_board::GameBoard;
-use knitui::palette::{select_palette, ColorMode};
 use knitui::yarn::Yarn;
-use knitui::spool::Spool;
 use crossterm::style::Color;
 
 fn make_config(
@@ -149,6 +147,8 @@ fn test_engine_cursor_traversal() {
         ad_limit: None,
         ads_used: 0,
         generation_attempts: 0,
+        blessing_flags: BlessingFlags::default(),
+        last_picked_color: None,
     };
 
     // Traverse to bottom-right corner
@@ -193,6 +193,8 @@ fn test_engine_json_roundtrip_preserves_game_state() {
         ad_limit: None,
         ads_used: 0,
         generation_attempts: 0,
+        blessing_flags: BlessingFlags::default(),
+        last_picked_color: None,
     };
 
     // Make some moves
@@ -276,6 +278,8 @@ fn test_input_during_processing() {
         ad_limit: None,
         ads_used: 0,
         generation_attempts: 0,
+        blessing_flags: BlessingFlags::default(),
+        last_picked_color: None,
     };
 
     // Pick up a spool

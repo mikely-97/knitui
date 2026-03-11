@@ -381,7 +381,6 @@ fn sol_neighbors(r: usize, c: usize, h: usize, w: usize) -> Vec<(usize, usize)> 
 mod tests {
     use super::*;
     use crate::game_board::GameBoard;
-    use crate::palette::{select_palette, ColorMode};
     use crate::yarn::Yarn;
 
     #[test]
@@ -402,7 +401,7 @@ mod tests {
 
     #[test]
     fn test_all_spools_reachable_manual_blocked() {
-        use crate::board_entity::{BoardEntity, Direction, ConveyorData};
+        use crate::board_entity::BoardEntity;
         // Row 0: Obstacle. Row 1: Spool. Row 2: Spool.
         // Spool at (1,0) is NOT top-row and its only neighbor is Obstacle above.
         // So it is unreachable → should fail.

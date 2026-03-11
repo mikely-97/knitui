@@ -1,37 +1,10 @@
 use crossterm::style::Color;
-use loom_engine::game::{Game, GameId, GameEngine, GameConfig};
+use loom_engine::game::{Game, GameId, GameEngine};
 
-/// Minimal Config stub for merge-2.
-#[derive(Clone, Debug)]
-pub struct Config {
-    pub board_width: u16,
-    pub board_height: u16,
-    pub color_count: u8,
-    pub scale: u16,
-    pub color_mode: String,
-}
-
-impl Default for Config {
-    fn default() -> Self {
-        Self {
-            board_width: 6,
-            board_height: 6,
-            color_count: 5,
-            scale: 1,
-            color_mode: "dark".to_string(),
-        }
-    }
-}
-
-impl GameConfig for Config {
-    fn board_width(&self) -> usize { self.board_width as usize }
-    fn board_height(&self) -> usize { self.board_height as usize }
-    fn color_count(&self) -> usize { self.color_count as usize }
-    fn scale(&self) -> u16 { self.scale }
-    fn color_mode(&self) -> &str { &self.color_mode }
-    fn set_scale(&mut self, s: u16) { self.scale = s; }
-    fn set_color_mode(&mut self, m: String) { self.color_mode = m; }
-}
+use crate::campaign_levels::{TRACK_NAMES, TRACK_COUNT, levels_for_track};
+use crate::config::Config;
+use crate::endless::EndlessState;
+use crate::preset::PRESETS;
 
 pub struct M2Game;
 
@@ -43,39 +16,57 @@ impl Game for M2Game {
     fn config_dir(&self) -> &'static str { "m2tui" }
 
     fn create_engine(&self, _config: &Config, _palette: &[Color]) -> Box<dyn GameEngine> {
-        unimplemented!("Merge-2 is not yet implemented")
+        // Merge-2 uses its own concrete engine via tui.rs directly.
+        unimplemented!("Use M2Engine via tui::run_from_menu() instead")
     }
 
     fn default_config(&self) -> Config {
-        Config::default()
+        use clap::Parser;
+        Config::parse_from::<[&str; 0], &str>([])
     }
 
-    fn track_names(&self) -> &'static [&'static str] { &["Starter"] }
-    fn track_count(&self) -> usize { 1 }
-    fn level_count(&self, _track: usize) -> usize { 0 }
+    fn track_names(&self) -> &'static [&'static str] { TRACK_NAMES }
+    fn track_count(&self) -> usize { TRACK_COUNT }
+    fn level_count(&self, track: usize) -> usize { levels_for_track(track).len() }
 
-    fn level_config(&self, _track: usize, _level: usize, base: &Config) -> Config {
-        base.clone()
+    fn level_config(&self, track: usize, level: usize, base: &Config) -> Config {
+        use crate::campaign::CampaignState;
+        let mut state = CampaignState::new(track);
+        state.current_level = level;
+        state.to_config(base)
     }
 
-    fn level_intro_lines(&self, _track: usize, _level: usize) -> Vec<String> {
-        vec!["Merge-2 coming soon!".to_string()]
+    fn level_intro_lines(&self, track: usize, level: usize) -> Vec<String> {
+        let levels = levels_for_track(track);
+        let l = &levels[level];
+        vec![
+            format!("{} — Level {}/{}", TRACK_NAMES[track], level + 1, levels.len()),
+            format!("Board: {}×{}, {} colors", l.board_height, l.board_width, l.color_count),
+            format!("Generators: {}, Orders: {}", l.generator_count, l.orders.len()),
+        ]
     }
 
-    fn endless_wave_config(&self, _wave: u32, base: &Config) -> Config {
-        base.clone()
+    fn endless_wave_config(&self, wave: u32, base: &Config) -> Config {
+        let mut state = EndlessState::new();
+        for _ in 1..wave { state.advance(); }
+        state.to_config(base)
     }
 
     fn help_lines(&self) -> Vec<(&'static str, &'static str)> {
         vec![
             ("Arrow keys", "Move cursor"),
-            ("Enter", "Select / Merge"),
-            ("Esc", "Back"),
+            ("Enter/Space", "Select / Merge"),
+            ("D", "Deliver to order"),
+            ("A", "Watch ad"),
+            ("Esc", "Deselect / Back"),
+            ("H", "Toggle help"),
+            ("N/P", "Next/prev color mode"),
+            ("+/-", "Scale up/down"),
             ("Q", "Quit"),
         ]
     }
 
     fn presets(&self) -> Vec<(&'static str, Config)> {
-        vec![("Default", Config::default())]
+        PRESETS.iter().map(|p| (p.name, p.to_config(&self.default_config()))).collect()
     }
 }

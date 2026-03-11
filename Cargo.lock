@@ -289,6 +289,7 @@ dependencies = [
  "crossterm",
  "dirs",
  "loom-engine",
+ "rand",
  "serde",
  "serde_json",
 ]

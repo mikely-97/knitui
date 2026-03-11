@@ -3,6 +3,7 @@ use serde::{Deserialize, Serialize};
 use loom_engine::campaign::CampaignEntry;
 pub use loom_engine::campaign::CampaignSaves;
 
+use crate::blessings;
 use crate::campaign_levels::{levels_for_track, LevelDef, LevelObjective};
 use crate::config::Config;
 
@@ -39,6 +40,8 @@ pub struct CampaignState {
     pub banked_blaster: u16,
     pub banked_warp: u16,
     pub completed: bool,
+    #[serde(default)]
+    pub blessings: Vec<String>,
 }
 
 impl CampaignEntry for CampaignState {
@@ -58,6 +61,7 @@ impl CampaignState {
             banked_blaster: 0,
             banked_warp: 0,
             completed: false,
+            blessings: Vec::new(),
         }
     }
 
@@ -75,6 +79,14 @@ impl CampaignState {
         cfg.laser   = self.banked_laser;
         cfg.blaster = self.banked_blaster;
         cfg.warp    = self.banked_warp;
+
+        // Apply blessing config effects
+        if blessings::has(&self.blessings, "extra_moves") {
+            cfg.move_limit += 3;
+        }
+        if blessings::has(&self.blessings, "bonus_stash") {
+            cfg.hammer += 1;
+        }
         cfg
     }
 

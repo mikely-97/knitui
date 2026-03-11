@@ -1,0 +1,87 @@
+<h2>Entity Appearance at Scale 2</h2>
+<p class="subtitle">Each cell is 4 chars wide × 2 rows tall. How should different entities look?</p>
+
+<div class="section">
+  <h3>Threads (regular knit patches)</h3>
+  <p>Currently: <code>▦▦▦▦ / ▦▦▦▦</code>. Options for a "knit" texture:</p>
+  <div class="cards">
+    <div class="card" data-choice="thread-a" onclick="toggleSelect(this)">
+      <div class="card-image" style="font-family:monospace;font-size:16px;line-height:1.3;background:#1a1a2e;color:#e88;padding:12px;text-align:center;white-space:pre">∨∧∨∧
+∧∨∧∨</div>
+      <div class="card-body">
+        <h3>A: Knit Stitch</h3>
+        <p>Alternating ∨∧ pattern mimics stockinette knitting. Colored with thread color.</p>
+      </div>
+    </div>
+    <div class="card" data-choice="thread-b" onclick="toggleSelect(this)">
+      <div class="card-image" style="font-family:monospace;font-size:16px;line-height:1.3;background:#1a1a2e;color:#e88;padding:12px;text-align:center;white-space:pre">╲╱╲╱
+╱╲╱╲</div>
+      <div class="card-body">
+        <h3>B: Cross-Stitch</h3>
+        <p>Diagonal crosses suggest woven fabric. More visual texture.</p>
+      </div>
+    </div>
+    <div class="card" data-choice="thread-c" onclick="toggleSelect(this)">
+      <div class="card-image" style="font-family:monospace;font-size:16px;line-height:1.3;background:#1a1a2e;color:#e88;padding:12px;text-align:center;white-space:pre">≈≈≈≈
+≈≈≈≈</div>
+      <div class="card-body">
+        <h3>C: Wavy Yarn</h3>
+        <p>Simple wavy lines suggest yarn texture. Subtle but distinct from blocks.</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="section" style="margin-top:32px">
+  <h3>Generators (directional arrow entities)</h3>
+  <p>Currently: <code>▶▶▶▶ / ▶▶▶▶</code> (or similar). Options for showing direction clearly:</p>
+  <div class="cards">
+    <div class="card" data-choice="gen-a" onclick="toggleSelect(this)">
+      <div class="card-image" style="font-family:monospace;font-size:16px;line-height:1.3;background:#1a1a2e;color:#8e8;padding:12px;text-align:center;white-space:pre"> ╱╲
+╱▶▶╲</div>
+      <div class="card-body">
+        <h3>A: Arrow Head</h3>
+        <p>Large arrow shape pointing in the generator's direction. Clear at a glance.</p>
+      </div>
+    </div>
+    <div class="card" data-choice="gen-b" onclick="toggleSelect(this)">
+      <div class="card-image" style="font-family:monospace;font-size:16px;line-height:1.3;background:#1a1a2e;color:#8e8;padding:12px;text-align:center;white-space:pre">──▶─
+──▶─</div>
+      <div class="card-body">
+        <h3>B: Flow Lines</h3>
+        <p>Horizontal/vertical lines with arrowhead showing output direction.</p>
+      </div>
+    </div>
+    <div class="card" data-choice="gen-c" onclick="toggleSelect(this)">
+      <div class="card-image" style="font-family:monospace;font-size:16px;line-height:1.3;background:#1a1a2e;color:#8e8;padding:12px;text-align:center;white-space:pre">⊞──▸
+⊞──▸</div>
+      <div class="card-body">
+        <h3>C: Source + Arrow</h3>
+        <p>Box symbol (source) with arrow lines. Shows both "I produce" and "in this direction".</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="section" style="margin-top:32px">
+  <h3>Obstacles</h3>
+  <p>Currently: <code>████ / ████</code> or similar solid blocks.</p>
+  <div class="cards">
+    <div class="card" data-choice="obs-a" onclick="toggleSelect(this)">
+      <div class="card-image" style="font-family:monospace;font-size:16px;line-height:1.3;background:#1a1a2e;color:#888;padding:12px;text-align:center;white-space:pre">░░░░
+░░░░</div>
+      <div class="card-body">
+        <h3>A: Light Shade</h3>
+        <p>Subtle shading — clearly not a thread, doesn't dominate visually.</p>
+      </div>
+    </div>
+    <div class="card" data-choice="obs-b" onclick="toggleSelect(this)">
+      <div class="card-image" style="font-family:monospace;font-size:16px;line-height:1.3;background:#1a1a2e;color:#888;padding:12px;text-align:center;white-space:pre">╳╳╳╳
+╳╳╳╳</div>
+      <div class="card-body">
+        <h3>B: X-marks</h3>
+        <p>Crossed-out look — clearly "blocked" or "impassable".</p>
+      </div>
+    </div>
+  </div>
+</div>

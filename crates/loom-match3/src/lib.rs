@@ -1,3 +1,4 @@
+pub mod blessings;
 pub mod board;
 pub mod bonuses;
 pub mod campaign;

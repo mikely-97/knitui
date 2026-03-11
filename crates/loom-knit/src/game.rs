@@ -2,7 +2,7 @@ use crossterm::style::Color;
 use loom_engine::game::{Game, GameId, GameEngine};
 
 use crate::config::Config;
-use crate::campaign_levels::{self, TRACK_NAMES, TRACK_COUNT, levels_for_track};
+use crate::campaign_levels::{TRACK_NAMES, TRACK_COUNT, levels_for_track};
 use crate::campaign::CampaignState;
 use crate::endless::EndlessState;
 use crate::preset::PRESETS;
@@ -16,7 +16,7 @@ impl Game for KnitGame {
     fn name(&self) -> &'static str { "Knit" }
     fn config_dir(&self) -> &'static str { "knitui" }
 
-    fn create_engine(&self, config: &Config, _palette: &[Color]) -> Box<dyn GameEngine> {
+    fn create_engine(&self, _config: &Config, _palette: &[Color]) -> Box<dyn GameEngine> {
         // TODO: Phase 5 — wrap the existing knitui::engine::GameEngine
         // in a GameEngine trait adapter. For now, panic as placeholder.
         unimplemented!("KnitGame::create_engine will be wired in Phase 5")

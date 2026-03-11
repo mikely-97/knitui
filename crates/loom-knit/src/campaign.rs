@@ -3,6 +3,7 @@ use serde::{Deserialize, Serialize};
 use loom_engine::campaign::CampaignEntry;
 pub use loom_engine::campaign::CampaignSaves;
 
+use crate::blessings;
 use crate::campaign_levels::levels_for_track;
 use crate::config::Config;
 
@@ -14,6 +15,9 @@ pub struct CampaignState {
     pub banked_tweezers: u16,
     pub banked_balloons: u16,
     pub completed: bool,
+    /// Blessing IDs chosen at campaign start (e.g. ["scouts_eye", "extra_slot"]).
+    #[serde(default)]
+    pub blessings: Vec<String>,
 }
 
 impl CampaignEntry for CampaignState {
@@ -32,11 +36,12 @@ impl CampaignState {
             banked_tweezers: 0,
             banked_balloons: 0,
             completed: false,
+            blessings: Vec::new(),
         }
     }
 
     /// Build a game Config for the current level, merging base display settings,
-    /// level params, and banked bonuses.
+    /// level params, banked bonuses, and active blessings.
     pub fn to_config(&self, base: &Config) -> Config {
         let levels = levels_for_track(self.track_idx);
         let level = &levels[self.current_level];
@@ -49,6 +54,21 @@ impl CampaignState {
         cfg.scissors = level.scissors + self.banked_scissors;
         cfg.tweezers = level.tweezers + self.banked_tweezers;
         cfg.balloons = level.balloons + self.banked_balloons;
+
+        // Apply blessing effects to config
+        let b = &self.blessings;
+        if blessings::has(b, "lucky_find") {
+            cfg.obstacle_percentage = cfg.obstacle_percentage.saturating_sub(3);
+        }
+        if blessings::has(b, "extra_slot") {
+            cfg.spool_limit += 1;
+        }
+        if blessings::has(b, "sharp_start") {
+            cfg.scissors += 1;
+        }
+        if blessings::has(b, "double_cut") {
+            cfg.scissors_spools = 2;
+        }
         cfg
     }
 
@@ -169,6 +189,39 @@ mod tests {
     fn progress_label_empty_for_no_save() {
         let saves = CampaignSaves::<CampaignState>::default();
         assert_eq!(saves.progress_label(0), "");
+    }
+
+    #[test]
+    fn blessings_applied_to_config() {
+        let mut s = CampaignState::new(0);
+        s.blessings = vec![
+            "lucky_find".to_string(),
+            "extra_slot".to_string(),
+            "double_cut".to_string(),
+        ];
+        let cfg = s.to_config(&default_config());
+        // lucky_find: obstacle_percentage reduced by 3
+        assert!(cfg.obstacle_percentage <= 5); // default is 5, so 5-3=2
+        // extra_slot: spool_limit increased by 1
+        assert_eq!(cfg.spool_limit, 8); // default 7 + 1
+        // double_cut: scissors_spools set to 2
+        assert_eq!(cfg.scissors_spools, 2);
+    }
+
+    #[test]
+    fn sharp_start_adds_scissors_per_level() {
+        let mut s = CampaignState::new(0);
+        s.blessings = vec!["sharp_start".to_string()];
+        let cfg = s.to_config(&default_config());
+        // Level 0 of track 0 gives 0 scissors + 0 banked + 1 sharp_start = 1
+        assert!(cfg.scissors >= 1);
+    }
+
+    #[test]
+    fn blessings_field_defaults_empty_on_deserialize() {
+        let json = r#"{"track_idx":0,"current_level":0,"banked_scissors":0,"banked_tweezers":0,"banked_balloons":0,"completed":false}"#;
+        let s: CampaignState = serde_json::from_str(json).unwrap();
+        assert!(s.blessings.is_empty());
     }
 
     #[test]

@@ -130,7 +130,7 @@ fn classify(
 mod tests {
     use super::*;
     use crossterm::style::Color;
-    use crate::board::{Board, Cell, CellContent};
+    use crate::board::{Board, Cell};
 
     // Helper: build a Board from a color grid (no modifiers).
     fn board(grid: &[&[Color]]) -> Board {

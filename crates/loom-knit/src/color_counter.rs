@@ -1,12 +1,6 @@
 use std::collections::HashMap;
-use crossterm::style::{
-    Color,
-    Stylize
-};
+use crossterm::style::Color;
 
-use std::fmt;
-
-use rand::prelude::*;
 use rand::seq::SliceRandom;
 
 pub struct ColorCounter{

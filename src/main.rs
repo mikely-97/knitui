@@ -1,7 +1,7 @@
 use std::io::{Write, stdout, Stdout};
 
 use crossterm::{
-    ExecutableCommand, QueueableCommand, execute,
+    QueueableCommand, execute,
     terminal::{EnterAlternateScreen, LeaveAlternateScreen, enable_raw_mode, disable_raw_mode, Clear, ClearType},
     cursor::{Hide, Show, MoveTo},
     event::{poll, read, Event, KeyCode},
@@ -11,7 +11,7 @@ use crossterm::{
 const GAMES: &[(&str, &str)] = &[
     ("Knit",    "Spool-knitting puzzle"),
     ("Match-3", "Classic gem-matching"),
-    ("Merge-2", "Merge puzzle (coming soon)"),
+    ("Merge-2", "Merge puzzle"),
 ];
 
 fn render_selector(stdout: &mut Stdout, selected: usize) -> std::io::Result<()> {
@@ -93,10 +93,7 @@ fn main() -> std::io::Result<()> {
     match choice {
         Some(0) => knitui::tui::run_cli(),
         Some(1) => m3tui::tui::run_from_menu(),
-        Some(2) => {
-            eprintln!("Merge-2 is not yet implemented. Stay tuned!");
-            Ok(())
-        }
+        Some(2) => m2tui::tui::run_from_menu(),
         _ => Ok(()),
     }
 }

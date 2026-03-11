@@ -11,6 +11,7 @@ use crossterm::{
 };
 use clap::Parser;
 
+use crate::blessings::{self, ALL_BLESSINGS};
 use crate::bonuses::BonusState;
 use crate::campaign::{CampaignSaves, CampaignState, objective_met};
 use crate::campaign_levels::{TRACK_NAMES, TRACK_COUNT};
@@ -36,6 +37,10 @@ enum TuiState {
     },
     CampaignSelect {
         selected: usize,
+    },
+    BlessingSelection {
+        cursor: usize,
+        chosen: Vec<usize>,
     },
     CampaignLevelIntro,
     GameOver {
@@ -449,10 +454,60 @@ fn run_loop(
                             .cloned()
                             .unwrap_or_else(|| CampaignState::new(track_idx));
                         campaign_ctx = Some(ctx);
-                        tui_state = TuiState::CampaignLevelIntro;
+                        tui_state = TuiState::BlessingSelection { cursor: 0, chosen: Vec::new() };
                     }
                     KeyCode::Esc => {
                         tui_state = TuiState::MainMenu { selected: 2, flash: None };
+                    }
+                    _ => {}
+                }
+                render_current_state(stdout, &tui_state, engine.as_ref(), &geo, &campaign_ctx, &campaign_saves, &user_settings)?;
+            }
+
+            // ── Blessing selection ─────────────────────────────────────
+            TuiState::BlessingSelection { ref mut cursor, ref mut chosen } => {
+                let completed = campaign_saves.completed_count();
+                let total = ALL_BLESSINGS.len();
+                match key.code {
+                    KeyCode::Up => {
+                        if *cursor >= 3 { *cursor -= 3; }
+                    }
+                    KeyCode::Down => {
+                        if *cursor + 3 < total { *cursor += 3; }
+                    }
+                    KeyCode::Left => {
+                        if *cursor > 0 { *cursor -= 1; }
+                    }
+                    KeyCode::Right => {
+                        if *cursor + 1 < total { *cursor += 1; }
+                    }
+                    KeyCode::Enter | KeyCode::Char(' ') => {
+                        let b = &ALL_BLESSINGS[*cursor];
+                        if blessings::is_unlocked(b, completed) {
+                            if let Some(pos) = chosen.iter().position(|&i| i == *cursor) {
+                                chosen.remove(pos);
+                            } else if chosen.len() < 3 {
+                                chosen.push(*cursor);
+                            }
+                        }
+                    }
+                    KeyCode::Char('c') | KeyCode::Char('C') => {
+                        if chosen.len() == 3 {
+                            // Commit blessings to campaign context
+                            let blessing_ids: Vec<String> = chosen
+                                .iter()
+                                .map(|&i| ALL_BLESSINGS[i].id.to_string())
+                                .collect();
+                            if let Some(ref mut ctx) = campaign_ctx {
+                                ctx.blessings = blessing_ids;
+                                campaign_saves.upsert(ctx.clone());
+                                campaign_saves.save("m3tui");
+                            }
+                            tui_state = TuiState::CampaignLevelIntro;
+                        }
+                    }
+                    KeyCode::Esc => {
+                        tui_state = TuiState::CampaignSelect { selected: 0 };
                     }
                     _ => {}
                 }
@@ -468,7 +523,9 @@ fn run_loop(
                             game_config.scale = user_settings.scale;
                             game_config.color_mode = user_settings.color_mode.clone();
                             geo = make_geo(&game_config);
-                            engine = Some(GameEngine::new(&game_config));
+                            let mut eng = GameEngine::new(&game_config);
+                            eng.set_blessings(&ctx.blessings);
+                            engine = Some(eng);
                             tui_state = TuiState::Playing;
                             let eng = engine.as_ref().unwrap();
                             let label = objective_label_for(eng, &campaign_ctx);
@@ -617,6 +674,10 @@ fn render_current_state(
         }
         TuiState::CampaignSelect { selected } => {
             render_campaign_select(stdout, *selected, campaign_saves)?;
+        }
+        TuiState::BlessingSelection { cursor, chosen } => {
+            let completed = campaign_saves.completed_count();
+            renderer::render_blessing_selection(stdout, *cursor, chosen, completed)?;
         }
         TuiState::CampaignLevelIntro => {
             render_level_intro(stdout, campaign_ctx)?;

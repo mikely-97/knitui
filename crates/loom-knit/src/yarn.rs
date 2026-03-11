@@ -1,14 +1,9 @@
-use crossterm::style::{
-    Color,
-    Stylize
-};
-
 use std::fmt;
-use std::collections::HashMap;
+
+use crossterm::style::{Color, Stylize};
+
 use crate::color_counter::ColorCounter;
 use crate::spool::Spool;
-
-use rand::prelude::*;
 
 #[derive(Clone)]
 pub struct Stitch {

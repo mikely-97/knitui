@@ -31,7 +31,7 @@ impl GameBoard {
         for _ in 0..h {
             let mut row: Vec<BoardEntity> = Vec::new();
             for _ in 0..w {
-                if rng.random_range(0..=100) <= obstacle_percentage {
+                if obstacle_percentage > 0 && rng.random_range(0..=100) <= obstacle_percentage {
                     row.push(BoardEntity::Obstacle);
                 } else {
                     row.push(BoardEntity::Spool(*selected_palette.choose(&mut rng).unwrap()));

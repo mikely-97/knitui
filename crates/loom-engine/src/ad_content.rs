@@ -38,6 +38,9 @@ pub fn load_quotes(ad_file: &Option<PathBuf>, config_dir: &str) -> Vec<String> {
 
 /// Pick a random quote from the list.
 pub fn random_quote(quotes: &[String]) -> &str {
+    if quotes.is_empty() {
+        return FALLBACK_QUOTE;
+    }
     let mut rng = rand::rng();
     let idx = rng.random_range(0..quotes.len());
     &quotes[idx]
