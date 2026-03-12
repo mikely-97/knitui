@@ -2,83 +2,107 @@ use crate::config::Config;
 
 pub struct Preset {
     pub name: &'static str,
-    pub board_height: u16,
-    pub board_width: u16,
-    pub color_count: u16,
-    pub generator_count: u16,
-    pub generator_charges: u16,
-    pub blocked_cells: u16,
-    pub generator_interval: u32,
-    pub order_count: u16,
+    pub board_rows: u16,
+    pub board_cols: u16,
+    pub family_count: u16,
+    pub energy_max: u16,
+    pub energy_regen_secs: u32,
+    pub generator_cost: u16,
+    pub generator_cooldown: u32,
+    pub inventory_slots: u16,
+    pub random_order_count: u16,
     pub max_order_tier: u8,
     pub ad_limit: u16,
+    pub soft_gen_chance: u8,
 }
 
 impl Preset {
     pub fn to_config(&self, base: &Config) -> Config {
         let mut cfg = base.clone();
-        cfg.board_height = self.board_height;
-        cfg.board_width = self.board_width;
-        cfg.color_count = self.color_count;
-        cfg.generator_count = self.generator_count;
-        cfg.generator_charges = self.generator_charges;
-        cfg.blocked_cells = self.blocked_cells;
-        cfg.generator_interval = self.generator_interval;
-        cfg.order_count = self.order_count;
+        cfg.board_rows = self.board_rows;
+        cfg.board_cols = self.board_cols;
+        cfg.family_count = self.family_count;
+        cfg.energy_max = self.energy_max;
+        cfg.energy_regen_secs = self.energy_regen_secs;
+        cfg.generator_cost = self.generator_cost;
+        cfg.generator_cooldown = self.generator_cooldown;
+        cfg.inventory_slots = self.inventory_slots;
+        cfg.random_order_count = self.random_order_count;
         cfg.max_order_tier = self.max_order_tier;
         cfg.ad_limit = self.ad_limit;
+        cfg.soft_gen_chance = self.soft_gen_chance;
         cfg
     }
 }
 
 pub const PRESETS: &[Preset] = &[
     Preset {
-        name: "Easy",
-        board_height: 4, board_width: 4, color_count: 2,
-        generator_count: 2, generator_charges: 0,
-        blocked_cells: 0, generator_interval: 6,
-        order_count: 1, max_order_tier: 3, ad_limit: 5,
+        name: "Relaxed",
+        board_rows: 8,
+        board_cols: 6,
+        family_count: 3,
+        energy_max: 150,
+        energy_regen_secs: 20,
+        generator_cost: 1,
+        generator_cooldown: 0,
+        inventory_slots: 6,
+        random_order_count: 1,
+        max_order_tier: 3,
+        ad_limit: 5,
+        soft_gen_chance: 30,
     },
     Preset {
-        name: "Medium",
-        board_height: 5, board_width: 5, color_count: 3,
-        generator_count: 3, generator_charges: 12,
-        blocked_cells: 2, generator_interval: 8,
-        order_count: 2, max_order_tier: 4, ad_limit: 3,
+        name: "Standard",
+        board_rows: 10,
+        board_cols: 8,
+        family_count: 4,
+        energy_max: 100,
+        energy_regen_secs: 30,
+        generator_cost: 1,
+        generator_cooldown: 2,
+        inventory_slots: 4,
+        random_order_count: 2,
+        max_order_tier: 5,
+        ad_limit: 3,
+        soft_gen_chance: 20,
     },
     Preset {
-        name: "Hard",
-        board_height: 6, board_width: 6, color_count: 4,
-        generator_count: 4, generator_charges: 8,
-        blocked_cells: 4, generator_interval: 10,
-        order_count: 3, max_order_tier: 5, ad_limit: 1,
+        name: "Challenge",
+        board_rows: 10,
+        board_cols: 8,
+        family_count: 6,
+        energy_max: 60,
+        energy_regen_secs: 45,
+        generator_cost: 2,
+        generator_cooldown: 5,
+        inventory_slots: 2,
+        random_order_count: 3,
+        max_order_tier: 7,
+        ad_limit: 1,
+        soft_gen_chance: 10,
     },
 ];
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use clap::Parser;
-
-    fn default_config() -> Config {
-        Config::parse_from::<[&str; 0], &str>([])
-    }
 
     #[test]
     fn preset_to_config_applies_fields() {
-        let cfg = PRESETS[0].to_config(&default_config());
-        assert_eq!(cfg.board_height, 4);
-        assert_eq!(cfg.board_width, 4);
-        assert_eq!(cfg.color_count, 2);
+        let cfg = PRESETS[0].to_config(&Config::default());
+        assert_eq!(cfg.board_rows, 8);
+        assert_eq!(cfg.board_cols, 6);
+        assert_eq!(cfg.family_count, 3);
     }
 
     #[test]
     fn all_presets_produce_valid_configs() {
         for p in PRESETS {
-            let cfg = p.to_config(&default_config());
-            assert!(cfg.board_height >= 3);
-            assert!(cfg.board_width >= 3);
-            assert!(cfg.color_count >= 1);
+            let cfg = p.to_config(&Config::default());
+            assert!(cfg.board_rows >= 4);
+            assert!(cfg.board_cols >= 4);
+            assert!(cfg.family_count >= 1);
+            assert!(cfg.energy_max >= 30);
         }
     }
 }

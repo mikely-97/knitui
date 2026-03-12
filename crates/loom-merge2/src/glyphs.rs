@@ -1,94 +1,70 @@
+use crossterm::style::Color;
+
 use crate::board::Cell;
-use crate::item::Item;
+use crate::item::{Family, Piece};
 
-/// Single-character glyph for an item tier (scale 1).
-pub fn tier_glyph(tier: u8) -> &'static str {
-    match tier {
-        1 => "·",
-        2 => "○",
-        3 => "●",
-        4 => "◆",
-        5 => "★",
-        _ => "?",
+/// Terminal foreground color for a given item family.
+pub fn family_color(family: Family) -> Color {
+    match family {
+        Family::Wood    => Color::Green,
+        Family::Stone   => Color::White,
+        Family::Metal   => Color::Cyan,
+        Family::Cloth   => Color::Magenta,
+        Family::Crystal => Color::Yellow,
+        Family::Ember   => Color::Red,
     }
 }
 
-/// Multi-line glyph for an item at a given scale.
-/// Returns `scale` rows, each `scale * 2` characters wide.
-pub fn item_glyph(item: &Item, scale: u16) -> Vec<String> {
-    let w = (scale * 2) as usize;
-    let h = scale as usize;
-    let symbol = tier_glyph(item.tier);
-
-    if h == 1 {
-        return vec![format!("{symbol} ")];
-    }
-
-    let mut rows = Vec::with_capacity(h);
-    let mid = h / 2;
-    for r in 0..h {
-        if r == 0 {
-            rows.push(format!("▄{}▄", "▄".repeat(w.saturating_sub(2))));
-        } else if r == h - 1 {
-            rows.push(format!("▀{}▀", "▀".repeat(w.saturating_sub(2))));
-        } else if r == mid {
-            let pad = (w.saturating_sub(2)) / 2;
-            let sym = format!("{}{}{}", " ".repeat(pad), symbol, " ".repeat(w.saturating_sub(2).saturating_sub(pad + 1)));
-            rows.push(format!("│{}│", sym));
-        } else {
-            rows.push(format!("│{}│", " ".repeat(w.saturating_sub(2))));
-        }
-    }
-    rows
+/// Cell inner dimensions (width in columns, height in rows) at a given scale.
+pub fn cell_dims(scale: u16) -> (usize, usize) {
+    let w = scale as usize * 2 + 2; // 4 at s=1, 6 at s=2, 8 at s=3
+    let h = scale as usize;          // 1 at s=1, 2 at s=2, 3 at s=3
+    (w, h)
 }
 
-/// Glyph for a generator cell.
-pub fn generator_glyph(scale: u16) -> Vec<String> {
-    let w = (scale * 2) as usize;
-    let h = scale as usize;
-    if h == 1 {
-        return vec!["G ".to_string()];
-    }
-    let mut rows = Vec::with_capacity(h);
-    let mid = h / 2;
-    for r in 0..h {
-        if r == mid {
-            let pad = (w.saturating_sub(2)) / 2;
-            let sym = format!("{}{}{}", " ".repeat(pad), "G", " ".repeat(w.saturating_sub(2).saturating_sub(pad + 1)));
-            rows.push(format!("╔{}╗", sym));
-        } else {
-            rows.push(format!("║{}║", " ".repeat(w.saturating_sub(2))));
-        }
-    }
-    rows
-}
-
-/// Glyph for a blocked cell.
-pub fn blocked_glyph(scale: u16) -> Vec<String> {
-    let w = (scale * 2) as usize;
-    let h = scale as usize;
-    if h == 1 {
-        return vec!["▓▓".to_string()];
-    }
-    (0..h).map(|_| "▓".repeat(w)).collect()
-}
-
-/// Glyph for an empty cell.
-pub fn empty_glyph(scale: u16) -> Vec<String> {
-    let w = (scale * 2) as usize;
-    let h = scale as usize;
-    if h == 1 {
-        return vec!["  ".to_string()];
-    }
-    (0..h).map(|_| " ".repeat(w)).collect()
-}
-
-/// Get the appropriate glyph rows for a cell.
-pub fn cell_glyph(cell: &Cell, scale: u16) -> Vec<String> {
+/// Returns `(label, fg_color, bold)` for a cell at scale 1.
+/// `label` fits in two visible characters (may be multi-byte unicode).
+pub fn cell_label(cell: &Cell) -> (String, Color, bool) {
     match cell {
-        Cell::Item(item) => item_glyph(item, scale),
-        Cell::Empty => empty_glyph(scale),
-        Cell::Generator { .. } => generator_glyph(scale),
-        Cell::Blocked => blocked_glyph(scale),
+        Cell::Empty => ("  ".to_string(), Color::Reset, false),
+
+        Cell::Piece(piece) => match piece {
+            Piece::Regular(item) => (
+                item.glyph().to_string(),
+                family_color(item.family),
+                false,
+            ),
+            Piece::Blueprint(fam) => (
+                format!("B{}", &fam.name()[..1]),
+                family_color(*fam),
+                true,
+            ),
+        },
+
+        // Frozen: same glyph but dimmed grey
+        Cell::Frozen(piece) => {
+            let glyph = match piece {
+                Piece::Regular(item) => item.glyph().to_string(),
+                Piece::Blueprint(fam) => format!("B{}", &fam.name()[..1]),
+            };
+            (glyph, Color::DarkGrey, false)
+        }
+
+        // Hard generator: "G∞" for T1, "G2"/"G3"... for higher tiers. Bold.
+        Cell::HardGenerator { family, tier, cooldown_remaining } => {
+            let color = if *cooldown_remaining > 0 { Color::DarkGrey } else { family_color(*family) };
+            let label = if *tier == 1 { "G∞".to_string() } else { format!("G{}", tier) };
+            (label, color, true)
+        }
+
+        // Soft generator: "Gn" where n = remaining charges
+        Cell::SoftGenerator { family, charges, cooldown_remaining, .. } => {
+            let color = if *charges == 0 || *cooldown_remaining > 0 {
+                Color::DarkGrey
+            } else {
+                family_color(*family)
+            };
+            (format!("G{}", charges), color, false)
+        }
     }
 }

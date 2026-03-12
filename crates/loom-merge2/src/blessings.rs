@@ -1,11 +1,11 @@
 /// Campaign blessings — passive modifiers chosen at campaign start.
 ///
-/// 12 blessings across 4 tiers (D/C/B/A). Higher tiers unlock as the
-/// player completes campaign tracks.
+/// 12 blessings across 4 tiers (D/C/B/A), designed for persistent-board
+/// merge-2 gameplay with generators, frozen cells, energy, and inventory.
 
 use crate::blessings::Tier::*;
 
-// ── Tier ──────────────────────────────────────────────────────────────
+// ── Tier ──────────────────────────────────────────────────────────────────
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Tier { D, C, B, A }
@@ -26,7 +26,7 @@ pub fn unlocked_tier(completed_tracks: usize) -> Tier {
     }
 }
 
-// ── Blessing definition ───────────────────────────────────────────────
+// ── Blessing definition ───────────────────────────────────────────────────
 
 pub struct Blessing {
     pub id: &'static str,
@@ -36,175 +36,176 @@ pub struct Blessing {
     pub ascii_art: [&'static str; 5],
 }
 
-// ── The 12 blessings ──────────────────────────────────────────────────
+// ── The 12 blessings ─────────────────────────────────────────────────────
 
 pub const ALL_BLESSINGS: &[Blessing] = &[
-    // ── D-tier: QoL / minor boosts ──
+
+    // ── D-Tier: immediate quality-of-life ──────────────────────────────
     Blessing {
-        id: "extra_ad",
-        name: "Extra Ad",
+        id: "energy_saver",
+        name: "Energy Saver",
         tier: D,
-        description: "+1 ad use allowed",
+        description: "25% chance generator tap\ncosts 0 energy",
         ascii_art: [
-            "  ┌─────┐",
-            "  │ +1  │",
-            "  │ ad  │",
-            "  │ use │",
-            "  └─────┘",
+            "  ⚡ ─ ⚡  ",
+            "  │  25% │ ",
+            "  │  free│ ",
+            "  │ tap! │ ",
+            "  └──────┘ ",
         ],
     },
     Blessing {
-        id: "fast_spawn",
-        name: "Fast Spawn",
+        id: "quick_regen",
+        name: "Quick Regen",
         tier: D,
-        description: "Generators -2 tick CD",
+        description: "Energy regenerates 50%\nfaster (20s instead of 30s)",
         ascii_art: [
-            "  ┌─────┐",
-            "  │ G→→ │",
-            "  │ -2  │",
-            "  │ticks│",
-            "  └─────┘",
+            "  ⚡ → ⚡  ",
+            "  30s→20s  ",
+            "  ┌──────┐ ",
+            "  │ fast │ ",
+            "  └──────┘ ",
         ],
     },
     Blessing {
         id: "keen_eye",
         name: "Keen Eye",
         tier: D,
-        description: "Highlight a merge pair",
+        description: "Highlights a valid merge\npair on the board",
         ascii_art: [
-            "    ◉    ",
-            "  ╱   ╲  ",
-            " │  ↔  │ ",
-            "  ╲   ╱  ",
-            "    ◎    ",
+            "    ◉     ",
+            "  ╱   ╲   ",
+            " │  ↔  │  ",
+            "  ╲   ╱   ",
+            "    ◎     ",
         ],
     },
 
-    // ── C-tier: moderate gameplay ──
+    // ── C-Tier: moderate expansion ─────────────────────────────────────
     Blessing {
-        id: "lucky_start",
-        name: "Lucky Start",
+        id: "bigger_pockets",
+        name: "Bigger Pockets",
         tier: C,
-        description: "Start with 1 random T2",
+        description: "+2 inventory slots\nat campaign start",
         ascii_art: [
-            "    ★    ",
-            "   ╱ ╲   ",
-            "  │ T2│  ",
-            "   ╲ ╱   ",
-            "    ▽    ",
+            "  ┌─────┐  ",
+            "  │[ ][ ]│ ",
+            "  │  +2  │ ",
+            "  │slots │ ",
+            "  └─────┘  ",
         ],
     },
     Blessing {
-        id: "generous_orders",
-        name: "Generous Orders",
+        id: "thaw_aura",
+        name: "Thaw Aura",
         tier: C,
-        description: "Orders need -1 item",
+        description: "Merging into a frozen cell\nalso thaws adjacent frozen",
         ascii_art: [
-            "  ╔═══╗  ",
-            "  ║ ✓ ║  ",
-            "  ║-1 ║  ",
-            "  ║qty║  ",
-            "  ╚═══╝  ",
+            "  ░ → □   ",
+            " ░[✦]░→□  ",
+            "  ░ → □   ",
+            "  aura!   ",
+            "          ",
         ],
     },
     Blessing {
-        id: "extra_charges",
-        name: "Extra Charges",
+        id: "lucky_orders",
+        name: "Lucky Orders",
         tier: C,
-        description: "Generators get +3 charges",
+        description: "Random orders require\n1 fewer item (min 1)",
         ascii_art: [
-            "  ┌───┐  ",
-            "  │ G │  ",
-            "  │+3 │  ",
-            "  │chg│  ",
-            "  └───┘  ",
+            "  ╔═════╗  ",
+            "  ║ ✓ ✓ ║  ",
+            "  ║ -1  ║  ",
+            "  ║ qty ║  ",
+            "  ╚═════╝  ",
         ],
     },
 
-    // ── B-tier: significant gameplay ──
+    // ── B-Tier: significant gameplay impact ────────────────────────────
     Blessing {
         id: "chain_merge",
         name: "Chain Merge",
         tier: B,
-        description: "Auto-merge after merge",
+        description: "After a merge, auto-merge\nresult up to 3 more times",
         ascii_art: [
-            "  ○→○→●  ",
-            "  ↓     ",
-            "  ●→●→◆  ",
-            "  ↓     ",
-            "  chain! ",
-        ],
-    },
-    Blessing {
-        id: "clear_path",
-        name: "Clear Path",
-        tier: B,
-        description: "-1 blocked cell",
-        ascii_art: [
-            "  ▓▓▓▓▓  ",
-            "  ▓   ▓  ",
-            "  ▓ -1▓  ",
-            "  ▓   ▓  ",
-            "  ▓▓▓▓▓  ",
+            "  ○→○→●   ",
+            "      ↓   ",
+            "  ●→●→◆   ",
+            "      ↓   ",
+            "  chain!  ",
         ],
     },
     Blessing {
         id: "tier_boost",
         name: "Tier Boost",
         tier: B,
-        description: "15% merge skips a tier",
+        description: "15% chance a merge\nskips one tier",
         ascii_art: [
-            "  ○ + ○  ",
-            "    ↓    ",
-            "  ● → ◆  ",
-            "   15%   ",
-            "  skip!  ",
+            "  ○ + ○   ",
+            "    ↓     ",
+            "  ● → ◆   ",
+            "   15%    ",
+            "  skip!   ",
+        ],
+    },
+    Blessing {
+        id: "generator_surge",
+        name: "Generator Surge",
+        tier: B,
+        description: "Hard generators 20% chance\nto produce a T2 item",
+        ascii_art: [
+            "  ┌─★─┐   ",
+            "  │ G∞│   ",
+            "  │T2!│   ",
+            "  │20%│   ",
+            "  └───┘   ",
         ],
     },
 
-    // ── A-tier: powerful ──
+    // ── A-Tier: powerful campaign-defining effects ─────────────────────
     Blessing {
         id: "double_deliver",
         name: "Double Deliver",
         tier: A,
-        description: "Deliveries count as 2x",
+        description: "Each delivery satisfies\n2 of the requirement",
         ascii_art: [
-            "  ╔═══╗  ",
-            "  ║ ×2║  ",
-            "  ║del║  ",
-            "  ║ ! ║  ",
-            "  ╚═══╝  ",
+            "  ╔═════╗  ",
+            "  ║ × 2 ║  ",
+            "  ║ del ║  ",
+            "  ║  !  ║  ",
+            "  ╚═════╝  ",
         ],
     },
     Blessing {
-        id: "golden_generator",
-        name: "Golden Gen",
+        id: "soft_gen_master",
+        name: "Soft Gen Master",
         tier: A,
-        description: "30% chance spawn T2",
+        description: "Soft generators +3 charges;\n30% chance not to consume",
         ascii_art: [
-            "  ┌─★─┐  ",
-            "  │ G │  ",
-            "  │T2!│  ",
-            "  │30%│  ",
-            "  └───┘  ",
+            "  ┌─────┐  ",
+            "  │ G+3 │  ",
+            "  │  &  │  ",
+            "  │ 30% │  ",
+            "  └─────┘  ",
         ],
     },
     Blessing {
-        id: "last_resort",
-        name: "Last Resort",
+        id: "deep_thaw",
+        name: "Deep Thaw",
         tier: A,
-        description: "Stuck+no ads? Clear 2",
+        description: "Thawed items automatically\nupgrade +1 tier",
         ascii_art: [
-            "  ┌─────┐",
-            "  │STUCK│",
-            "  │ → 2 │",
-            "  │clear│",
-            "  └─────┘",
+            "  ░[○]░   ",
+            "    ↓     ",
+            "  □[●]□   ",
+            "  +1 tier ",
+            "  on thaw ",
         ],
     },
 ];
 
-// ── Helpers ───────────────────────────────────────────────────────────
+// ── Helpers ───────────────────────────────────────────────────────────────
 
 /// All blessings the player may choose from, given completed track count.
 pub fn available_blessings(completed_tracks: usize) -> Vec<&'static Blessing> {
@@ -232,7 +233,7 @@ pub fn tracks_required(tier: Tier) -> usize {
     match tier { D => 0, C => 1, B => 2, A => 3 }
 }
 
-// ── Tests ─────────────────────────────────────────────────────────────
+// ── Tests ─────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
 mod tests {
@@ -241,6 +242,14 @@ mod tests {
     #[test]
     fn all_blessings_count() {
         assert_eq!(ALL_BLESSINGS.len(), 12);
+    }
+
+    #[test]
+    fn three_per_tier() {
+        for tier in [D, C, B, A] {
+            let count = ALL_BLESSINGS.iter().filter(|b| b.tier == tier).count();
+            assert_eq!(count, 3, "tier {:?} should have 3 blessings", tier);
+        }
     }
 
     #[test]
@@ -262,32 +271,29 @@ mod tests {
     #[test]
     fn available_at_zero_tracks() {
         let avail = available_blessings(0);
-        assert_eq!(avail.len(), 3); // 3 D-tier
+        assert_eq!(avail.len(), 3);
         assert!(avail.iter().all(|b| b.tier == D));
     }
 
     #[test]
     fn available_at_one_track() {
-        let avail = available_blessings(1);
-        assert_eq!(avail.len(), 6); // 3 D + 3 C
+        assert_eq!(available_blessings(1).len(), 6);
     }
 
     #[test]
     fn available_at_two_tracks() {
-        let avail = available_blessings(2);
-        assert_eq!(avail.len(), 9); // 3 D + 3 C + 3 B
+        assert_eq!(available_blessings(2).len(), 9);
     }
 
     #[test]
     fn available_at_three_tracks() {
-        let avail = available_blessings(3);
-        assert_eq!(avail.len(), 12); // all
+        assert_eq!(available_blessings(3).len(), 12);
     }
 
     #[test]
     fn lookup_finds_by_id() {
-        let b = lookup("last_resort").unwrap();
-        assert_eq!(b.name, "Last Resort");
+        let b = lookup("deep_thaw").unwrap();
+        assert_eq!(b.name, "Deep Thaw");
         assert_eq!(b.tier, A);
     }
 
@@ -298,8 +304,25 @@ mod tests {
 
     #[test]
     fn has_checks_presence() {
-        let ids = vec!["extra_ad".to_string(), "keen_eye".to_string()];
-        assert!(has(&ids, "extra_ad"));
-        assert!(!has(&ids, "last_resort"));
+        let ids = vec!["energy_saver".to_string(), "keen_eye".to_string()];
+        assert!(has(&ids, "energy_saver"));
+        assert!(!has(&ids, "deep_thaw"));
+    }
+
+    #[test]
+    fn all_ids_are_unique() {
+        let mut ids: Vec<&str> = ALL_BLESSINGS.iter().map(|b| b.id).collect();
+        let before = ids.len();
+        ids.dedup();
+        ids.sort_unstable();
+        ids.dedup();
+        assert_eq!(ids.len(), before, "duplicate IDs found");
+    }
+
+    #[test]
+    fn ascii_art_rows_correct_count() {
+        for b in ALL_BLESSINGS {
+            assert_eq!(b.ascii_art.len(), 5, "{} art wrong", b.id);
+        }
     }
 }

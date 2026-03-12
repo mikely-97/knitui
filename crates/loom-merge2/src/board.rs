@@ -1,35 +1,67 @@
-use crossterm::style::Color;
 use rand::prelude::*;
 use serde::{Deserialize, Serialize};
 
-use crate::item::Item;
+use crate::item::{Family, Item, Piece};
 
 /// A single cell on the merge-2 board.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum Cell {
-    Item(Item),
     Empty,
-    Generator {
-        #[serde(with = "loom_engine::color_serde")]
-        color: Color,
-        /// Remaining charges. `None` = infinite.
-        charges: Option<u16>,
-        /// Ticks between spawns.
-        interval: u32,
-        /// Ticks until next spawn.
-        cooldown: u32,
+    Piece(Piece),
+    /// Frozen cell: content is visible but locked. Must merge identical piece into it to thaw.
+    Frozen(Piece),
+    HardGenerator {
+        family: Family,
+        /// Generator tier (1-8). Higher tiers produce higher-base-tier items.
+        tier: u8,
+        cooldown_remaining: u32,
     },
-    Blocked,
+    SoftGenerator {
+        family: Family,
+        /// Generator tier (1-8).
+        tier: u8,
+        charges: u16,
+        cooldown_remaining: u32,
+    },
 }
 
 impl Cell {
-    pub fn is_item(&self) -> bool { matches!(self, Cell::Item(_)) }
-    pub fn is_empty(&self) -> bool { matches!(self, Cell::Empty) }
-    pub fn is_generator(&self) -> bool { matches!(self, Cell::Generator { .. }) }
-    pub fn is_blocked(&self) -> bool { matches!(self, Cell::Blocked) }
+    pub fn is_empty(&self) -> bool {
+        matches!(self, Cell::Empty)
+    }
+    pub fn is_piece(&self) -> bool {
+        matches!(self, Cell::Piece(_))
+    }
+    pub fn is_frozen(&self) -> bool {
+        matches!(self, Cell::Frozen(_))
+    }
+    pub fn is_hard_generator(&self) -> bool {
+        matches!(self, Cell::HardGenerator { .. })
+    }
+    pub fn is_soft_generator(&self) -> bool {
+        matches!(self, Cell::SoftGenerator { .. })
+    }
+    pub fn is_any_generator(&self) -> bool {
+        self.is_hard_generator() || self.is_soft_generator()
+    }
 
-    pub fn item(&self) -> Option<&Item> {
-        match self { Cell::Item(i) => Some(i), _ => None }
+    /// Get the piece in this cell (if it's a Piece or Frozen cell).
+    pub fn piece(&self) -> Option<&Piece> {
+        match self {
+            Cell::Piece(p) | Cell::Frozen(p) => Some(p),
+            _ => None,
+        }
+    }
+
+    /// Get the family of whatever is in this cell.
+    pub fn family(&self) -> Option<Family> {
+        match self {
+            Cell::Piece(p) | Cell::Frozen(p) => Some(p.family()),
+            Cell::HardGenerator { family, .. } | Cell::SoftGenerator { family, .. } => {
+                Some(*family)
+            }
+            Cell::Empty => None,
+        }
     }
 }
 
@@ -37,426 +69,468 @@ impl Cell {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Board {
     pub cells: Vec<Vec<Cell>>,
-    pub height: usize,
-    pub width: usize,
+    pub rows: usize,
+    pub cols: usize,
 }
 
 impl Board {
-    /// Create a random board with generators on edges, blocked cells in the interior,
-    /// and the rest filled with tier-1 items.
-    pub fn make_random(
-        height: usize,
-        width: usize,
-        palette: &[Color],
-        generator_count: usize,
-        generator_charges: u16,
-        generator_interval: u32,
-        blocked_count: usize,
-    ) -> Self {
-        let mut rng = rand::rng();
-
-        // Start with all empty
-        let mut cells = vec![vec![Cell::Empty; width]; height];
-
-        // Collect edge positions for generators
-        let mut edge_positions: Vec<(usize, usize)> = Vec::new();
-        for r in 0..height {
-            for c in 0..width {
-                if r == 0 || r == height - 1 || c == 0 || c == width - 1 {
-                    edge_positions.push((r, c));
-                }
-            }
+    pub fn new_empty(rows: usize, cols: usize) -> Self {
+        Board {
+            cells: vec![vec![Cell::Empty; cols]; rows],
+            rows,
+            cols,
         }
-        edge_positions.shuffle(&mut rng);
-
-        // Place generators — ensure at least one per palette color used
-        let gen_count = generator_count.min(edge_positions.len());
-        for i in 0..gen_count {
-            let (r, c) = edge_positions[i];
-            let color = palette[i % palette.len()];
-            let charges = if generator_charges == 0 { None } else { Some(generator_charges) };
-            cells[r][c] = Cell::Generator {
-                color,
-                charges,
-                interval: generator_interval,
-                cooldown: generator_interval,
-            };
-        }
-
-        // Collect interior positions for blocked cells
-        let mut interior: Vec<(usize, usize)> = Vec::new();
-        for r in 1..height.saturating_sub(1) {
-            for c in 1..width.saturating_sub(1) {
-                if cells[r][c].is_empty() {
-                    interior.push((r, c));
-                }
-            }
-        }
-        interior.shuffle(&mut rng);
-
-        let block_count = blocked_count.min(interior.len());
-        for i in 0..block_count {
-            let (r, c) = interior[i];
-            cells[r][c] = Cell::Blocked;
-        }
-
-        // Fill remaining empty cells with random tier-1 items
-        for r in 0..height {
-            for c in 0..width {
-                if cells[r][c].is_empty() {
-                    let color = *palette.choose(&mut rng).unwrap();
-                    cells[r][c] = Cell::Item(Item::new(color, 1));
-                }
-            }
-        }
-
-        Board { cells, height, width }
     }
 
-    /// Get the item at a position, if any.
-    pub fn item_at(&self, r: usize, c: usize) -> Option<&Item> {
-        self.cells.get(r).and_then(|row| row.get(c)).and_then(|cell| cell.item())
+    pub fn in_bounds(&self, r: usize, c: usize) -> bool {
+        r < self.rows && c < self.cols
     }
 
-    /// Remove and return the item at a position.
-    pub fn take_item(&mut self, r: usize, c: usize) -> Option<Item> {
-        if let Some(Cell::Item(item)) = self.cells.get(r).and_then(|row| row.get(c)) {
-            let item = item.clone();
+    pub fn cell(&self, r: usize, c: usize) -> &Cell {
+        &self.cells[r][c]
+    }
+
+    pub fn cell_mut(&mut self, r: usize, c: usize) -> &mut Cell {
+        &mut self.cells[r][c]
+    }
+
+    /// Get the piece at a position (from Piece or Frozen cell).
+    pub fn piece_at(&self, r: usize, c: usize) -> Option<&Piece> {
+        self.cells.get(r).and_then(|row| row.get(c)).and_then(|cell| cell.piece())
+    }
+
+    /// Get a free (non-frozen) piece at a position.
+    pub fn free_piece_at(&self, r: usize, c: usize) -> Option<&Piece> {
+        match self.cells.get(r).and_then(|row| row.get(c)) {
+            Some(Cell::Piece(p)) => Some(p),
+            _ => None,
+        }
+    }
+
+    /// Remove and return the piece at a free (non-frozen) position.
+    pub fn take_piece(&mut self, r: usize, c: usize) -> Option<Piece> {
+        if let Cell::Piece(p) = &self.cells[r][c] {
+            let piece = p.clone();
             self.cells[r][c] = Cell::Empty;
-            Some(item)
+            Some(piece)
         } else {
             None
         }
     }
 
-    /// Whether two positions are 4-directionally adjacent.
-    pub fn is_adjacent(a: (usize, usize), b: (usize, usize)) -> bool {
-        let dr = (a.0 as i32 - b.0 as i32).abs();
-        let dc = (a.1 as i32 - b.1 as i32).abs();
-        (dr == 1 && dc == 0) || (dr == 0 && dc == 1)
-    }
-
-    /// Whether the items at two positions can merge.
-    pub fn can_merge(&self, a: (usize, usize), b: (usize, usize)) -> bool {
-        if !Self::is_adjacent(a, b) { return false; }
-        match (self.item_at(a.0, a.1), self.item_at(b.0, b.1)) {
-            (Some(ia), Some(ib)) => ia.can_merge(ib),
-            _ => false,
+    /// Whether two positions can merge.
+    /// No adjacency requirement — any matching pair anywhere on the board.
+    /// dst can be a Frozen cell if it contains a matching piece.
+    pub fn can_merge(&self, src: (usize, usize), dst: (usize, usize)) -> bool {
+        if src == dst {
+            return false;
         }
+        let src_piece = match &self.cells[src.0][src.1] {
+            Cell::Piece(p) => p,
+            _ => return false,
+        };
+        let dst_piece = match &self.cells[dst.0][dst.1] {
+            Cell::Piece(p) | Cell::Frozen(p) => p,
+            _ => return false,
+        };
+        src_piece.can_merge(dst_piece)
     }
 
-    /// Perform a merge: place the merged item at `dst`, clear `src`.
-    /// Returns the resulting item.
-    pub fn do_merge(&mut self, src: (usize, usize), dst: (usize, usize)) -> Option<Item> {
-        let src_item = self.item_at(src.0, src.1)?.clone();
-        let dst_item = self.item_at(dst.0, dst.1)?;
-        if !src_item.can_merge(dst_item) { return None; }
-        let merged = src_item.merged();
+    /// Perform a merge: remove src piece, merge into dst.
+    /// If dst is Frozen, thaw it.
+    /// Returns the resulting piece and whether a thaw occurred.
+    pub fn do_merge(&mut self, src: (usize, usize), dst: (usize, usize)) -> Option<MergeResult> {
+        if !self.can_merge(src, dst) {
+            return None;
+        }
+
+        let was_frozen = self.cells[dst.0][dst.1].is_frozen();
+
+        // Determine result piece
+        let src_piece = match &self.cells[src.0][src.1] {
+            Cell::Piece(p) => p.clone(),
+            _ => return None,
+        };
+        let dst_piece = match &self.cells[dst.0][dst.1] {
+            Cell::Piece(p) | Cell::Frozen(p) => p.clone(),
+            _ => return None,
+        };
+
+        let result_piece = match (&src_piece, &dst_piece) {
+            (Piece::Regular(a), Piece::Regular(_b)) => Piece::Regular(a.merged()),
+            // Two blueprints of same family merge → result handled by engine (becomes generator)
+            (Piece::Blueprint(fam), Piece::Blueprint(_)) => Piece::Blueprint(*fam),
+            _ => return None,
+        };
+
+        // Clear src, place result at dst
         self.cells[src.0][src.1] = Cell::Empty;
-        self.cells[dst.0][dst.1] = Cell::Item(merged.clone());
-        Some(merged)
+        self.cells[dst.0][dst.1] = Cell::Piece(result_piece.clone());
+
+        Some(MergeResult {
+            piece: result_piece,
+            thawed: was_frozen,
+            dst,
+        })
     }
 
     /// Whether any valid merge exists on the board.
+    /// Checks all pairs of free pieces + free→frozen merges.
     pub fn has_any_merge(&self) -> bool {
-        for r in 0..self.height {
-            for c in 0..self.width {
-                if let Some(item) = self.item_at(r, c) {
-                    // Check right neighbor
-                    if c + 1 < self.width {
-                        if let Some(other) = self.item_at(r, c + 1) {
-                            if item.can_merge(other) { return true; }
-                        }
+        let mut free_pieces: Vec<((usize, usize), &Piece)> = Vec::new();
+        let mut all_pieces: Vec<((usize, usize), &Piece)> = Vec::new();
+
+        for r in 0..self.rows {
+            for c in 0..self.cols {
+                match &self.cells[r][c] {
+                    Cell::Piece(p) => {
+                        free_pieces.push(((r, c), p));
+                        all_pieces.push(((r, c), p));
                     }
-                    // Check down neighbor
-                    if r + 1 < self.height {
-                        if let Some(other) = self.item_at(r + 1, c) {
-                            if item.can_merge(other) { return true; }
-                        }
+                    Cell::Frozen(p) => {
+                        all_pieces.push(((r, c), p));
                     }
+                    _ => {}
                 }
             }
         }
+
+        // For each free piece, check if any other piece (free or frozen) matches
+        for (i, (_pos_a, piece_a)) in free_pieces.iter().enumerate() {
+            for (_pos_b, piece_b) in all_pieces.iter() {
+                if std::ptr::eq(*piece_a, *piece_b) {
+                    continue;
+                }
+                if piece_a.can_merge(piece_b) {
+                    // Need at least the src to be free, dst can be free or frozen
+                    // But if dst is also free, we need src != dst (already guaranteed by ptr check)
+                    // If dst is frozen, this is a valid thaw-merge
+                    return true;
+                }
+            }
+            // Also check against other free pieces (for the i+1.. range to avoid double-count)
+            for (_pos_b, piece_b) in free_pieces.iter().skip(i + 1) {
+                if piece_a.can_merge(piece_b) {
+                    return true;
+                }
+            }
+        }
+
         false
     }
 
-    /// Whether the board has no empty cells (generators and blocked don't count as empty).
+    /// Whether the board has no empty cells.
     pub fn is_full(&self) -> bool {
         !self.cells.iter().any(|row| row.iter().any(|c| c.is_empty()))
     }
 
     /// Count empty cells.
     pub fn empty_count(&self) -> usize {
-        self.cells.iter().flat_map(|row| row.iter()).filter(|c| c.is_empty()).count()
+        self.cells
+            .iter()
+            .flat_map(|row| row.iter())
+            .filter(|c| c.is_empty())
+            .count()
     }
 
-    /// Tick all generators. Returns true if any item was spawned.
-    pub fn tick_generators(&mut self) -> bool {
-        self.tick_generators_with_golden(false)
+    /// Count frozen cells.
+    pub fn frozen_count(&self) -> usize {
+        self.cells
+            .iter()
+            .flat_map(|row| row.iter())
+            .filter(|c| c.is_frozen())
+            .count()
     }
 
-    /// Tick generators. If `golden` is true, 30% chance to spawn T2 instead of T1.
-    pub fn tick_generators_with_golden(&mut self, golden: bool) -> bool {
-        let mut spawned = false;
+    /// Get 4-directionally adjacent positions within bounds.
+    pub fn adjacent_positions(&self, r: usize, c: usize) -> Vec<(usize, usize)> {
+        let mut pos = Vec::with_capacity(4);
+        if r > 0 {
+            pos.push((r - 1, c));
+        }
+        if r + 1 < self.rows {
+            pos.push((r + 1, c));
+        }
+        if c > 0 {
+            pos.push((r, c - 1));
+        }
+        if c + 1 < self.cols {
+            pos.push((r, c + 1));
+        }
+        pos
+    }
+
+    /// Find a random empty cell anywhere on the board. Returns None if the board is full.
+    pub fn find_empty_adjacent(&self, _r: usize, _c: usize) -> Option<(usize, usize)> {
+        self.find_any_empty()
+    }
+
+    /// Find a random empty cell anywhere on the board.
+    pub fn find_any_empty(&self) -> Option<(usize, usize)> {
         let mut rng = rand::rng();
-
-        // Collect generator info first to avoid borrow issues
-        let mut gen_info: Vec<(usize, usize, Color, Option<u16>)> = Vec::new();
-        for r in 0..self.height {
-            for c in 0..self.width {
-                if let Cell::Generator { color, charges, interval: _, cooldown } = &mut self.cells[r][c] {
-                    if *cooldown > 0 {
-                        *cooldown -= 1;
-                        continue;
-                    }
-                    // Ready to spawn
-                    match charges {
-                        Some(0) => continue, // exhausted
-                        _ => gen_info.push((r, c, *color, *charges)),
-                    }
-                }
-            }
-        }
-
-        for (r, c, color, _charges) in gen_info {
-            // Find adjacent empty cells
-            let neighbors = Self::adjacent_positions(r, c, self.height, self.width);
-            let empty: Vec<(usize, usize)> = neighbors.into_iter()
-                .filter(|&(nr, nc)| self.cells[nr][nc].is_empty())
-                .collect();
-
-            if let Some(&(nr, nc)) = empty.choose(&mut rng) {
-                let tier = if golden && rng.random_range(0u8..100) < 30 { 2 } else { 1 };
-                self.cells[nr][nc] = Cell::Item(Item::new(color, tier));
-                // Update generator state
-                if let Cell::Generator { charges, interval, cooldown, .. } = &mut self.cells[r][c] {
-                    *cooldown = *interval;
-                    if let Some(n) = charges {
-                        *n = n.saturating_sub(1);
-                    }
-                }
-                spawned = true;
-            }
-        }
-
-        spawned
+        let mut empties: Vec<(usize, usize)> = (0..self.rows)
+            .flat_map(|r| (0..self.cols).map(move |c| (r, c)))
+            .filter(|&(r, c)| self.cells[r][c].is_empty())
+            .collect();
+        empties.shuffle(&mut rng);
+        empties.into_iter().next()
     }
 
-    /// Clear up to `count` random Item cells. Returns how many were cleared.
-    pub fn clear_random_items(&mut self, count: usize) -> usize {
+    /// Thaw adjacent frozen cells (for thaw_aura blessing).
+    /// Returns the positions that were thawed.
+    pub fn thaw_adjacent(&mut self, r: usize, c: usize) -> Vec<(usize, usize)> {
+        let neighbors = self.adjacent_positions(r, c);
+        let mut thawed = Vec::new();
+        for (nr, nc) in neighbors {
+            if let Cell::Frozen(piece) = &self.cells[nr][nc] {
+                let piece = piece.clone();
+                self.cells[nr][nc] = Cell::Piece(piece);
+                thawed.push((nr, nc));
+            }
+        }
+        thawed
+    }
+
+    /// Clear up to `count` random free piece cells. Returns how many were cleared.
+    pub fn clear_random_pieces(&mut self, count: usize) -> usize {
         let mut rng = rand::rng();
-        let mut item_positions: Vec<(usize, usize)> = Vec::new();
-        for r in 0..self.height {
-            for c in 0..self.width {
-                if self.cells[r][c].is_item() {
-                    item_positions.push((r, c));
+        let mut positions: Vec<(usize, usize)> = Vec::new();
+        for r in 0..self.rows {
+            for c in 0..self.cols {
+                if self.cells[r][c].is_piece() {
+                    positions.push((r, c));
                 }
             }
         }
-        item_positions.shuffle(&mut rng);
-        let to_clear = count.min(item_positions.len());
-        for i in 0..to_clear {
-            let (r, c) = item_positions[i];
+        positions.shuffle(&mut rng);
+        let to_clear = count.min(positions.len());
+        for &(r, c) in &positions[..to_clear] {
             self.cells[r][c] = Cell::Empty;
         }
         to_clear
     }
+}
 
-    /// Get 4-directionally adjacent positions within bounds.
-    fn adjacent_positions(r: usize, c: usize, height: usize, width: usize) -> Vec<(usize, usize)> {
-        let mut pos = Vec::new();
-        if r > 0 { pos.push((r - 1, c)); }
-        if r + 1 < height { pos.push((r + 1, c)); }
-        if c > 0 { pos.push((r, c - 1)); }
-        if c + 1 < width { pos.push((r, c + 1)); }
-        pos
+/// Result of a successful merge.
+#[derive(Clone, Debug)]
+pub struct MergeResult {
+    pub piece: Piece,
+    pub thawed: bool,
+    pub dst: (usize, usize),
+}
+
+/// Initial cell state for board layout definitions.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub enum CellInit {
+    Empty,
+    Frozen,
+    FrozenItem(Family, u8),
+    FrozenBlueprint(Family),
+    FrozenHardGen(Family),
+    HardGenerator(Family, u8),  // (family, tier)
+    Item(Family, u8),
+}
+
+/// A board layout definition for campaign tracks.
+#[derive(Clone, Debug)]
+pub struct BoardLayout {
+    pub rows: usize,
+    pub cols: usize,
+    pub cells: Vec<Vec<CellInit>>,
+}
+
+impl BoardLayout {
+    /// Build a Board from this layout definition.
+    pub fn build(&self) -> Board {
+        let mut board = Board::new_empty(self.rows, self.cols);
+        for r in 0..self.rows.min(self.cells.len()) {
+            for c in 0..self.cols.min(self.cells[r].len()) {
+                board.cells[r][c] = match &self.cells[r][c] {
+                    CellInit::Empty => Cell::Empty,
+                    CellInit::Frozen => Cell::Frozen(Piece::Regular(Item::new(Family::Wood, 1))),
+                    CellInit::FrozenItem(fam, tier) => {
+                        Cell::Frozen(Piece::Regular(Item::new(*fam, *tier)))
+                    }
+                    CellInit::FrozenBlueprint(fam) => Cell::Frozen(Piece::Blueprint(*fam)),
+                    CellInit::FrozenHardGen(fam) => {
+                        // Frozen hard gen: when thawed, becomes a hard generator
+                        // We represent as frozen piece; engine handles special conversion
+                        Cell::Frozen(Piece::Blueprint(*fam))
+                    }
+                    CellInit::HardGenerator(fam, tier) => Cell::HardGenerator {
+                        family: *fam,
+                        tier: *tier,
+                        cooldown_remaining: 0,
+                    },
+                    CellInit::Item(fam, tier) => {
+                        Cell::Piece(Piece::Regular(Item::new(*fam, *tier)))
+                    }
+                };
+            }
+        }
+        board
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::item::MAX_TIER;
 
-    fn small_board() -> Board {
-        Board {
-            cells: vec![
-                vec![Cell::Item(Item::new(Color::Red, 1)), Cell::Item(Item::new(Color::Red, 1))],
-                vec![Cell::Item(Item::new(Color::Blue, 1)), Cell::Empty],
-            ],
-            height: 2, width: 2,
-        }
-    }
-
-    #[test]
-    fn adjacency() {
-        assert!(Board::is_adjacent((0, 0), (0, 1)));
-        assert!(Board::is_adjacent((0, 0), (1, 0)));
-        assert!(!Board::is_adjacent((0, 0), (1, 1)));
-        assert!(!Board::is_adjacent((0, 0), (0, 2)));
-    }
-
-    #[test]
-    fn can_merge_adjacent_same() {
-        let board = small_board();
-        assert!(board.can_merge((0, 0), (0, 1)));
-    }
-
-    #[test]
-    fn cannot_merge_different_color() {
-        let board = small_board();
-        assert!(!board.can_merge((0, 0), (1, 0)));
-    }
-
-    #[test]
-    fn cannot_merge_non_adjacent() {
-        let board = Board {
-            cells: vec![
-                vec![Cell::Item(Item::new(Color::Red, 1)), Cell::Empty, Cell::Item(Item::new(Color::Red, 1))],
-            ],
-            height: 1, width: 3,
+    fn test_board() -> Board {
+        let mut board = Board::new_empty(3, 3);
+        board.cells[0][0] = Cell::Piece(Piece::Regular(Item::new(Family::Wood, 1)));
+        board.cells[0][1] = Cell::Piece(Piece::Regular(Item::new(Family::Wood, 1)));
+        board.cells[0][2] = Cell::Piece(Piece::Regular(Item::new(Family::Stone, 1)));
+        board.cells[1][0] = Cell::Frozen(Piece::Regular(Item::new(Family::Wood, 1)));
+        board.cells[2][2] = Cell::HardGenerator {
+            family: Family::Wood,
+            tier: 1,
+            cooldown_remaining: 0,
         };
+        board
+    }
+
+    #[test]
+    fn can_merge_non_adjacent_same_type() {
+        let mut board = Board::new_empty(3, 3);
+        board.cells[0][0] = Cell::Piece(Piece::Regular(Item::new(Family::Wood, 1)));
+        board.cells[2][2] = Cell::Piece(Piece::Regular(Item::new(Family::Wood, 1)));
+        // Non-adjacent but same type — should merge
+        assert!(board.can_merge((0, 0), (2, 2)));
+    }
+
+    #[test]
+    fn cannot_merge_different_family() {
+        let board = test_board();
         assert!(!board.can_merge((0, 0), (0, 2)));
     }
 
     #[test]
-    fn do_merge_works() {
-        let mut board = small_board();
-        let result = board.do_merge((0, 0), (0, 1));
-        assert!(result.is_some());
-        let merged = result.unwrap();
-        assert_eq!(merged.tier, 2);
-        assert_eq!(merged.color, Color::Red);
-        assert!(board.cells[0][0].is_empty());
-        assert_eq!(board.item_at(0, 1).unwrap().tier, 2);
+    fn can_merge_into_frozen() {
+        let board = test_board();
+        // (0,0) is free Wood T1, (1,0) is frozen Wood T1
+        assert!(board.can_merge((0, 0), (1, 0)));
     }
 
     #[test]
-    fn has_any_merge_true() {
-        let board = small_board();
+    fn cannot_merge_from_frozen() {
+        let board = test_board();
+        // src must be free
+        assert!(!board.can_merge((1, 0), (0, 0)));
+    }
+
+    #[test]
+    fn do_merge_thaws_frozen() {
+        let mut board = test_board();
+        let result = board.do_merge((0, 0), (1, 0));
+        assert!(result.is_some());
+        let result = result.unwrap();
+        assert!(result.thawed);
+        assert!(board.cells[0][0].is_empty());
+        assert!(board.cells[1][0].is_piece());
+        if let Cell::Piece(Piece::Regular(item)) = &board.cells[1][0] {
+            assert_eq!(item.tier, 2);
+            assert_eq!(item.family, Family::Wood);
+        } else {
+            panic!("Expected regular piece after merge");
+        }
+    }
+
+    #[test]
+    fn do_merge_regular() {
+        let mut board = test_board();
+        let result = board.do_merge((0, 0), (0, 1));
+        assert!(result.is_some());
+        let result = result.unwrap();
+        assert!(!result.thawed);
+        assert!(board.cells[0][0].is_empty());
+    }
+
+    #[test]
+    fn cannot_merge_self() {
+        let board = test_board();
+        assert!(!board.can_merge((0, 0), (0, 0)));
+    }
+
+    #[test]
+    fn has_any_merge_finds_non_adjacent() {
+        let mut board = Board::new_empty(3, 3);
+        board.cells[0][0] = Cell::Piece(Piece::Regular(Item::new(Family::Wood, 1)));
+        board.cells[2][2] = Cell::Piece(Piece::Regular(Item::new(Family::Wood, 1)));
         assert!(board.has_any_merge());
     }
 
     #[test]
-    fn has_any_merge_false() {
-        let board = Board {
-            cells: vec![
-                vec![Cell::Item(Item::new(Color::Red, 1)), Cell::Item(Item::new(Color::Blue, 1))],
-                vec![Cell::Item(Item::new(Color::Green, 1)), Cell::Item(Item::new(Color::Yellow, 1))],
-            ],
-            height: 2, width: 2,
-        };
+    fn has_any_merge_finds_frozen_target() {
+        let board = test_board();
+        assert!(board.has_any_merge());
+    }
+
+    #[test]
+    fn has_any_merge_false_no_matches() {
+        let mut board = Board::new_empty(2, 2);
+        board.cells[0][0] = Cell::Piece(Piece::Regular(Item::new(Family::Wood, 1)));
+        board.cells[0][1] = Cell::Piece(Piece::Regular(Item::new(Family::Stone, 1)));
+        board.cells[1][0] = Cell::Piece(Piece::Regular(Item::new(Family::Metal, 1)));
+        board.cells[1][1] = Cell::Piece(Piece::Regular(Item::new(Family::Cloth, 1)));
         assert!(!board.has_any_merge());
     }
 
     #[test]
-    fn is_full_when_no_empty() {
-        let board = Board {
+    fn blueprint_merge() {
+        let mut board = Board::new_empty(2, 2);
+        board.cells[0][0] = Cell::Piece(Piece::Blueprint(Family::Metal));
+        board.cells[1][1] = Cell::Piece(Piece::Blueprint(Family::Metal));
+        assert!(board.can_merge((0, 0), (1, 1)));
+        let result = board.do_merge((0, 0), (1, 1));
+        assert!(result.is_some());
+    }
+
+    #[test]
+    fn board_layout_build() {
+        let layout = BoardLayout {
+            rows: 2,
+            cols: 2,
             cells: vec![
-                vec![Cell::Item(Item::new(Color::Red, 1)), Cell::Blocked],
-                vec![Cell::Item(Item::new(Color::Blue, 1)), Cell::Item(Item::new(Color::Green, 1))],
+                vec![CellInit::HardGenerator(Family::Wood, 1), CellInit::Empty],
+                vec![
+                    CellInit::FrozenItem(Family::Stone, 2),
+                    CellInit::Item(Family::Metal, 1),
+                ],
             ],
-            height: 2, width: 2,
         };
-        assert!(board.is_full());
+        let board = layout.build();
+        assert!(board.cells[0][0].is_hard_generator());
+        assert!(board.cells[0][1].is_empty());
+        assert!(board.cells[1][0].is_frozen());
+        assert!(board.cells[1][1].is_piece());
     }
 
     #[test]
-    fn is_full_false_with_empty() {
-        let board = small_board();
-        assert!(!board.is_full());
+    fn frozen_count() {
+        let board = test_board();
+        assert_eq!(board.frozen_count(), 1);
     }
 
     #[test]
-    fn take_item_removes_and_returns() {
-        let mut board = small_board();
-        let item = board.take_item(0, 0);
-        assert!(item.is_some());
-        assert!(board.cells[0][0].is_empty());
-    }
-
-    #[test]
-    fn take_item_from_empty_returns_none() {
-        let mut board = small_board();
-        assert!(board.take_item(1, 1).is_none());
-    }
-
-    #[test]
-    fn clear_random_items_clears() {
-        let mut board = Board {
-            cells: vec![
-                vec![Cell::Item(Item::new(Color::Red, 1)), Cell::Item(Item::new(Color::Red, 1))],
-                vec![Cell::Item(Item::new(Color::Red, 1)), Cell::Item(Item::new(Color::Red, 1))],
-            ],
-            height: 2, width: 2,
-        };
-        let cleared = board.clear_random_items(2);
-        assert_eq!(cleared, 2);
-        assert_eq!(board.empty_count(), 2);
-    }
-
-    #[test]
-    fn make_random_produces_valid_board() {
-        let palette = vec![Color::Red, Color::Blue];
-        let board = Board::make_random(4, 4, &palette, 2, 5, 8, 1);
-        assert_eq!(board.height, 4);
-        assert_eq!(board.width, 4);
-        // Should have generators
-        let gen_count = board.cells.iter().flat_map(|row| row.iter())
-            .filter(|c| c.is_generator()).count();
-        assert_eq!(gen_count, 2);
-        // Should have blocked cells
-        let blocked = board.cells.iter().flat_map(|row| row.iter())
-            .filter(|c| c.is_blocked()).count();
-        assert_eq!(blocked, 1);
-    }
-
-    #[test]
-    fn generator_spawns_item() {
-        let mut board = Board {
-            cells: vec![
-                vec![Cell::Generator { color: Color::Red, charges: Some(3), interval: 0, cooldown: 0 }, Cell::Empty],
-            ],
-            height: 1, width: 2,
-        };
-        let spawned = board.tick_generators();
-        assert!(spawned);
-        assert!(board.cells[0][1].is_item());
-    }
-
-    #[test]
-    fn generator_exhausted_does_not_spawn() {
-        let mut board = Board {
-            cells: vec![
-                vec![Cell::Generator { color: Color::Red, charges: Some(0), interval: 0, cooldown: 0 }, Cell::Empty],
-            ],
-            height: 1, width: 2,
-        };
-        let spawned = board.tick_generators();
-        assert!(!spawned);
-    }
-
-    #[test]
-    fn generator_cooldown_delays_spawn() {
-        let mut board = Board {
-            cells: vec![
-                vec![Cell::Generator { color: Color::Red, charges: None, interval: 2, cooldown: 2 }, Cell::Empty],
-            ],
-            height: 1, width: 2,
-        };
-        // First tick: cooldown 2 -> 1, no spawn
-        assert!(!board.tick_generators());
-        // Second tick: cooldown 1 -> 0, no spawn
-        assert!(!board.tick_generators());
-        // Third tick: cooldown 0 -> spawn
-        assert!(board.tick_generators());
+    fn thaw_adjacent() {
+        let mut board = Board::new_empty(3, 3);
+        board.cells[1][1] = Cell::Piece(Piece::Regular(Item::new(Family::Wood, 1)));
+        board.cells[0][1] = Cell::Frozen(Piece::Regular(Item::new(Family::Stone, 1)));
+        board.cells[1][0] = Cell::Frozen(Piece::Regular(Item::new(Family::Metal, 1)));
+        let thawed = board.thaw_adjacent(1, 1);
+        assert_eq!(thawed.len(), 2);
+        assert!(board.cells[0][1].is_piece());
+        assert!(board.cells[1][0].is_piece());
     }
 
     #[test]
     fn serde_roundtrip() {
-        let board = small_board();
+        let board = test_board();
         let json = serde_json::to_string(&board).unwrap();
         let restored: Board = serde_json::from_str(&json).unwrap();
-        assert_eq!(restored.height, board.height);
-        assert_eq!(restored.width, board.width);
+        assert_eq!(restored.rows, board.rows);
+        assert_eq!(restored.cols, board.cols);
     }
 }

@@ -1,10 +1,14 @@
 pub mod item;
 pub mod order;
 pub mod board;
+pub mod generator;
+pub mod energy;
+pub mod inventory;
 pub mod config;
 pub mod engine;
 pub mod glyphs;
 pub mod renderer;
+pub mod ad;
 pub mod campaign;
 pub mod campaign_levels;
 pub mod endless;
