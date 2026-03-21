@@ -42,34 +42,34 @@ mod tests {
 
     #[test]
     fn consume_hammer_decrements() {
-        let mut inv = BonusInventory { hammer: 2, laser: 1, blaster: 1, warp: 1 };
+        let mut inv = BonusInventory { hammer: 2, laser: 1, blaster: 1, warp: 1, color_bomb: 0 };
         assert!(inv.consume_hammer());
         assert_eq!(inv.hammer, 1);
     }
 
     #[test]
     fn consume_hammer_fails_at_zero() {
-        let mut inv = BonusInventory { hammer: 0, laser: 0, blaster: 0, warp: 0 };
+        let mut inv = BonusInventory { hammer: 0, laser: 0, blaster: 0, warp: 0, color_bomb: 0 };
         assert!(!inv.consume_hammer());
     }
 
     #[test]
     fn consume_laser_decrements() {
-        let mut inv = BonusInventory { hammer: 0, laser: 3, blaster: 0, warp: 0 };
+        let mut inv = BonusInventory { hammer: 0, laser: 3, blaster: 0, warp: 0, color_bomb: 0 };
         assert!(inv.consume_laser());
         assert_eq!(inv.laser, 2);
     }
 
     #[test]
     fn consume_blaster_decrements() {
-        let mut inv = BonusInventory { hammer: 0, laser: 0, blaster: 2, warp: 0 };
+        let mut inv = BonusInventory { hammer: 0, laser: 0, blaster: 2, warp: 0, color_bomb: 0 };
         assert!(inv.consume_blaster());
         assert_eq!(inv.blaster, 1);
     }
 
     #[test]
     fn consume_warp_decrements() {
-        let mut inv = BonusInventory { hammer: 0, laser: 0, blaster: 0, warp: 5 };
+        let mut inv = BonusInventory { hammer: 0, laser: 0, blaster: 0, warp: 5, color_bomb: 0 };
         assert!(inv.consume_warp());
         assert_eq!(inv.warp, 4);
     }

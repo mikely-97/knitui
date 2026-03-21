@@ -388,7 +388,7 @@ fn run_loop(
                         let label = objective_label_for(eng, &campaign_ctx);
                         renderer::do_render(stdout, eng, &geo, &label)?;
                     } else if matches!(tui_state, TuiState::Help) {
-                        renderer::render_help(stdout)?;
+                        renderer::render_help(stdout, Some(eng))?;
                     }
                     stdout.flush()?;
                 }
@@ -647,7 +647,7 @@ fn render_current_state(
             }
         }
         TuiState::Help => {
-            renderer::render_help(stdout)?;
+            renderer::render_help(stdout, engine)?;
         }
         TuiState::GameOver { status, .. } => {
             if let Some(eng) = engine {

@@ -165,14 +165,16 @@ mod tests {
     #[test]
     fn complete_level_advances_and_banks_reward() {
         let mut s = CampaignState::new(0);
+        let initial_hammer = s.banked_hammer;
+        let initial_laser  = s.banked_laser;
         let levels = crate::campaign_levels::levels_for_track(0);
         let reward_h = levels[0].reward_hammer;
         let reward_l = levels[0].reward_laser;
         let done = s.complete_level();
         assert!(!done);
         assert_eq!(s.current_level, 1);
-        assert_eq!(s.banked_hammer, reward_h);
-        assert_eq!(s.banked_laser,  reward_l);
+        assert_eq!(s.banked_hammer, initial_hammer + reward_h);
+        assert_eq!(s.banked_laser,  initial_laser  + reward_l);
     }
 
     #[test]

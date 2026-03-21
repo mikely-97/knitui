@@ -24,6 +24,8 @@ pub use panels::{
     render_main_menu,
     render_options,
     render_blessing_selection,
+    render_celebration,
+    render_level_summary,
 };
 
 // ── Layout constants ──────────────────────────────────────────────────────

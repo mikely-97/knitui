@@ -110,40 +110,273 @@ pub fn render_key_bar(stdout: &mut Stdout, bonus_state: &BonusState) -> io::Resu
 // ── render_help ───────────────────────────────────────────────────────────
 
 /// Full-screen help overlay. Any keypress will dismiss it.
-pub fn render_help(stdout: &mut Stdout) -> io::Result<()> {
+pub fn render_help(stdout: &mut Stdout, engine: Option<&GameEngine>) -> io::Result<()> {
     let (tw, th) = terminal::size().unwrap_or((80, 24));
-    let start_y = th / 4;
-    let start_x = tw / 4;
+    let box_w = 54u16;
+    let bx = (tw / 2).saturating_sub(box_w / 2);
+    let by = 1u16;
 
-    stdout.queue(MoveTo(start_x, start_y))?;
-    stdout.queue(Print("═══════════ HELP ═══════════"))?;
+    stdout.queue(Hide)?;
+    stdout.queue(Clear(ClearType::All))?;
+    stdout.queue(MoveTo(bx, by))?;
+    stdout.queue(SetForegroundColor(Color::Cyan))?;
+    stdout.queue(Print(format!("╔{}╗", "═".repeat(box_w as usize - 2))))?;
+    stdout.queue(MoveTo(bx, by + 1))?;
+    stdout.queue(SetAttribute(Attribute::Bold))?;
+    stdout.queue(Print(format!("║{:^w$}║", "MATCH-3 HELP", w = box_w as usize - 2)))?;
+    stdout.queue(SetAttribute(Attribute::Reset))?;
+    stdout.queue(MoveTo(bx, by + 2))?;
+    stdout.queue(SetForegroundColor(Color::DarkGrey))?;
+    stdout.queue(Print(format!("╠{}╣", "═".repeat(box_w as usize - 2))))?;
 
-    let lines = [
-        "",
-        "Movement:  ← → ↑ ↓     Move cursor",
-        "Select:    Enter         Select gem / confirm swap",
-        "Deselect:  Esc           Cancel selection / active bonus",
-        "Quit:      Q             Exit game",
-        "",
-        "─── Bonuses ───",
-        "[Z] 🔨 Hammer   Destroy one cell (requires targeting)",
-        "[X] ══ Laser    Destroy entire row instantly",
-        "[C] ‖‖ Blaster  Destroy entire column instantly",
-        "[V] ⟳  Warp     Shuffle the whole board",
-        "",
-        "─── Special Pieces (created by large matches) ───",
-        "══  Line Bomb   Match 4 in a line → destroys full row/column",
-        "✦   Color Bomb  Match 5 in a line → destroys all of one color",
-        "⊛   Area Bomb   L/T shape match → destroys 3×3 or 5×5 area",
-        "",
-        "         Press any key to close",
+    let col1_w = 16usize;
+    let inner = box_w as usize - 2;
+    let keys: &[(&str, &str)] = &[
+        ("Arrow keys",     "Move cursor"),
+        ("Enter / Space",  "Select gem / confirm swap"),
+        ("Esc",            "Cancel selection / bonus / menu"),
+        ("H",              "Show this help screen"),
+        ("Q",              "Quit to menu"),
+        ("Z  Hammer",      "Destroy one cell (requires targeting)"),
+        ("X  Laser",       "Destroy entire row instantly"),
+        ("C  Blaster",     "Destroy entire column instantly"),
+        ("V  Warp",        "Shuffle the whole board"),
+        ("B  Color Bomb",  "Clear all gems of one color"),
     ];
 
-    for (i, line) in lines.iter().enumerate() {
-        stdout.queue(MoveTo(start_x, start_y + 1 + i as u16))?;
-        stdout.queue(Print(line))?;
+    for (i, (key, desc)) in keys.iter().enumerate() {
+        let y = by + 3 + i as u16;
+        stdout.queue(MoveTo(bx, y))?;
+        stdout.queue(SetForegroundColor(Color::DarkGrey))?;
+        stdout.queue(Print("║"))?;
+        stdout.queue(SetForegroundColor(Color::Yellow))?;
+        stdout.queue(Print(format!(" {:<w$}", key, w = col1_w)))?;
+        stdout.queue(SetForegroundColor(Color::White))?;
+        let remaining = inner.saturating_sub(1 + col1_w + 1);
+        stdout.queue(Print(format!("{:<w$}", desc, w = remaining)))?;
+        stdout.queue(SetForegroundColor(Color::DarkGrey))?;
+        stdout.queue(Print("║"))?;
     }
 
+    let sep_y = by + 3 + keys.len() as u16;
+    stdout.queue(MoveTo(bx, sep_y))?;
+    stdout.queue(SetForegroundColor(Color::DarkGrey))?;
+    stdout.queue(Print(format!("╠{}╣", "═".repeat(box_w as usize - 2))))?;
+
+    // Active blessings
+    stdout.queue(MoveTo(bx, sep_y + 1))?;
+    stdout.queue(SetForegroundColor(Color::DarkGrey))?;
+    stdout.queue(Print("║"))?;
+    stdout.queue(SetForegroundColor(Color::Cyan))?;
+    stdout.queue(Print(format!("{:^w$}", "Active Blessings", w = inner)))?;
+    stdout.queue(SetForegroundColor(Color::DarkGrey))?;
+    stdout.queue(Print("║"))?;
+
+    use crate::blessings::ALL_BLESSINGS;
+    let active: Vec<(&str, &str)> = ALL_BLESSINGS.iter()
+        .filter(|b| engine.map_or(false, |e| e.blessing_flags.has_id(b.id)))
+        .map(|b| (b.name, b.description))
+        .collect();
+
+    if active.is_empty() {
+        stdout.queue(MoveTo(bx, sep_y + 2))?;
+        stdout.queue(SetForegroundColor(Color::DarkGrey))?;
+        stdout.queue(Print(format!("║{:^w$}║", "none", w = inner)))?;
+    }
+    for (i, (name, desc)) in active.iter().enumerate() {
+        let y = sep_y + 2 + i as u16;
+        stdout.queue(MoveTo(bx, y))?;
+        stdout.queue(SetForegroundColor(Color::DarkGrey))?;
+        stdout.queue(Print("║"))?;
+        stdout.queue(SetForegroundColor(Color::Green))?;
+        stdout.queue(Print(format!(" {:<w$}", name, w = col1_w)))?;
+        stdout.queue(SetForegroundColor(Color::White))?;
+        let remaining = inner.saturating_sub(1 + col1_w + 1);
+        stdout.queue(Print(format!("{:<w$}", desc, w = remaining)))?;
+        stdout.queue(SetForegroundColor(Color::DarkGrey))?;
+        stdout.queue(Print("║"))?;
+    }
+
+    let bless_rows = active.len().max(1) as u16;
+    let sep2_y = sep_y + 2 + bless_rows;
+    stdout.queue(MoveTo(bx, sep2_y))?;
+    stdout.queue(SetForegroundColor(Color::DarkGrey))?;
+    stdout.queue(Print(format!("╠{}╣", "═".repeat(box_w as usize - 2))))?;
+
+    // Bonus inventory
+    stdout.queue(MoveTo(bx, sep2_y + 1))?;
+    stdout.queue(SetForegroundColor(Color::DarkGrey))?;
+    stdout.queue(Print("║"))?;
+    stdout.queue(SetForegroundColor(Color::Cyan))?;
+    stdout.queue(Print(format!("{:^w$}", "Bonus Inventory", w = inner)))?;
+    stdout.queue(SetForegroundColor(Color::DarkGrey))?;
+    stdout.queue(Print("║"))?;
+
+    let (h, l, bl, w, cb) = engine.map_or((0,0,0,0,0), |e| (
+        e.bonuses.hammer as u32,
+        e.bonuses.laser as u32,
+        e.bonuses.blaster as u32,
+        e.bonuses.warp as u32,
+        e.bonuses.color_bomb as u32,
+    ));
+    let bonuses = [
+        ("Hammer",     h),
+        ("Laser",      l),
+        ("Blaster",    bl),
+        ("Warp",       w),
+        ("Color Bomb", cb),
+    ];
+    for (i, (name, count)) in bonuses.iter().enumerate() {
+        let y = sep2_y + 2 + i as u16;
+        stdout.queue(MoveTo(bx, y))?;
+        stdout.queue(SetForegroundColor(Color::DarkGrey))?;
+        stdout.queue(Print("║"))?;
+        if *count > 0 {
+            stdout.queue(SetForegroundColor(Color::White))?;
+        } else {
+            stdout.queue(SetForegroundColor(Color::DarkGrey))?;
+        }
+        let line = format!("  {:<w$} x{}", name, count, w = col1_w);
+        let pad = inner.saturating_sub(line.len());
+        stdout.queue(Print(format!("{}{:>w$}", line, "", w = pad)))?;
+        stdout.queue(SetForegroundColor(Color::DarkGrey))?;
+        stdout.queue(Print("║"))?;
+    }
+
+    let end_y = sep2_y + 2 + bonuses.len() as u16;
+    stdout.queue(MoveTo(bx, end_y))?;
+    stdout.queue(SetForegroundColor(Color::Cyan))?;
+    stdout.queue(Print(format!("╚{}╝", "═".repeat(box_w as usize - 2))))?;
+    stdout.queue(MoveTo(bx, end_y + 1))?;
+    stdout.queue(SetForegroundColor(Color::DarkGrey))?;
+    stdout.queue(Print(format!("{:^w$}", "Press any key to close", w = box_w as usize)))?;
+    stdout.queue(ResetColor)?;
+
+    Ok(())
+}
+
+/// Render a celebration sweep overlay on the board.
+pub fn render_celebration(
+    stdout: &mut Stdout,
+    engine: &GameEngine,
+    geo: &super::LayoutGeometry,
+    tick: u8,
+) -> io::Result<()> {
+    use super::CELL_GAP;
+    let sw = geo.scale * 2;
+    let sh = geo.scale;
+    let cols = engine.board.width;
+    let rows = engine.board.height;
+    let lit_col = (tick / 2) as usize % cols.max(1);
+    let color = if (tick / 2) % 2 == 0 { Color::Yellow } else { Color::Green };
+
+    stdout.queue(SetForegroundColor(color))?;
+    stdout.queue(SetAttribute(Attribute::Bold))?;
+    let cell_w = sw + CELL_GAP;
+    for row in 0..rows {
+        for sy in 0..sh {
+            let y = geo.board_y + (row as u16) * (sh + CELL_GAP) + sy;
+            let x = geo.board_x + (lit_col as u16) * cell_w;
+            stdout.queue(MoveTo(x, y))?;
+            for _ in 0..sw {
+                stdout.queue(Print('✦'))?;
+            }
+        }
+    }
+    stdout.queue(SetAttribute(Attribute::Reset))?;
+    stdout.queue(ResetColor)?;
+    Ok(())
+}
+
+/// Render the level-complete score summary screen (between campaign levels).
+pub fn render_level_summary(
+    stdout: &mut Stdout,
+    score: u32,
+    target: Option<u32>,
+    level_num: usize,
+    total_levels: usize,
+    bonuses: &crate::bonuses::BonusInventory,
+) -> io::Result<()> {
+    let (tw, th) = terminal::size().unwrap_or((80, 24));
+    let box_w = 34u16;
+    let bx = (tw / 2).saturating_sub(box_w / 2);
+    let by = th / 4;
+    let inner = box_w as usize - 2;
+
+    stdout.queue(Hide)?;
+    stdout.queue(Clear(ClearType::All))?;
+
+    stdout.queue(MoveTo(bx, by))?;
+    stdout.queue(SetForegroundColor(Color::Yellow))?;
+    stdout.queue(SetAttribute(Attribute::Bold))?;
+    stdout.queue(Print(format!("╔{}╗", "═".repeat(box_w as usize - 2))))?;
+    stdout.queue(MoveTo(bx, by + 1))?;
+    stdout.queue(Print(format!("║{:^w$}║", "LEVEL COMPLETE!", w = inner)))?;
+    stdout.queue(SetAttribute(Attribute::Reset))?;
+    stdout.queue(MoveTo(bx, by + 2))?;
+    stdout.queue(SetForegroundColor(Color::DarkGrey))?;
+    stdout.queue(Print(format!("╠{}╣", "═".repeat(box_w as usize - 2))))?;
+
+    stdout.queue(MoveTo(bx, by + 3))?;
+    stdout.queue(SetForegroundColor(Color::White))?;
+    let level_str = format!("Level {}/{}", level_num, total_levels);
+    stdout.queue(Print(format!("║ {:<w$}║", level_str, w = inner - 1)))?;
+
+    stdout.queue(MoveTo(bx, by + 4))?;
+    let score_str = if let Some(t) = target {
+        format!("Score: {} / {}", score, t)
+    } else {
+        format!("Score: {}", score)
+    };
+    stdout.queue(Print(format!("║ {:<w$}║", score_str, w = inner - 1)))?;
+
+    let stars: u8 = if let Some(t) = target {
+        if score >= t * 3 / 2 { 3 } else if score >= t { 2 } else { 1 }
+    } else { 3 };
+    stdout.queue(MoveTo(bx, by + 5))?;
+    stdout.queue(SetForegroundColor(Color::Yellow))?;
+    let star_str = format!("Stars: {}{}", "★".repeat(stars as usize), "☆".repeat(3 - stars as usize));
+    stdout.queue(Print(format!("║ {:<w$}║", star_str, w = inner - 1)))?;
+
+    stdout.queue(MoveTo(bx, by + 6))?;
+    stdout.queue(SetForegroundColor(Color::DarkGrey))?;
+    stdout.queue(Print(format!("╠{}╣", "═".repeat(box_w as usize - 2))))?;
+
+    stdout.queue(MoveTo(bx, by + 7))?;
+    stdout.queue(SetForegroundColor(Color::Cyan))?;
+    stdout.queue(Print(format!("║{:^w$}║", "Bonuses Carried Over", w = inner)))?;
+
+    let bonus_list = [
+        ("Hammer",     bonuses.hammer as u32),
+        ("Laser",      bonuses.laser as u32),
+        ("Blaster",    bonuses.blaster as u32),
+        ("Warp",       bonuses.warp as u32),
+        ("Color Bomb", bonuses.color_bomb as u32),
+    ];
+    let mut row_off = 8u16;
+    for (name, count) in &bonus_list {
+        if *count > 0 {
+            stdout.queue(MoveTo(bx, by + row_off))?;
+            stdout.queue(SetForegroundColor(Color::White))?;
+            let s = format!("  {} x{}", name, count);
+            stdout.queue(Print(format!("║{:<w$}║", s, w = inner)))?;
+            row_off += 1;
+        }
+    }
+    if row_off == 8 {
+        stdout.queue(MoveTo(bx, by + row_off))?;
+        stdout.queue(SetForegroundColor(Color::DarkGrey))?;
+        stdout.queue(Print(format!("║{:^w$}║", "none", w = inner)))?;
+        row_off += 1;
+    }
+
+    stdout.queue(MoveTo(bx, by + row_off))?;
+    stdout.queue(SetForegroundColor(Color::Yellow))?;
+    stdout.queue(Print(format!("╚{}╝", "═".repeat(box_w as usize - 2))))?;
+    stdout.queue(MoveTo(bx, by + row_off + 1))?;
+    stdout.queue(SetForegroundColor(Color::DarkGrey))?;
+    stdout.queue(Print(format!("{:^w$}", "Press Enter to continue", w = box_w as usize)))?;
+    stdout.queue(ResetColor)?;
     Ok(())
 }
 

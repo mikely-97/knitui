@@ -17,6 +17,25 @@ pub struct BlessingFlags {
     pub double_score: bool,
 }
 
+impl BlessingFlags {
+    /// Return true if the blessing identified by `id` is active.
+    pub fn has_id(&self, id: &str) -> bool {
+        match id {
+            "keen_eye"       => self.keen_eye,
+            "lucky_start"    => self.lucky_start,
+            "ice_breaker"    => self.ice_breaker,
+            "cascade_master" => self.cascade_master,
+            "crate_cracker"  => self.crate_cracker,
+            "chain_reaction" => self.chain_reaction,
+            "color_surge"    => self.color_surge,
+            "last_stand"     => self.last_stand,
+            "gem_magnet"     => self.gem_magnet,
+            "double_score"   => self.double_score,
+            _                => false,
+        }
+    }
+}
+
 // ── Phase ────────────────────────────────────────────────────────────────
 
 #[derive(Debug, Clone)]
