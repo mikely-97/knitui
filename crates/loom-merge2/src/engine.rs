@@ -119,7 +119,7 @@ pub struct GameEngine {
     pub inv_expansion_pending: bool,
     /// Active cell animations (merge dissolve / rise).
     #[serde(skip)]
-    pub anim_cells: std::collections::HashMap<(usize, usize), crate::anim::CellAnim>,
+    pub anim_cells: loom_engine::anim::AnimOverlay,
 }
 
 impl GameEngine {
@@ -171,7 +171,7 @@ impl GameEngine {
             hint_pair: None,
             merges_since_inv_event: 0,
             inv_expansion_pending: false,
-            anim_cells: std::collections::HashMap::new(),
+            anim_cells: loom_engine::anim::AnimOverlay::new(),
         };
         engine.set_blessings(blessings);
         engine.fill_random_orders();
@@ -385,10 +385,7 @@ impl GameEngine {
                     pos: (r, c),
                 });
                 // Spawn rise animation (starts at frame 2 — shorter than merge)
-                self.anim_cells.insert((r, c), crate::anim::CellAnim {
-                    kind: crate::anim::AnimKind::Rise,
-                    frame: 2,
-                });
+                self.anim_cells.rise_brief((r, c));
                 self.update_hint();
                 true
             }
@@ -417,14 +414,8 @@ impl GameEngine {
         self.total_merges += 1;
 
         // Merge burst animation: dissolve source, rise destination
-        self.anim_cells.insert(src, crate::anim::CellAnim {
-            kind: crate::anim::AnimKind::Dissolve,
-            frame: 3,
-        });
-        self.anim_cells.insert(dst, crate::anim::CellAnim {
-            kind: crate::anim::AnimKind::Rise,
-            frame: 3,
-        });
+        self.anim_cells.dissolve(src);
+        self.anim_cells.rise(dst);
 
         // Handle blueprint merge → hard generator (always T1)
         if let Piece::Blueprint(family) = &result.piece {
@@ -965,14 +956,7 @@ impl GameEngine {
 
     /// Advance all cell animations by one frame, removing finished ones.
     pub fn tick_anims(&mut self) {
-        self.anim_cells.retain(|_, anim| {
-            if anim.frame == 0 {
-                false
-            } else {
-                anim.frame -= 1;
-                true
-            }
-        });
+        self.anim_cells.tick();
     }
 
     // ── Status ────────────────────────────────────────────────────────────

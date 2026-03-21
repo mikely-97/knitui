@@ -7,7 +7,7 @@ use crossterm::{
     QueueableCommand,
 };
 
-use crate::anim::AnimKind;
+use loom_engine::anim::AnimKind;
 use crate::blessings::{self, ALL_BLESSINGS};
 use crate::board::Cell;
 use crate::engine::{GameEngine, GameStatus};
@@ -129,7 +129,7 @@ fn render_cell_content(
 
     // Animation overlay: render burst frame and return early (skip normal content)
     if sub_row == mid {
-        if let Some(anim) = engine.anim_cells.get(&(r, c)) {
+        if let Some(anim) = engine.anim_cells.get((r, c)) {
             match (anim.kind, anim.frame) {
                 (AnimKind::Dissolve, 3) => {
                     stdout.queue(SetForegroundColor(Color::White))?;

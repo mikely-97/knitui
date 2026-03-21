@@ -153,8 +153,8 @@ pub fn render_board(
 
                 // 3. Print the row_offset row with gem color (if any) and highlight styling.
                 //    If there is an active burst animation on this cell, render that instead.
-                if let Some(&frame) = engine.anim_cells.get(&(r, c)) {
-                    let (anim_glyph, anim_color) = match frame {
+                if let Some(anim) = engine.anim_cells.get((r, c)) {
+                    let (anim_glyph, anim_color) = match anim.frame {
                         3 => ("██", Color::White),
                         2 => ("✦ ", Color::Yellow),
                         1 => ("· ", Color::DarkGrey),

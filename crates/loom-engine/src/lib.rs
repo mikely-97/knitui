@@ -1,5 +1,6 @@
 // Loom Engine: shared framework for loom puzzle games.
 
+pub mod anim;
 pub mod direction;
 pub mod color_serde;
 pub mod palette;

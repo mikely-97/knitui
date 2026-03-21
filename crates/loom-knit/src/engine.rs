@@ -103,7 +103,7 @@ pub struct GameEngine {
     /// Frames remaining to show the hint highlight.
     pub hint_ticks: u8,
     /// Burst animation overlay: (row, col) -> frame countdown 3..=1
-    pub anim_cells: std::collections::HashMap<(usize, usize), u8>,
+    pub anim_cells: loom_engine::anim::AnimOverlay,
 }
 
 impl GameEngine {
@@ -208,7 +208,7 @@ impl GameEngine {
             generation_attempts: attempts,
             hint_cell: None,
             hint_ticks: 0,
-            anim_cells: std::collections::HashMap::new(),
+            anim_cells: loom_engine::anim::AnimOverlay::new(),
         }
     }
 
@@ -253,9 +253,7 @@ impl GameEngine {
 
     /// Advance burst animations by one frame; remove finished entries.
     pub fn tick_anims(&mut self) {
-        self.anim_cells.retain(|_, frame| {
-            if *frame == 0 { false } else { *frame -= 1; true }
-        });
+        self.anim_cells.tick();
     }
 
     // ── Actions ────────────────────────────────────────────────────────────
@@ -311,7 +309,7 @@ impl GameEngine {
 
         let picked_color = spool.color;
         self.held_spools.push(spool);
-        self.anim_cells.insert((row, col), 3);
+        self.anim_cells.dissolve((row, col));
         self.board.board[row][col] = BoardEntity::Void;
 
         if let Some((gr, gc)) = find_conveyor_for_output(&self.board.board, row, col) {
@@ -325,7 +323,7 @@ impl GameEngine {
             advance_conveyor(&mut self.board.board, gr, gc, row, col);
             // Flash newly-spawned conveyor spool
             if matches!(self.board.board[spawn_r][spawn_c], BoardEntity::Spool(_)) {
-                self.anim_cells.insert((spawn_r, spawn_c), 2);
+                self.anim_cells.rise_brief((spawn_r, spawn_c));
             }
         }
 
@@ -782,7 +780,7 @@ impl GameStateSnapshot {
             generation_attempts: self.generation_attempts,
             hint_cell: None,
             hint_ticks: 0,
-            anim_cells: std::collections::HashMap::new(),
+            anim_cells: loom_engine::anim::AnimOverlay::new(),
         })
     }
 }
@@ -892,7 +890,7 @@ mod tests {
             generation_attempts: 0,
             hint_cell: None,
             hint_ticks: 0,
-            anim_cells: std::collections::HashMap::new(),
+            anim_cells: loom_engine::anim::AnimOverlay::new(),
         }
     }
 
@@ -1031,7 +1029,7 @@ mod tests {
             generation_attempts: 0,
             hint_cell: None,
             hint_ticks: 0,
-            anim_cells: std::collections::HashMap::new(),
+            anim_cells: loom_engine::anim::AnimOverlay::new(),
         };
         assert!(e.move_cursor(Direction::Down).is_ok());
         assert_eq!(e.cursor_row, 2); // skipped row 1
@@ -1115,7 +1113,7 @@ mod tests {
             generation_attempts: 0,
             hint_cell: None,
             hint_ticks: 0,
-            anim_cells: std::collections::HashMap::new(),
+            anim_cells: loom_engine::anim::AnimOverlay::new(),
         };
         assert!(e.is_won());
     }
@@ -1285,7 +1283,7 @@ mod tests {
             generation_attempts: 0,
             hint_cell: None,
             hint_ticks: 0,
-            anim_cells: std::collections::HashMap::new(),
+            anim_cells: loom_engine::anim::AnimOverlay::new(),
         };
         assert_eq!(e.status(), GameStatus::Won);
     }
@@ -1317,7 +1315,7 @@ mod tests {
             generation_attempts: 0,
             hint_cell: None,
             hint_ticks: 0,
-            anim_cells: std::collections::HashMap::new(),
+            anim_cells: loom_engine::anim::AnimOverlay::new(),
         };
         assert_eq!(e.status(), GameStatus::Stuck);
     }
@@ -1352,7 +1350,7 @@ mod tests {
             generation_attempts: 0,
             hint_cell: None,
             hint_ticks: 0,
-            anim_cells: std::collections::HashMap::new(),
+            anim_cells: loom_engine::anim::AnimOverlay::new(),
         };
         assert_eq!(e.status(), GameStatus::Stuck);
     }
@@ -1384,7 +1382,7 @@ mod tests {
             generation_attempts: 0,
             hint_cell: None,
             hint_ticks: 0,
-            anim_cells: std::collections::HashMap::new(),
+            anim_cells: loom_engine::anim::AnimOverlay::new(),
         };
         assert_eq!(e.status(), GameStatus::Playing);
     }
