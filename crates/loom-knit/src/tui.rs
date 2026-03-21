@@ -18,7 +18,7 @@ use crate::ad_content;
 use crate::blessings::{self, ALL_BLESSINGS};
 use crate::board_entity::Direction;
 use crate::campaign::{CampaignSaves, CampaignState};
-use crate::campaign_levels::{self, TRACK_NAMES, TRACK_COUNT};
+use crate::campaign_levels::{self, TRACK_NAMES, TRACK_COUNT, is_hard_track};
 use crate::endless::{EndlessState, EndlessHighScore};
 use crate::config::{Config, MAX_BOARD_DIM};
 use crate::engine::{GameEngine, GameStatus, BonusState};
@@ -96,6 +96,7 @@ fn custom_game_fields(config: &Config) -> Vec<(&'static str, u16)> {
         ("Scissors", config.scissors),
         ("Tweezers", config.tweezers),
         ("Balloons", config.balloons),
+        ("Hard Mode", if config.hard_mode { 1 } else { 0 }),
     ]
 }
 
@@ -113,6 +114,7 @@ fn adjust_custom_field(config: &mut Config, field: usize, delta: i16) {
         6 => apply(&mut config.scissors, 0, 99),
         7 => apply(&mut config.tweezers, 0, 99),
         8 => apply(&mut config.balloons, 0, 99),
+        9 => { config.hard_mode = !config.hard_mode; }
         _ => {}
     }
 }
@@ -368,8 +370,8 @@ fn run_event_loop(
                                     campaign_ctx = Some(state);
                                 }
                                 let ctx = campaign_ctx.as_ref().unwrap();
-                                if ctx.blessings.is_empty() {
-                                    // New campaign — show blessing selection
+                                if ctx.blessings.is_empty() && !is_hard_track(ctx.track_idx) {
+                                    // New campaign — show blessing selection (skip for hard mode)
                                     let completed = (0..TRACK_COUNT)
                                         .filter(|&i| campaign_saves.get(i).map_or(false, |s| s.is_completed()))
                                         .count();
@@ -494,10 +496,13 @@ fn run_event_loop(
                             KeyCode::Enter => {
                                 let ctx = campaign_ctx.as_ref().unwrap();
                                 game_config = ctx.to_config(&cli_config);
+                                game_config.hard_mode = is_hard_track(ctx.track_idx);
                                 geo = LayoutGeometry::compute(&game_config);
                                 let mut e = GameEngine::new(&game_config);
                                 e.set_ad_limit(ctx.ad_limit());
-                                e.set_blessings(&ctx.blessings);
+                                if !game_config.hard_mode {
+                                    e.set_blessings(&ctx.blessings);
+                                }
                                 engine = Some(e);
                                 tui_state = TuiState::Playing;
                                 renderer::do_render(
@@ -525,7 +530,7 @@ fn run_event_loop(
                                 if *selected_field > 0 { *selected_field -= 1; }
                             }
                             KeyCode::Down => {
-                                if *selected_field < 8 { *selected_field += 1; }
+                                if *selected_field < 9 { *selected_field += 1; }
                             }
                             KeyCode::Left => {
                                 if *selected_field == 0 {
@@ -779,6 +784,32 @@ fn run_event_loop(
                             KeyCode::Char('c') | KeyCode::Char('C') => {
                                 let _ = engine.as_mut().unwrap().use_balloons();
                             }
+                            KeyCode::Char('?') => {
+                                let e = engine.as_mut().unwrap();
+                                if e.blessing_flags.match_hint {
+                                    if let Some(cell) = e.compute_hint() {
+                                        e.hint_cell = Some(cell);
+                                        e.hint_ticks = 60;
+                                    }
+                                } else {
+                                    // No blessing — show status message via flash (reuse flash mechanism)
+                                    // We render a brief overlay message by doing a partial re-render
+                                    // with a status line. Simplest: set a transient status string
+                                    // and fall through to do_render which will display it.
+                                }
+                                renderer::do_render(&mut stdout, engine.as_ref().unwrap(), geo.layout, geo.yarn_x, geo.board_x, geo.board_y, geo.scale)?;
+                                if !engine.as_ref().unwrap().blessing_flags.match_hint {
+                                    // Print status message below board
+                                    use crossterm::QueueableCommand;
+                                    use crossterm::cursor::MoveTo;
+                                    use crossterm::style::{Print, Stylize};
+                                    let (_, term_h) = crossterm::terminal::size().unwrap_or((80, 24));
+                                    stdout.queue(MoveTo(0, term_h.saturating_sub(1)))?;
+                                    stdout.queue(Print("No hint (requires Scout's Eye blessing)".dark_grey()))?;
+                                    stdout.flush()?;
+                                }
+                                continue;
+                            }
 
                             _ => { continue; }
                         }
@@ -787,7 +818,10 @@ fn run_event_loop(
                     }
                 }
             }
-        } else if matches!(tui_state, TuiState::Playing) && !engine.as_ref().unwrap().held_spools.is_empty() {
+        } else if matches!(tui_state, TuiState::Playing) {
+            if let Some(e) = engine.as_mut() { e.tick_hint(); }
+        }
+        if matches!(tui_state, TuiState::Playing) && !engine.as_ref().unwrap().held_spools.is_empty() {
             engine.as_mut().unwrap().process_all_active();
             match engine.as_ref().unwrap().status() {
                 GameStatus::Playing => renderer::do_render(&mut stdout, engine.as_ref().unwrap(), geo.layout, geo.yarn_x, geo.board_x, geo.board_y, geo.scale)?,

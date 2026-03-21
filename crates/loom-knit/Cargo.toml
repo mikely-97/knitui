@@ -19,6 +19,10 @@ path = "src/bin/knitui_ni.rs"
 name = "knitui-solvcheck"
 path = "src/bin/knitui_solvcheck.rs"
 
+[[bin]]
+name = "knitui-replay"
+path = "src/bin/knitui_replay.rs"
+
 [dependencies]
 loom-engine = { path = "../loom-engine" }
 crossterm = { workspace = true }

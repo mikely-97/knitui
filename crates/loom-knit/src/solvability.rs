@@ -181,6 +181,97 @@ pub fn is_solvable(board: &GameBoard, yarn: &Yarn, spool_capacity: u16, spool_li
 /// Conveyors are not modelled dynamically: their initial output cells are
 /// treated as static spools and counted once.  The result is therefore a
 /// lower bound for boards with conveyors.
+/// Find one valid solution sequence: returns `Some(Vec<(row, col)>)` of pick coordinates
+/// in order, or `None` if the puzzle has no solution.
+///
+/// Uses the same DFS engine as `count_solutions` but stops at the first solution found
+/// and reconstructs the pick sequence.
+pub fn find_solution(
+    board: &GameBoard,
+    yarn: &Yarn,
+    spool_capacity: u16,
+    spool_limit: usize,
+) -> Option<Vec<(usize, usize)>> {
+    let h = board.height as usize;
+    let w = board.width as usize;
+
+    let mut cell_meta: Vec<(Option<Color>, bool)> = Vec::with_capacity(h * w);
+    for r in 0..h {
+        for c in 0..w {
+            cell_meta.push(match &board.board[r][c] {
+                BoardEntity::Spool(color)    => (Some(*color), false),
+                BoardEntity::KeySpool(color) => (Some(*color), true),
+                _                            => (None, false),
+            });
+        }
+    }
+
+    let mut cells: Vec<bool> = cell_meta.iter().map(|(c, _)| c.is_some()).collect();
+    let mut yarn_cols: Vec<Vec<Stitch>> = yarn.board.clone();
+    let mut held: Vec<(Color, u16, bool)> = Vec::new();
+    let mut path: Vec<(usize, usize)> = Vec::new();
+
+    dfs_find(&cell_meta, &mut cells, &mut held, &mut yarn_cols,
+             h, w, spool_capacity, spool_limit, &mut path)
+}
+
+fn dfs_find(
+    cell_meta: &[(Option<Color>, bool)],
+    cells: &mut Vec<bool>,
+    held: &mut Vec<(Color, u16, bool)>,
+    yarn_cols: &mut Vec<Vec<Stitch>>,
+    h: usize,
+    w: usize,
+    spool_capacity: u16,
+    spool_limit: usize,
+    path: &mut Vec<(usize, usize)>,
+) -> Option<Vec<(usize, usize)>> {
+    eager_process(held, yarn_cols, spool_capacity);
+
+    if cells.iter().all(|&c| !c)
+        && held.is_empty()
+        && yarn_cols.iter().all(|col| col.is_empty())
+    {
+        return Some(path.clone());
+    }
+
+    if held.len() >= spool_limit {
+        return None;
+    }
+
+    let selectable = selectable_indices(cell_meta, cells, h, w);
+    if selectable.is_empty() {
+        return None;
+    }
+
+    for idx in selectable {
+        let (color, has_key) = match cell_meta[idx] {
+            (Some(c), k) => (c, k),
+            _ => continue,
+        };
+
+        let saved_held = held.clone();
+        let saved_yarn: Vec<Vec<Stitch>> = yarn_cols.clone();
+
+        cells[idx] = false;
+        held.push((color, 0, has_key));
+        let row = idx / w;
+        let col = idx % w;
+        path.push((row, col));
+
+        if let Some(solution) = dfs_find(cell_meta, cells, held, yarn_cols,
+                                          h, w, spool_capacity, spool_limit, path) {
+            return Some(solution);
+        }
+
+        path.pop();
+        cells[idx] = true;
+        *held = saved_held;
+        *yarn_cols = saved_yarn;
+    }
+    None
+}
+
 pub fn count_solutions(
     board: &GameBoard,
     yarn: &Yarn,

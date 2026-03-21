@@ -98,6 +98,10 @@ pub struct GameEngine {
     pub ads_used: u16,
     /// How many board-generation attempts were needed (0 = first try).
     pub generation_attempts: u32,
+    /// Hint: coordinates of a suggested spool cell (set by `?` key handler).
+    pub hint_cell: Option<(usize, usize)>,
+    /// Frames remaining to show the hint highlight.
+    pub hint_ticks: u8,
 }
 
 impl GameEngine {
@@ -123,6 +127,10 @@ impl GameEngine {
                 config.yarn_lines,
                 config.visible_stitches,
             );
+            // Hard mode skips solvability guarantee entirely
+            if config.hard_mode {
+                break;
+            }
             if is_solvable(&board, &yarn, config.spool_capacity, config.spool_limit) {
                 if let Some(max) = config.max_solutions {
                     if count_solutions(&board, &yarn, config.spool_capacity, config.spool_limit, max) > max {
@@ -184,9 +192,9 @@ impl GameEngine {
             spool_capacity: config.spool_capacity,
             spool_limit: config.spool_limit,
             bonuses: BonusInventory {
-                scissors: config.scissors,
-                tweezers: config.tweezers,
-                balloons: config.balloons,
+                scissors: if config.hard_mode { 0 } else { config.scissors },
+                tweezers: if config.hard_mode { 0 } else { config.tweezers },
+                balloons: if config.hard_mode { 0 } else { config.balloons },
                 scissors_spools: config.scissors_spools,
                 balloon_count: config.balloon_count,
             },
@@ -196,6 +204,8 @@ impl GameEngine {
             ad_limit: None,
             ads_used: 0,
             generation_attempts: attempts,
+            hint_cell: None,
+            hint_ticks: 0,
         }
     }
 
@@ -207,6 +217,33 @@ impl GameEngine {
     /// Set the ad limit for campaign levels. Call after `new()`.
     pub fn set_ad_limit(&mut self, limit: u16) {
         self.ad_limit = Some(limit);
+    }
+
+    /// Return coordinates of a spool that is part of a valid (selectable) move,
+    /// for use by the hint system.  Scans the board for the first selectable spool.
+    pub fn compute_hint(&self) -> Option<(usize, usize)> {
+        let rows = self.board.height as usize;
+        let cols = self.board.width as usize;
+        for r in 0..rows {
+            for c in 0..cols {
+                if matches!(self.board.board[r][c], BoardEntity::Spool(_) | BoardEntity::KeySpool(_))
+                    && self.board.is_selectable(r, c)
+                {
+                    return Some((r, c));
+                }
+            }
+        }
+        None
+    }
+
+    /// Decrement hint_ticks and clear hint_cell when it reaches zero.
+    pub fn tick_hint(&mut self) {
+        if self.hint_ticks > 0 {
+            self.hint_ticks -= 1;
+            if self.hint_ticks == 0 {
+                self.hint_cell = None;
+            }
+        }
     }
 
     // ── Actions ────────────────────────────────────────────────────────────
@@ -719,6 +756,8 @@ impl GameStateSnapshot {
             ad_limit: self.ad_limit,
             ads_used: self.ads_used,
             generation_attempts: self.generation_attempts,
+            hint_cell: None,
+            hint_ticks: 0,
         })
     }
 }
@@ -826,6 +865,8 @@ mod tests {
             ad_limit: None,
             ads_used: 0,
             generation_attempts: 0,
+            hint_cell: None,
+            hint_ticks: 0,
         }
     }
 
@@ -962,6 +1003,8 @@ mod tests {
             ad_limit: None,
             ads_used: 0,
             generation_attempts: 0,
+            hint_cell: None,
+            hint_ticks: 0,
         };
         assert!(e.move_cursor(Direction::Down).is_ok());
         assert_eq!(e.cursor_row, 2); // skipped row 1
@@ -1043,6 +1086,8 @@ mod tests {
             ad_limit: None,
             ads_used: 0,
             generation_attempts: 0,
+            hint_cell: None,
+            hint_ticks: 0,
         };
         assert!(e.is_won());
     }
@@ -1092,6 +1137,7 @@ mod tests {
             scissors_spools: 1, balloon_count: 2,
             ad_file: None,
             max_solutions: None,
+            hard_mode: false,
         };
         let e = GameEngine::new(&config);
         assert_eq!(e.board.height, 4);
@@ -1209,6 +1255,8 @@ mod tests {
             ad_limit: None,
             ads_used: 0,
             generation_attempts: 0,
+            hint_cell: None,
+            hint_ticks: 0,
         };
         assert_eq!(e.status(), GameStatus::Won);
     }
@@ -1238,6 +1286,8 @@ mod tests {
             ad_limit: None,
             ads_used: 0,
             generation_attempts: 0,
+            hint_cell: None,
+            hint_ticks: 0,
         };
         assert_eq!(e.status(), GameStatus::Stuck);
     }
@@ -1270,6 +1320,8 @@ mod tests {
             ad_limit: None,
             ads_used: 0,
             generation_attempts: 0,
+            hint_cell: None,
+            hint_ticks: 0,
         };
         assert_eq!(e.status(), GameStatus::Stuck);
     }
@@ -1299,6 +1351,8 @@ mod tests {
             ad_limit: None,
             ads_used: 0,
             generation_attempts: 0,
+            hint_cell: None,
+            hint_ticks: 0,
         };
         assert_eq!(e.status(), GameStatus::Playing);
     }

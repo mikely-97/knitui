@@ -136,17 +136,45 @@ pub const LONG_CAMPAIGN: &[CampaignLevel] = &[
     CampaignLevel { board_height: 6, board_width: 6, color_number: 8, obstacle_percentage: 25, conveyor_percentage: 25, scissors: 1, tweezers: 1, balloons: 1, ad_limit: 0, reward_scissors: 0, reward_tweezers: 0, reward_balloons: 0 },
 ];
 
-/// Get the levels slice for a given track index (0=Short, 1=Medium, 2=Long).
+/// Hard campaign: 15 levels matching Short but with hard_mode=true on engine creation.
+/// The hard_mode flag is communicated via a marker level whose `scissors` field is u16::MAX.
+/// Callers check `is_hard_track` to decide whether to set hard_mode on the engine.
+pub const HARD_CAMPAIGN: &[CampaignLevel] = &[
+    // Same board params as SHORT_CAMPAIGN but no bonuses; hard_mode set by track flag
+    CampaignLevel { board_height: 3, board_width: 3, color_number: 3, obstacle_percentage: 0, conveyor_percentage: 0, scissors: 0, tweezers: 0, balloons: 0, ad_limit: 0, reward_scissors: 0, reward_tweezers: 0, reward_balloons: 0 },
+    CampaignLevel { board_height: 3, board_width: 4, color_number: 3, obstacle_percentage: 0, conveyor_percentage: 0, scissors: 0, tweezers: 0, balloons: 0, ad_limit: 0, reward_scissors: 0, reward_tweezers: 0, reward_balloons: 0 },
+    CampaignLevel { board_height: 4, board_width: 4, color_number: 4, obstacle_percentage: 5, conveyor_percentage: 0, scissors: 0, tweezers: 0, balloons: 0, ad_limit: 0, reward_scissors: 0, reward_tweezers: 0, reward_balloons: 0 },
+    CampaignLevel { board_height: 4, board_width: 5, color_number: 4, obstacle_percentage: 10, conveyor_percentage: 0, scissors: 0, tweezers: 0, balloons: 0, ad_limit: 0, reward_scissors: 0, reward_tweezers: 0, reward_balloons: 0 },
+    CampaignLevel { board_height: 5, board_width: 5, color_number: 5, obstacle_percentage: 5, conveyor_percentage: 5, scissors: 0, tweezers: 0, balloons: 0, ad_limit: 0, reward_scissors: 0, reward_tweezers: 0, reward_balloons: 0 },
+    CampaignLevel { board_height: 5, board_width: 5, color_number: 5, obstacle_percentage: 10, conveyor_percentage: 5, scissors: 0, tweezers: 0, balloons: 0, ad_limit: 0, reward_scissors: 0, reward_tweezers: 0, reward_balloons: 0 },
+    CampaignLevel { board_height: 5, board_width: 6, color_number: 5, obstacle_percentage: 10, conveyor_percentage: 10, scissors: 0, tweezers: 0, balloons: 0, ad_limit: 0, reward_scissors: 0, reward_tweezers: 0, reward_balloons: 0 },
+    CampaignLevel { board_height: 6, board_width: 6, color_number: 6, obstacle_percentage: 10, conveyor_percentage: 10, scissors: 0, tweezers: 0, balloons: 0, ad_limit: 0, reward_scissors: 0, reward_tweezers: 0, reward_balloons: 0 },
+    CampaignLevel { board_height: 6, board_width: 6, color_number: 6, obstacle_percentage: 15, conveyor_percentage: 10, scissors: 0, tweezers: 0, balloons: 0, ad_limit: 0, reward_scissors: 0, reward_tweezers: 0, reward_balloons: 0 },
+    CampaignLevel { board_height: 6, board_width: 6, color_number: 8, obstacle_percentage: 10, conveyor_percentage: 10, scissors: 0, tweezers: 0, balloons: 0, ad_limit: 0, reward_scissors: 0, reward_tweezers: 0, reward_balloons: 0 },
+    CampaignLevel { board_height: 6, board_width: 6, color_number: 8, obstacle_percentage: 15, conveyor_percentage: 10, scissors: 0, tweezers: 0, balloons: 0, ad_limit: 0, reward_scissors: 0, reward_tweezers: 0, reward_balloons: 0 },
+    CampaignLevel { board_height: 6, board_width: 6, color_number: 8, obstacle_percentage: 15, conveyor_percentage: 15, scissors: 0, tweezers: 0, balloons: 0, ad_limit: 0, reward_scissors: 0, reward_tweezers: 0, reward_balloons: 0 },
+    CampaignLevel { board_height: 6, board_width: 6, color_number: 8, obstacle_percentage: 15, conveyor_percentage: 15, scissors: 0, tweezers: 0, balloons: 0, ad_limit: 0, reward_scissors: 0, reward_tweezers: 0, reward_balloons: 0 },
+    CampaignLevel { board_height: 6, board_width: 6, color_number: 8, obstacle_percentage: 20, conveyor_percentage: 15, scissors: 0, tweezers: 0, balloons: 0, ad_limit: 0, reward_scissors: 0, reward_tweezers: 0, reward_balloons: 0 },
+    CampaignLevel { board_height: 6, board_width: 6, color_number: 8, obstacle_percentage: 20, conveyor_percentage: 15, scissors: 0, tweezers: 0, balloons: 0, ad_limit: 0, reward_scissors: 0, reward_tweezers: 0, reward_balloons: 0 },
+];
+
+/// Get the levels slice for a given track index (0=Short, 1=Medium, 2=Long, 3=Hard).
 pub fn levels_for_track(track_idx: usize) -> &'static [CampaignLevel] {
     match track_idx {
         0 => SHORT_CAMPAIGN,
         1 => MEDIUM_CAMPAIGN,
-        _ => LONG_CAMPAIGN,
+        2 => LONG_CAMPAIGN,
+        _ => HARD_CAMPAIGN,
     }
 }
 
-pub const TRACK_NAMES: &[&str] = &["Short", "Medium", "Long"];
-pub const TRACK_COUNT: usize = 3;
+/// Returns true if the track uses hard mode (no blessings, no bonuses, no solvability guarantee).
+pub fn is_hard_track(track_idx: usize) -> bool {
+    track_idx == 3
+}
+
+pub const TRACK_NAMES: &[&str] = &["Short", "Medium", "Long", "Hard"];
+pub const TRACK_COUNT: usize = 4;
 
 #[cfg(test)]
 mod tests {
@@ -169,7 +197,7 @@ mod tests {
 
     #[test]
     fn all_levels_have_valid_board_sizes() {
-        for levels in [SHORT_CAMPAIGN, MEDIUM_CAMPAIGN, LONG_CAMPAIGN] {
+        for levels in [SHORT_CAMPAIGN, MEDIUM_CAMPAIGN, LONG_CAMPAIGN, HARD_CAMPAIGN] {
             for (i, level) in levels.iter().enumerate() {
                 assert!(level.board_height >= 2, "level {}: board_height too small", i);
                 assert!(level.board_width >= 2, "level {}: board_width too small", i);
@@ -181,7 +209,7 @@ mod tests {
     #[test]
     fn all_levels_respect_max_board_dim() {
         use crate::config::MAX_BOARD_DIM;
-        for levels in [SHORT_CAMPAIGN, MEDIUM_CAMPAIGN, LONG_CAMPAIGN] {
+        for levels in [SHORT_CAMPAIGN, MEDIUM_CAMPAIGN, LONG_CAMPAIGN, HARD_CAMPAIGN] {
             for (i, level) in levels.iter().enumerate() {
                 assert!(level.board_height <= MAX_BOARD_DIM,
                     "level {}: board_height {} exceeds max {}", i, level.board_height, MAX_BOARD_DIM);
@@ -196,5 +224,19 @@ mod tests {
         assert_eq!(levels_for_track(0).len(), 15);
         assert_eq!(levels_for_track(1).len(), 25);
         assert_eq!(levels_for_track(2).len(), 40);
+        assert_eq!(levels_for_track(3).len(), 15);
+    }
+
+    #[test]
+    fn hard_campaign_has_15_levels() {
+        assert_eq!(HARD_CAMPAIGN.len(), 15);
+    }
+
+    #[test]
+    fn hard_track_flag() {
+        assert!(!is_hard_track(0));
+        assert!(!is_hard_track(1));
+        assert!(!is_hard_track(2));
+        assert!(is_hard_track(3));
     }
 }

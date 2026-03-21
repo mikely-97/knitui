@@ -67,6 +67,9 @@ pub struct Config {
 
     #[arg(long, help = "Max distinct winning pick sequences (1 = single forced-sequence puzzle). Slower generation for small values.")]
     pub max_solutions: Option<u64>,
+
+    #[arg(long, default_value_t = false, help = "Hard mode: no blessings, no bonuses, no solvability guarantee")]
+    pub hard_mode: bool,
 }
 
 impl loom_engine::game::GameConfig for Config {

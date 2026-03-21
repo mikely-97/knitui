@@ -352,10 +352,18 @@ pub fn render_board(stdout: &mut Stdout, engine: &GameEngine, x0: u16, y0: u16, 
                         stdout.queue(Print('│'))?;
                     }
 
-                    // Cell content: inverted colors for cursor cell
+                    // Cell content: inverted colors for cursor cell; bright-white bg for hint cell
+                    let is_hint = engine.hint_ticks > 0
+                        && engine.hint_cell == Some((row_idx, col_idx));
                     if is_cursor {
                         stdout.queue(SetAttribute(Attribute::Reverse))?;
                         for _ in 0..sw { stdout.queue(Print(cell))?; }
+                        stdout.queue(SetAttribute(Attribute::Reset))?;
+                    } else if is_hint {
+                        use crossterm::style::{SetBackgroundColor, SetForegroundColor};
+                        stdout.queue(SetBackgroundColor(crossterm::style::Color::White))?;
+                        stdout.queue(SetForegroundColor(crossterm::style::Color::Black))?;
+                        for _ in 0..sw { stdout.queue(Print('*'))?; }
                         stdout.queue(SetAttribute(Attribute::Reset))?;
                     } else {
                         for _ in 0..sw { stdout.queue(Print(cell))?; }
