@@ -756,7 +756,7 @@ fn run_event_loop(
                                 continue;
                             }
                             KeyCode::Char('h') | KeyCode::Char('H') => {
-                                renderer::render_help(&mut stdout)?;
+                                renderer::render_help(&mut stdout, engine.as_ref().unwrap())?;
                                 tui_state = TuiState::Help;
                                 continue;
                             }

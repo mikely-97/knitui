@@ -1486,6 +1486,7 @@ mod tests {
             scissors: 0, tweezers: 0, balloons: 0,
             scissors_spools: 1, balloon_count: 2, ad_file: None,
             max_solutions: None,
+            hard_mode: false,
         };
         let e = GameEngine::new(&config);
 

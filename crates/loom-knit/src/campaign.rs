@@ -122,9 +122,9 @@ mod tests {
         s.banked_scissors = 2;
         s.banked_tweezers = 1;
         let cfg = s.to_config(&default_config());
-        assert_eq!(cfg.board_height, 3);
-        assert_eq!(cfg.board_width, 3);
-        assert_eq!(cfg.color_number, 3);
+        assert_eq!(cfg.board_height, 4);
+        assert_eq!(cfg.board_width, 4);
+        assert_eq!(cfg.color_number, 2);
         assert_eq!(cfg.scissors, 2);
         assert_eq!(cfg.tweezers, 1);
     }
@@ -141,7 +141,7 @@ mod tests {
     #[test]
     fn complete_level_marks_campaign_done_on_last() {
         let mut s = CampaignState::new(0);
-        for _ in 0..14 {
+        for _ in 0..9 {
             assert!(!s.complete_level());
         }
         assert!(s.complete_level());
@@ -173,7 +173,7 @@ mod tests {
         let mut s = CampaignState::new(0);
         s.current_level = 4;
         saves.upsert(s);
-        assert_eq!(saves.progress_label(0), "Level 5/15");
+        assert_eq!(saves.progress_label(0), "Level 5/10");
     }
 
     #[test]

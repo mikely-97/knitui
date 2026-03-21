@@ -1,5 +1,6 @@
 /// Integration tests for game flow — exercising GameEngine end-to-end.
 use knitui::engine::{GameEngine, BonusInventory, BonusState, BlessingFlags};
+use loom_engine;
 use knitui::config::Config;
 use knitui::board_entity::{BoardEntity, Direction};
 use knitui::game_board::GameBoard;
@@ -26,6 +27,7 @@ fn make_config(
         scissors_spools: 1, balloon_count: 2,
         ad_file: None,
         max_solutions: None,
+        hard_mode: false,
     }
 }
 
@@ -149,6 +151,9 @@ fn test_engine_cursor_traversal() {
         generation_attempts: 0,
         blessing_flags: BlessingFlags::default(),
         last_picked_color: None,
+        hint_cell: None,
+        hint_ticks: 0,
+        anim_cells: loom_engine::anim::AnimOverlay::new(),
     };
 
     // Traverse to bottom-right corner
@@ -195,6 +200,9 @@ fn test_engine_json_roundtrip_preserves_game_state() {
         generation_attempts: 0,
         blessing_flags: BlessingFlags::default(),
         last_picked_color: None,
+        hint_cell: None,
+        hint_ticks: 0,
+        anim_cells: loom_engine::anim::AnimOverlay::new(),
     };
 
     // Make some moves
@@ -280,6 +288,9 @@ fn test_input_during_processing() {
         generation_attempts: 0,
         blessing_flags: BlessingFlags::default(),
         last_picked_color: None,
+        hint_cell: None,
+        hint_ticks: 0,
+        anim_cells: loom_engine::anim::AnimOverlay::new(),
     };
 
     // Pick up a spool
