@@ -150,6 +150,7 @@ fn base_config() -> Config {
         balloon_count: 2,
         ad_file: None,
         max_solutions: None,
+        hard_mode: false,
     }
 }
 

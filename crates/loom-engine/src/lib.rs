@@ -8,3 +8,6 @@ pub mod ad_content;
 pub mod campaign;
 pub mod endless;
 pub mod game;
+pub mod stats;
+pub mod daily;
+pub mod achievements;
