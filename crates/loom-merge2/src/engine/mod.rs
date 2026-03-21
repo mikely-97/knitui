@@ -1,4 +1,6 @@
 mod types;
+mod generators;
+mod orders;
 pub use types::*;
 
 use rand::prelude::*;
@@ -7,12 +9,10 @@ use serde::{Deserialize, Serialize};
 use crate::board::{Board, Cell};
 use crate::config::Config;
 use crate::energy::Energy;
-use crate::generator::{self, ActivationResult};
+use crate::generator;
 use crate::inventory::Inventory;
 use crate::item::{Family, Item, Piece, ALL_FAMILIES, MAX_TIER};
-use crate::order::{
-    Order, Reward, generate_random_order, generate_timed_order,
-};
+use crate::order::Order;
 
 // ── Engine ────────────────────────────────────────────────────────────────
 
@@ -284,62 +284,6 @@ impl GameEngine {
         false
     }
 
-    fn activate_generator_inner(&mut self, pos: (usize, usize), enhanced: bool) -> bool {
-        // energy_saver: 25% chance free
-        let mut rng = rand::rng();
-        let cost = if self.blessing_flags.energy_saver && rng.random_range(0u8..100) < 25 {
-            0
-        } else {
-            self.generator_cost
-        };
-
-        let surge = self.blessing_flags.generator_surge;
-
-        let result = generator::try_activate(
-            &mut self.board,
-            pos.0,
-            pos.1,
-            &mut self.energy,
-            cost,
-            self.generator_cooldown,
-            enhanced,
-            surge,
-        );
-
-        match result {
-            ActivationResult::Spawned(r, c) => {
-                let family = self.board.cells[pos.0][pos.1]
-                    .family()
-                    .or_else(|| {
-                        // Generator was just deleted (soft gen exhausted)
-                        self.board.cells[r][c].family()
-                    })
-                    .unwrap_or(Family::Wood);
-                self.notifications.push(Notification::GeneratorActivated {
-                    family,
-                    pos: (r, c),
-                });
-                // Spawn rise animation (starts at frame 2 — shorter than merge)
-                self.anim_cells.rise_brief((r, c));
-                self.update_hint();
-                true
-            }
-            ActivationResult::NoEnergy => {
-                self.notifications.push(Notification::NoEnergy);
-                false
-            }
-            ActivationResult::OnCooldown => {
-                self.notifications.push(Notification::OnCooldown);
-                false
-            }
-            ActivationResult::NoSpace => {
-                self.notifications.push(Notification::NoSpace);
-                false
-            }
-            ActivationResult::NotAGenerator | ActivationResult::Exhausted => false,
-        }
-    }
-
     fn do_merge(&mut self, src: (usize, usize), dst: (usize, usize)) -> bool {
         let Some(result) = self.board.do_merge(src, dst) else {
             return false;
@@ -489,159 +433,6 @@ impl GameEngine {
         None
     }
 
-    // ── Delivery ──────────────────────────────────────────────────────────
-
-    /// Deliver a piece from a source to the first matching order.
-    /// Returns the rewards collected if successful.
-    pub fn deliver_from_board(&mut self) -> bool {
-        let Some(sel) = self.selected else {
-            return false;
-        };
-        let piece = match &self.board.cells[sel.0][sel.1] {
-            Cell::Piece(p) => p.clone(),
-            _ => return false,
-        };
-
-        if self.try_deliver_piece(&piece) {
-            self.board.cells[sel.0][sel.1] = Cell::Empty;
-            self.selected = None;
-            self.update_hint();
-            true
-        } else {
-            false
-        }
-    }
-
-    pub fn deliver_from_inventory(&mut self, slot: usize) -> bool {
-        let Some(piece) = self.inventory.peek(slot).cloned() else {
-            return false;
-        };
-
-        if self.try_deliver_piece(&piece) {
-            self.inventory.take(slot);
-            true
-        } else {
-            false
-        }
-    }
-
-    fn try_deliver_piece(&mut self, piece: &Piece) -> bool {
-        let deliver_count = if self.blessing_flags.double_deliver { 2 } else { 1 };
-
-        // Collect delivery result outside the borrow
-        let mut found = false;
-        let mut fulfilled_rewards: Option<Vec<Reward>> = None;
-        let mut follow_up_order: Option<Order> = None;
-
-        for order in &mut self.active_orders {
-            if order.accepts(piece) {
-                found = true;
-                for _ in 0..deliver_count {
-                    if !order.try_deliver(piece) {
-                        break;
-                    }
-                }
-                if order.is_fulfilled() {
-                    fulfilled_rewards = Some(order.rewards.clone());
-                    follow_up_order = order.follow_up.take().map(|b| *b);
-                }
-                break;
-            }
-        }
-
-        if found {
-            if let Piece::Regular(item) = piece {
-                self.score += item.score_value() * 2;
-            }
-            if let Some(rewards) = fulfilled_rewards {
-                self.apply_rewards(&rewards);
-                self.notifications.push(Notification::OrderCompleted { rewards });
-            }
-            // Remove fulfilled orders, add follow-up, replenish
-            self.active_orders.retain(|o| !o.is_fulfilled());
-            if let Some(fu) = follow_up_order {
-                self.active_orders.push(fu);
-            }
-            self.fill_random_orders();
-        }
-        found
-    }
-
-    pub fn apply_rewards(&mut self, rewards: &[Reward]) {
-        for reward in rewards {
-            match reward {
-                Reward::Score(n) => self.score += n,
-                Reward::Energy(n) => self.energy.add(*n),
-                Reward::SpawnPiece(piece) => {
-                    self.spawn_piece_anywhere(piece.clone());
-                }
-                Reward::InventorySlot => {
-                    self.inventory.expand(1);
-                }
-                Reward::Stars(n) => self.stars += n,
-            }
-        }
-        // Remove fulfilled orders and refill
-        self.active_orders.retain(|o| !o.is_fulfilled());
-        self.fill_random_orders();
-    }
-
-    fn spawn_piece_anywhere(&mut self, piece: Piece) {
-        let mut rng = rand::rng();
-        let mut empties: Vec<(usize, usize)> = Vec::new();
-        for r in 0..self.board.rows {
-            for c in 0..self.board.cols {
-                if self.board.cells[r][c].is_empty() {
-                    empties.push((r, c));
-                }
-            }
-        }
-        if let Some(&(r, c)) = empties.choose(&mut rng) {
-            self.board.cells[r][c] = Cell::Piece(piece);
-        } else {
-            // Board full — try inventory
-            let _ = self.inventory.store(piece);
-        }
-    }
-
-    // ── Generator upgrade ─────────────────────────────────────────────────
-
-    /// Upgrade the generator at the cursor position (costs stars).
-    /// Returns true if upgraded successfully.
-    pub fn upgrade_generator_at_cursor(&mut self) -> bool {
-        let pos = (self.cursor_row, self.cursor_col);
-        let upgrade_cost: u16 = 3;
-
-        match &self.board.cells[pos.0][pos.1] {
-            Cell::HardGenerator { family, tier, cooldown_remaining, upgrade_level } => {
-                if *upgrade_level >= 2 { return false; }
-                if self.stars < upgrade_cost { return false; }
-                let new_level = upgrade_level + 1;
-                let (fam, t, cd) = (*family, *tier, *cooldown_remaining);
-                self.stars -= upgrade_cost;
-                self.board.cells[pos.0][pos.1] = Cell::HardGenerator {
-                    family: fam, tier: t, cooldown_remaining: cd, upgrade_level: new_level,
-                };
-                self.notifications.push(Notification::GeneratorUpgraded { pos, level: new_level });
-                true
-            }
-            Cell::SoftGenerator { family, tier, charges, cooldown_remaining, upgrade_level } => {
-                if *upgrade_level >= 2 { return false; }
-                if self.stars < upgrade_cost { return false; }
-                let new_level = upgrade_level + 1;
-                let (fam, t, ch, cd) = (*family, *tier, *charges, *cooldown_remaining);
-                self.stars -= upgrade_cost;
-                self.board.cells[pos.0][pos.1] = Cell::SoftGenerator {
-                    family: fam, tier: t, charges: ch, cooldown_remaining: cd,
-                    upgrade_level: new_level,
-                };
-                self.notifications.push(Notification::GeneratorUpgraded { pos, level: new_level });
-                true
-            }
-            _ => false,
-        }
-    }
-
     // ── Inventory expansion event ─────────────────────────────────────────
 
     /// Dismiss the inventory expansion popup and apply the +1 slot.
@@ -772,52 +563,6 @@ impl GameEngine {
         }
         self.ads_used += 1;
         self.notifications.push(Notification::AdWatched);
-    }
-
-    // ── Orders ────────────────────────────────────────────────────────────
-
-    /// Drop all random orders and regenerate them from the current `available_families`.
-    /// Call this after overriding `available_families` on a freshly-built engine.
-    pub fn regenerate_orders(&mut self) {
-        self.active_orders
-            .retain(|o| !matches!(o.order_type, crate::order::OrderType::Random));
-        self.fill_random_orders();
-    }
-
-    fn fill_random_orders(&mut self) {
-        let random_count = self
-            .active_orders
-            .iter()
-            .filter(|o| matches!(o.order_type, crate::order::OrderType::Random))
-            .count();
-
-        for _ in random_count..self.random_order_count {
-            let order = generate_random_order(
-                &self.available_families,
-                self.max_order_tier,
-                self.blessing_flags.lucky_orders,
-            );
-            self.active_orders.push(order);
-        }
-    }
-
-    fn maybe_spawn_timed_order(&mut self) {
-        if self.timed_order_cooldown > 0 {
-            self.timed_order_cooldown -= 1;
-            return;
-        }
-        // Only one active timed order at a time
-        if self
-            .active_orders
-            .iter()
-            .any(|o| o.is_time_limited())
-        {
-            self.timed_order_cooldown = 600;
-            return;
-        }
-        let order = generate_timed_order(&self.available_families, self.max_order_tier + 1, 600);
-        self.active_orders.push(order);
-        self.timed_order_cooldown = 1200;
     }
 
     // ── Hint pair ─────────────────────────────────────────────────────────
