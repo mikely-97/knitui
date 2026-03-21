@@ -4,6 +4,7 @@ members = [
     "crates/loom-knit",
     "crates/loom-match3",
     "crates/loom-merge2",
+    "crates/loom-picross",
 ]
 resolver = "3"
 
@@ -30,3 +31,4 @@ loom-engine = { path = "crates/loom-engine" }
 loom-knit = { path = "crates/loom-knit" }
 loom-match3 = { path = "crates/loom-match3" }
 loom-merge2 = { path = "crates/loom-merge2" }
+loom-picross = { path = "crates/loom-picross" }

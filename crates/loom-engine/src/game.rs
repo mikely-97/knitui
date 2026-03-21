@@ -8,6 +8,7 @@ pub enum GameId {
     Knit,
     Match3,
     Merge2,
+    Picross,
 }
 
 /// Action returned by GameEngine::handle_key to tell the TUI framework what to do.

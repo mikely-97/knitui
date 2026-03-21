@@ -34,6 +34,7 @@ pub struct AllStats {
     pub knit: GameStats,
     pub match3: GameStats,
     pub merge2: GameStats,
+    pub picross: GameStats,
 }
 
 impl AllStats {

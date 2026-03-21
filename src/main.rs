@@ -15,6 +15,7 @@ const GAMES: &[(&str, &str)] = &[
     ("Knit",    "Spool-knitting puzzle"),
     ("Match-3", "Classic gem-matching"),
     ("Merge-2", "Merge puzzle"),
+    ("Picross", "Nonogram/picross puzzles"),
 ];
 
 // Menu items: games + extras
@@ -80,6 +81,7 @@ fn show_stats(stdout: &mut Stdout) -> std::io::Result<()> {
         ("Knit",    &stats.knit),
         ("Match-3", &stats.match3),
         ("Merge-2", &stats.merge2),
+        ("Picross", &stats.picross),
     ];
 
     let mut row = 5u16;
@@ -176,6 +178,7 @@ fn main() -> std::io::Result<()> {
                         0 => knitui::tui::run_cli(),
                         1 => m3tui::tui::run_from_menu(),
                         2 => m2tui::tui::run_from_menu(),
+                        3 => pictui::tui::run_from_menu(),
                         _ => Ok(()),
                     };
                     return result;

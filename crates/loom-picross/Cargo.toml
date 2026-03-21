@@ -1,0 +1,15 @@
+[package]
+name = "loom-picross"
+version = "0.1.0"
+edition = "2024"
+
+[lib]
+name = "pictui"
+path = "src/lib.rs"
+
+[dependencies]
+loom-engine = { path = "../loom-engine" }
+crossterm = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+dirs = { workspace = true }
