@@ -10,52 +10,9 @@ use crate::matches::{self, MatchGroup};
 use crate::blessings;
 use crate::palette::select_palette;
 
-// ── Blessing flags ───────────────────────────────────────────────────────
-
-#[derive(Clone, Debug, Default)]
-pub struct BlessingFlags {
-    pub keen_eye: bool,
-    pub lucky_start: bool,
-    pub ice_breaker: bool,
-    pub cascade_master: bool,
-    pub crate_cracker: bool,
-    pub chain_reaction: bool,
-    pub color_surge: bool,
-    pub last_stand: bool,
-    pub last_stand_used: bool,
-    pub gem_magnet: bool,
-    pub double_score: bool,
-}
-
-// ── Phase ────────────────────────────────────────────────────────────────
-
-#[derive(Debug, Clone)]
-pub enum GamePhase {
-    /// Waiting for player input.
-    PlayerInput,
-    /// Invalid swap: visual bounce lasts `ticks_left` ticks, then reverts.
-    Bouncing { ticks_left: u8 },
-    /// Matches have been found. On next tick: clear cells, trigger specials, → Falling.
-    Resolving {
-        match_groups: Vec<MatchGroup>,
-        /// Where to place the created special piece (swap destination).
-        spawn_at: Option<(usize, usize)>,
-    },
-    /// Applying gravity tick-by-tick until nothing moves.
-    Falling,
-    /// Refill empty cells from top; then check for cascade.
-    Refilling,
-}
-
-// ── Status ───────────────────────────────────────────────────────────────
-
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub enum GameStatus {
-    Playing,
-    Won,
-    OutOfMoves,
-    Stuck,
-}
+mod types;
+mod bonuses;
+pub use types::*;
 
 // ── Engine ───────────────────────────────────────────────────────────────
 
@@ -557,7 +514,7 @@ impl GameEngine {
     /// Stone is only damaged by direct hits.
     /// Ice/Crate are damaged by both direct and adjacent.
     /// Locked is removed on direct clear (the gem gets matched).
-    fn damage_modifier(&mut self, r: usize, c: usize, direct: bool) {
+    pub(crate) fn damage_modifier(&mut self, r: usize, c: usize, direct: bool) {
         // Read the modifier kind first to avoid simultaneous borrow conflicts.
         let modifier_kind = match &self.board.cells[r][c].modifier {
             None => return,
@@ -588,143 +545,6 @@ impl GameEngine {
                     self.board.cells[r][c].modifier = None;
                 }
             }
-        }
-    }
-
-    // ── Bonus actions ─────────────────────────────────────────────────────
-
-    /// Activate Hammer: enter targeting mode. No-op if inventory empty or bonus active.
-    pub fn activate_hammer(&mut self) {
-        if !matches!(self.bonus_state, BonusState::None) { return; }
-        if !self.bonuses.consume_hammer() { return; }
-        self.bonus_state = BonusState::HammerActive {
-            saved_row: self.cursor_row,
-            saved_col: self.cursor_col,
-        };
-    }
-
-    /// Confirm Hammer target: destroy cell at cursor, enter Falling.
-    pub fn confirm_hammer(&mut self) {
-        if !matches!(self.bonus_state, BonusState::HammerActive { .. }) { return; }
-        let (r, c) = (self.cursor_row, self.cursor_col);
-        // Damage modifier (direct) then clear content
-        self.damage_modifier(r, c, true);
-        self.board.cells[r][c].content = CellContent::Empty;
-        self.bonus_state = BonusState::None;
-        self.phase = GamePhase::Falling;
-    }
-
-    /// Cancel an active bonus, restoring saved state and refunding the charge.
-    pub fn cancel_bonus(&mut self) {
-        match self.bonus_state.clone() {
-            BonusState::HammerActive { saved_row, saved_col } => {
-                self.cursor_row = saved_row;
-                self.cursor_col = saved_col;
-                self.bonuses.hammer += 1; // refund
-                self.bonus_state = BonusState::None;
-            }
-            BonusState::ColorBombActive { saved_row, saved_col } => {
-                self.cursor_row = saved_row;
-                self.cursor_col = saved_col;
-                self.bonuses.color_bomb += 1; // refund
-                self.bonus_state = BonusState::None;
-            }
-            BonusState::None => {}
-        }
-    }
-
-    /// Activate Color Bomb: enter targeting mode. No-op if inventory empty or bonus active.
-    pub fn activate_color_bomb(&mut self) {
-        if !matches!(self.bonus_state, BonusState::None) { return; }
-        if !self.bonuses.consume_color_bomb() { return; }
-        self.bonus_state = BonusState::ColorBombActive {
-            saved_row: self.cursor_row,
-            saved_col: self.cursor_col,
-        };
-    }
-
-    /// Confirm Color Bomb: clear all gems on the board matching the cursor cell's color.
-    pub fn confirm_color_bomb(&mut self) {
-        if !matches!(self.bonus_state, BonusState::ColorBombActive { .. }) { return; }
-        let (r, c) = (self.cursor_row, self.cursor_col);
-        if let Some(target_color) = self.board.cells[r][c].color() {
-            for rr in 0..self.board.height {
-                for cc in 0..self.board.width {
-                    if self.board.cells[rr][cc].color() == Some(target_color) {
-                        self.damage_modifier(rr, cc, true);
-                        self.board.cells[rr][cc].content = CellContent::Empty;
-                        self.score += 10;
-                    }
-                }
-            }
-        }
-        self.bonus_state = BonusState::None;
-        self.phase = GamePhase::Falling;
-    }
-
-    /// Laser: destroy entire cursor row immediately.
-    pub fn activate_laser(&mut self) {
-        if !self.bonuses.consume_laser() { return; }
-        let r = self.cursor_row;
-        for c in 0..self.board.width {
-            self.damage_modifier(r, c, true);
-            self.board.cells[r][c].content = CellContent::Empty;
-        }
-        self.phase = GamePhase::Falling;
-    }
-
-    /// Blaster: destroy entire cursor column immediately.
-    pub fn activate_blaster(&mut self) {
-        if !self.bonuses.consume_blaster() { return; }
-        let c = self.cursor_col;
-        for r in 0..self.board.height {
-            self.damage_modifier(r, c, true);
-            self.board.cells[r][c].content = CellContent::Empty;
-        }
-        self.phase = GamePhase::Falling;
-    }
-
-    /// Warp: collect all gem colors, shuffle them, re-place without pre-existing matches.
-    pub fn activate_warp(&mut self) {
-        if !self.bonuses.consume_warp() { return; }
-        let mut rng = rand::rng();
-        // Collect all gem positions (non-stone, non-empty)
-        let positions: Vec<(usize, usize)> = (0..self.board.height)
-            .flat_map(|r| (0..self.board.width).map(move |c| (r, c)))
-            .filter(|&(r, c)| {
-                !matches!(self.board.cells[r][c].modifier, Some(TileModifier::Stone))
-                    && matches!(self.board.cells[r][c].content, CellContent::Gem { .. })
-            })
-            .collect();
-
-        let mut colors: Vec<Color> = positions
-            .iter()
-            .filter_map(|&(r, c)| self.board.cells[r][c].color())
-            .collect();
-
-        // Shuffle and re-place, fixing pre-existing matches
-        colors.shuffle(&mut rng);
-        for (&(r, c), color) in positions.iter().zip(colors.iter()) {
-            self.board.cells[r][c].content = CellContent::Gem { color: *color, special: None };
-        }
-        // Fix any pre-existing matches created by the shuffle.
-        // Try up to 10 re-rolls (overwhelmingly sufficient in practice).
-        for _ in 0..10 {
-            let gs = matches::find_matches(&self.board);
-            if gs.is_empty() { break; }
-            for group in &gs {
-                let &(r, c) = group.cells.first().unwrap();
-                let new_color = *self.palette.choose(&mut rng).unwrap();
-                self.board.cells[r][c].content = CellContent::Gem { color: new_color, special: None };
-            }
-        }
-        // If matches still remain after re-rolling (astronomically unlikely), cascade-resolve
-        // them instead of leaving them silently in place.
-        let new_groups = matches::find_matches(&self.board);
-        if new_groups.is_empty() {
-            self.phase = GamePhase::PlayerInput;
-        } else {
-            self.phase = GamePhase::Resolving { match_groups: new_groups, spawn_at: None };
         }
     }
 
