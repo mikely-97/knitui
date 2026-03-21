@@ -5,8 +5,6 @@ use std::time::{Duration, Instant};
 
 use crossterm::{
     ExecutableCommand, execute,
-    terminal::{EnterAlternateScreen, LeaveAlternateScreen, enable_raw_mode, disable_raw_mode},
-    cursor::{Hide, Show},
     event::{poll, read, Event, KeyCode},
 };
 
@@ -186,20 +184,7 @@ fn run_event_loop(
     const AD_DURATION_SECS: u64 = 15;
 
     let mut stdout = stdout();
-    execute!(stdout, EnterAlternateScreen)?;
-    enable_raw_mode()?;
-
-    // Ensure terminal cleanup on panic
-    let default_hook = std::panic::take_hook();
-    std::panic::set_hook(Box::new(move |info| {
-        let _ = crossterm::terminal::disable_raw_mode();
-        let _ = crossterm::execute!(
-            std::io::stdout(),
-            crossterm::cursor::Show,
-            crossterm::terminal::LeaveAlternateScreen
-        );
-        default_hook(info);
-    }));
+    loom_engine::terminal::init()?;
 
     let mut campaign_saves = CampaignSaves::<CampaignState>::load("knitui");
     let mut campaign_ctx: Option<CampaignState> = None;
@@ -849,7 +834,6 @@ fn run_event_loop(
         }
     }
 
-    execute!(stdout, LeaveAlternateScreen);
-    disable_raw_mode()?;
+    loom_engine::terminal::restore()?;
     Ok(())
 }

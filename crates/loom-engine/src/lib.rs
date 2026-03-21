@@ -13,3 +13,4 @@ pub mod game;
 pub mod stats;
 pub mod daily;
 pub mod achievements;
+pub mod terminal;

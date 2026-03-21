@@ -2,10 +2,8 @@ use std::io::{Write, stdout, Stdout};
 use std::time::{Duration, Instant};
 
 use crossterm::{
-    ExecutableCommand, execute,
-    terminal::{EnterAlternateScreen, LeaveAlternateScreen, enable_raw_mode, disable_raw_mode,
-               Clear, ClearType},
-    cursor::{Hide, Show},
+    ExecutableCommand,
+    terminal::{Clear, ClearType},
     event::{poll, read, Event, KeyCode},
 };
 use rand::prelude::*;
@@ -85,20 +83,11 @@ pub fn run_from_menu() -> std::io::Result<()> {
     };
 
     let mut stdout = stdout();
-    enable_raw_mode()?;
-    execute!(stdout, EnterAlternateScreen, Hide)?;
-
-    let original_hook = std::panic::take_hook();
-    std::panic::set_hook(Box::new(move |info| {
-        let _ = execute!(std::io::stdout(), LeaveAlternateScreen, Show);
-        let _ = disable_raw_mode();
-        original_hook(info);
-    }));
+    loom_engine::terminal::init()?;
 
     let result = run_loop(&mut stdout, &cli_config, &mut user_settings);
 
-    execute!(stdout, LeaveAlternateScreen, Show)?;
-    disable_raw_mode()?;
+    loom_engine::terminal::restore()?;
     result
 }
 

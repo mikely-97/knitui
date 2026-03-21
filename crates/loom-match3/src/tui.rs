@@ -5,8 +5,6 @@ use std::time::Duration;
 
 use crossterm::{
     ExecutableCommand, execute,
-    terminal::{EnterAlternateScreen, LeaveAlternateScreen, enable_raw_mode, disable_raw_mode},
-    cursor::{Hide, Show},
     event::{poll, read, Event, KeyCode, KeyModifiers},
 };
 use clap::Parser;
@@ -89,16 +87,7 @@ fn objective_label_for(engine: &GameEngine, campaign_ctx: &Option<CampaignState>
 
 /// Run the m3 game from the standalone binary (parses CLI args).
 pub fn run_cli() -> std::io::Result<()> {
-    let default_hook = std::panic::take_hook();
-    std::panic::set_hook(Box::new(move |info| {
-        let _ = crossterm::terminal::disable_raw_mode();
-        let _ = crossterm::execute!(
-            std::io::stdout(),
-            crossterm::cursor::Show,
-            crossterm::terminal::LeaveAlternateScreen
-        );
-        default_hook(info);
-    }));
+    loom_engine::terminal::init()?;
 
     let cli_config = Config::parse();
     let user_settings = UserSettings::load();
@@ -110,8 +99,6 @@ pub fn run_cli() -> std::io::Result<()> {
     game_config.color_mode = user_settings.color_mode.clone();
 
     let mut stdout = stdout();
-    execute!(stdout, EnterAlternateScreen, Hide)?;
-    enable_raw_mode()?;
 
     let result = run_loop(
         &mut stdout,
@@ -122,24 +109,14 @@ pub fn run_cli() -> std::io::Result<()> {
         endless_hs,
     );
 
-    disable_raw_mode()?;
-    execute!(stdout, Show, LeaveAlternateScreen)?;
+    loom_engine::terminal::restore()?;
 
     result
 }
 
 /// Run the m3 game from the game selector (default config, always shows menu).
 pub fn run_from_menu() -> std::io::Result<()> {
-    let default_hook = std::panic::take_hook();
-    std::panic::set_hook(Box::new(move |info| {
-        let _ = crossterm::terminal::disable_raw_mode();
-        let _ = crossterm::execute!(
-            std::io::stdout(),
-            crossterm::cursor::Show,
-            crossterm::terminal::LeaveAlternateScreen
-        );
-        default_hook(info);
-    }));
+    loom_engine::terminal::init()?;
 
     let user_settings = UserSettings::load();
     let campaign_saves = CampaignSaves::<CampaignState>::load("m3tui");
@@ -152,8 +129,6 @@ pub fn run_from_menu() -> std::io::Result<()> {
     let game_config = config.clone();
 
     let mut stdout = stdout();
-    execute!(stdout, EnterAlternateScreen, Hide)?;
-    enable_raw_mode()?;
 
     let result = run_loop(
         &mut stdout,
@@ -164,8 +139,7 @@ pub fn run_from_menu() -> std::io::Result<()> {
         endless_hs,
     );
 
-    disable_raw_mode()?;
-    execute!(stdout, Show, LeaveAlternateScreen)?;
+    loom_engine::terminal::restore()?;
 
     result
 }
