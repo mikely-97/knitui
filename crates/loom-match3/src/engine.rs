@@ -79,6 +79,8 @@ pub struct GameEngine {
     pub cascade_depth: u32,
     /// Countdown ticks for combo display (set to ~30 when cascade_depth >= 2).
     pub combo_display_ticks: u8,
+    /// Burst animation overlay: (row, col) -> frame countdown (3 = full flash, 0 = done).
+    pub anim_cells: std::collections::HashMap<(usize, usize), u8>,
 }
 
 impl GameEngine {
@@ -113,6 +115,7 @@ impl GameEngine {
             blessing_flags: BlessingFlags::default(),
             cascade_depth: 0,
             combo_display_ticks: 0,
+            anim_cells: std::collections::HashMap::new(),
         }
     }
 
@@ -294,7 +297,15 @@ impl GameEngine {
     /// Advance one tick of the non-input phase pipeline.
     /// Returns true if state changed (trigger re-render).
     /// Called unconditionally each event-loop cycle (~50 ms).
+    pub fn tick_anims(&mut self) {
+        self.anim_cells.retain(|_, frame| {
+            if *frame == 0 { false }
+            else { *frame -= 1; true }
+        });
+    }
+
     pub fn tick(&mut self) -> bool {
+        self.tick_anims();
         // Tick down combo display
         if self.combo_display_ticks > 0 {
             self.combo_display_ticks -= 1;
@@ -435,6 +446,7 @@ impl GameEngine {
                 // Ice was hit but not yet removed; leave the gem in place.
                 continue;
             }
+            self.anim_cells.insert((r, c), 3);
             self.board.cells[r][c].content = CellContent::Empty;
         }
 
@@ -482,6 +494,8 @@ impl GameEngine {
                             color: group.color,
                             special: Some(actual_sp),
                         };
+                        // Spawn flash: cyan burst to distinguish creation from destruction
+                        self.anim_cells.insert(pos, 3);
                         break;
                     }
                 }

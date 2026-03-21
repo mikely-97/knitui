@@ -152,33 +152,46 @@ pub fn render_board(
                 };
 
                 // 3. Print the row_offset row with gem color (if any) and highlight styling.
-                let row_str = final_rows
-                    .get(row_offset_u)
-                    .map(|s| s.as_str())
-                    .unwrap_or("  ");
-
-                // Ice cells: show gem with cyan foreground tint; other cells use gem color
-                let effective_color = if is_ice {
-                    Some(Color::Cyan)
-                } else {
-                    cell_color
-                };
-
-                if let Some(color) = effective_color {
-                    stdout.queue(SetForegroundColor(color))?;
-                }
-                if is_selected {
-                    stdout.queue(Print(row_str.negative()))?;
-                } else if in_match {
-                    stdout.queue(Print(row_str.bold()))?;
-                } else if is_ice {
-                    // Wrap ice cell content in brackets for visual indicator
-                    stdout.queue(Print(format!("{}", row_str)))?;
-                } else {
-                    stdout.queue(Print(row_str))?;
-                }
-                if effective_color.is_some() {
+                //    If there is an active burst animation on this cell, render that instead.
+                if let Some(&frame) = engine.anim_cells.get(&(r, c)) {
+                    let (anim_glyph, anim_color) = match frame {
+                        3 => ("██", Color::White),
+                        2 => ("✦ ", Color::Yellow),
+                        1 => ("· ", Color::DarkGrey),
+                        _ => ("  ", Color::Black),
+                    };
+                    stdout.queue(SetForegroundColor(anim_color))?;
+                    stdout.queue(Print(anim_glyph))?;
                     stdout.queue(ResetColor)?;
+                } else {
+                    let row_str = final_rows
+                        .get(row_offset_u)
+                        .map(|s| s.as_str())
+                        .unwrap_or("  ");
+
+                    // Ice cells: show gem with cyan foreground tint; other cells use gem color
+                    let effective_color = if is_ice {
+                        Some(Color::Cyan)
+                    } else {
+                        cell_color
+                    };
+
+                    if let Some(color) = effective_color {
+                        stdout.queue(SetForegroundColor(color))?;
+                    }
+                    if is_selected {
+                        stdout.queue(Print(row_str.negative()))?;
+                    } else if in_match {
+                        stdout.queue(Print(row_str.bold()))?;
+                    } else if is_ice {
+                        // Wrap ice cell content in brackets for visual indicator
+                        stdout.queue(Print(format!("{}", row_str)))?;
+                    } else {
+                        stdout.queue(Print(row_str))?;
+                    }
+                    if effective_color.is_some() {
+                        stdout.queue(ResetColor)?;
+                    }
                 }
 
                 // Gap between cells
