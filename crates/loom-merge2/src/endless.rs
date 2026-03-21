@@ -67,6 +67,7 @@ pub fn new_endless_engine(blessings: &[String]) -> GameEngine {
         family: Family::Wood,
         tier: 1,
         cooldown_remaining: 0,
+        upgrade_level: 0,
     };
     let last_row = engine.board.rows - 1;
     let last_col = engine.board.cols - 1;
@@ -74,6 +75,7 @@ pub fn new_endless_engine(blessings: &[String]) -> GameEngine {
         family: Family::Stone,
         tier: 1,
         cooldown_remaining: 0,
+        upgrade_level: 0,
     };
 
     engine

@@ -10,11 +10,16 @@ pub enum Cell {
     Piece(Piece),
     /// Frozen cell: content is visible but locked. Must merge identical piece into it to thaw.
     Frozen(Piece),
+    /// Bubble cell: contains a piece that does not count for orders until popped.
+    /// Popped (converted to Piece) when an identical piece is merged into it.
+    Bubble(Piece),
     HardGenerator {
         family: Family,
         /// Generator tier (1-8). Higher tiers produce higher-base-tier items.
         tier: u8,
         cooldown_remaining: u32,
+        /// Upgrade level (0 = base, 1 = ★, 2 = ★★). Each level boosts output tier.
+        upgrade_level: u8,
     },
     SoftGenerator {
         family: Family,
@@ -22,6 +27,8 @@ pub enum Cell {
         tier: u8,
         charges: u16,
         cooldown_remaining: u32,
+        /// Upgrade level (0 = base, 1 = ★, 2 = ★★).
+        upgrade_level: u8,
     },
 }
 
@@ -35,6 +42,9 @@ impl Cell {
     pub fn is_frozen(&self) -> bool {
         matches!(self, Cell::Frozen(_))
     }
+    pub fn is_bubble(&self) -> bool {
+        matches!(self, Cell::Bubble(_))
+    }
     pub fn is_hard_generator(&self) -> bool {
         matches!(self, Cell::HardGenerator { .. })
     }
@@ -45,10 +55,10 @@ impl Cell {
         self.is_hard_generator() || self.is_soft_generator()
     }
 
-    /// Get the piece in this cell (if it's a Piece or Frozen cell).
+    /// Get the piece in this cell (if it's a Piece, Frozen, or Bubble cell).
     pub fn piece(&self) -> Option<&Piece> {
         match self {
-            Cell::Piece(p) | Cell::Frozen(p) => Some(p),
+            Cell::Piece(p) | Cell::Frozen(p) | Cell::Bubble(p) => Some(p),
             _ => None,
         }
     }
@@ -56,11 +66,20 @@ impl Cell {
     /// Get the family of whatever is in this cell.
     pub fn family(&self) -> Option<Family> {
         match self {
-            Cell::Piece(p) | Cell::Frozen(p) => Some(p.family()),
+            Cell::Piece(p) | Cell::Frozen(p) | Cell::Bubble(p) => Some(p.family()),
             Cell::HardGenerator { family, .. } | Cell::SoftGenerator { family, .. } => {
                 Some(*family)
             }
             Cell::Empty => None,
+        }
+    }
+
+    /// Get the upgrade_level of a generator cell (0 if not a generator).
+    pub fn generator_upgrade_level(&self) -> u8 {
+        match self {
+            Cell::HardGenerator { upgrade_level, .. } |
+            Cell::SoftGenerator { upgrade_level, .. } => *upgrade_level,
+            _ => 0,
         }
     }
 }
@@ -120,7 +139,7 @@ impl Board {
 
     /// Whether two positions can merge.
     /// No adjacency requirement — any matching pair anywhere on the board.
-    /// dst can be a Frozen cell if it contains a matching piece.
+    /// dst can be a Frozen or Bubble cell if it contains a matching piece.
     pub fn can_merge(&self, src: (usize, usize), dst: (usize, usize)) -> bool {
         if src == dst {
             return false;
@@ -130,14 +149,14 @@ impl Board {
             _ => return false,
         };
         let dst_piece = match &self.cells[dst.0][dst.1] {
-            Cell::Piece(p) | Cell::Frozen(p) => p,
+            Cell::Piece(p) | Cell::Frozen(p) | Cell::Bubble(p) => p,
             _ => return false,
         };
         src_piece.can_merge(dst_piece)
     }
 
     /// Perform a merge: remove src piece, merge into dst.
-    /// If dst is Frozen, thaw it.
+    /// If dst is Frozen, thaw it. If dst is Bubble, pop it.
     /// Returns the resulting piece and whether a thaw occurred.
     pub fn do_merge(&mut self, src: (usize, usize), dst: (usize, usize)) -> Option<MergeResult> {
         if !self.can_merge(src, dst) {
@@ -145,6 +164,7 @@ impl Board {
         }
 
         let was_frozen = self.cells[dst.0][dst.1].is_frozen();
+        let was_bubble = self.cells[dst.0][dst.1].is_bubble();
 
         // Determine result piece
         let src_piece = match &self.cells[src.0][src.1] {
@@ -152,7 +172,7 @@ impl Board {
             _ => return None,
         };
         let dst_piece = match &self.cells[dst.0][dst.1] {
-            Cell::Piece(p) | Cell::Frozen(p) => p.clone(),
+            Cell::Piece(p) | Cell::Frozen(p) | Cell::Bubble(p) => p.clone(),
             _ => return None,
         };
 
@@ -170,12 +190,13 @@ impl Board {
         Some(MergeResult {
             piece: result_piece,
             thawed: was_frozen,
+            bubble_popped: was_bubble,
             dst,
         })
     }
 
     /// Whether any valid merge exists on the board.
-    /// Checks all pairs of free pieces + free→frozen merges.
+    /// Checks all pairs of free pieces + free→frozen/bubble merges.
     pub fn has_any_merge(&self) -> bool {
         let mut free_pieces: Vec<((usize, usize), &Piece)> = Vec::new();
         let mut all_pieces: Vec<((usize, usize), &Piece)> = Vec::new();
@@ -187,7 +208,7 @@ impl Board {
                         free_pieces.push(((r, c), p));
                         all_pieces.push(((r, c), p));
                     }
-                    Cell::Frozen(p) => {
+                    Cell::Frozen(p) | Cell::Bubble(p) => {
                         all_pieces.push(((r, c), p));
                     }
                     _ => {}
@@ -316,6 +337,7 @@ impl Board {
 pub struct MergeResult {
     pub piece: Piece,
     pub thawed: bool,
+    pub bubble_popped: bool,
     pub dst: (usize, usize),
 }
 
@@ -361,6 +383,7 @@ impl BoardLayout {
                         family: *fam,
                         tier: *tier,
                         cooldown_remaining: 0,
+                        upgrade_level: 0,
                     },
                     CellInit::Item(fam, tier) => {
                         Cell::Piece(Piece::Regular(Item::new(*fam, *tier)))
@@ -387,6 +410,7 @@ mod tests {
             family: Family::Wood,
             tier: 1,
             cooldown_remaining: 0,
+            upgrade_level: 0,
         };
         board
     }

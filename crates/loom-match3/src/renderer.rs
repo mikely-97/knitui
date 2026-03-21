@@ -138,8 +138,15 @@ pub fn render_board(
                 };
 
                 // 2. Modifier overlay fully replaces the gem glyph (Stone, Ice, Crate, Locked).
+                //    For Ice cells we keep the gem glyph but tint it cyan so the gem color shows.
+                let is_ice = matches!(cell.modifier, Some(TileModifier::Ice { .. }));
                 let final_rows: Vec<String> = if let Some(ref modifier) = cell.modifier {
-                    glyphs::modifier_overlay(modifier, scale)
+                    if is_ice {
+                        // Show the gem glyph but we'll tint with cyan below
+                        glyph_rows
+                    } else {
+                        glyphs::modifier_overlay(modifier, scale)
+                    }
                 } else {
                     glyph_rows
                 };
@@ -150,17 +157,27 @@ pub fn render_board(
                     .map(|s| s.as_str())
                     .unwrap_or("  ");
 
-                if let Some(color) = cell_color {
+                // Ice cells: show gem with cyan foreground tint; other cells use gem color
+                let effective_color = if is_ice {
+                    Some(Color::Cyan)
+                } else {
+                    cell_color
+                };
+
+                if let Some(color) = effective_color {
                     stdout.queue(SetForegroundColor(color))?;
                 }
                 if is_selected {
                     stdout.queue(Print(row_str.negative()))?;
                 } else if in_match {
                     stdout.queue(Print(row_str.bold()))?;
+                } else if is_ice {
+                    // Wrap ice cell content in brackets for visual indicator
+                    stdout.queue(Print(format!("{}", row_str)))?;
                 } else {
                     stdout.queue(Print(row_str))?;
                 }
-                if cell_color.is_some() {
+                if effective_color.is_some() {
                     stdout.queue(ResetColor)?;
                 }
 
@@ -215,8 +232,24 @@ pub fn render_hud(
     stdout.queue(Print(format!("Score: {:>8}", engine.score)))?;
     y += 1;
 
+    // Combo multiplier display
+    if engine.combo_display_ticks > 0 {
+        stdout.queue(MoveTo(x, y))?;
+        stdout.queue(SetForegroundColor(Color::Yellow))?;
+        stdout.queue(Print(format!("  x{} COMBO!", engine.cascade_depth + 1)))?;
+        stdout.queue(ResetColor)?;
+        y += 1;
+    }
+
     stdout.queue(MoveTo(x, y))?;
-    stdout.queue(Print(format!("Moves:  {:>7}", moves_left)))?;
+    // Feature 1: warn when moves are running low
+    if engine.move_limit > 0 && moves_left <= 5 {
+        stdout.queue(SetForegroundColor(Color::Red))?;
+        stdout.queue(Print(format!("Moves:  {:>7}", moves_left)))?;
+        stdout.queue(ResetColor)?;
+    } else {
+        stdout.queue(Print(format!("Moves:  {:>7}", moves_left)))?;
+    }
     y += 1;
 
     if !objective_label.is_empty() {
@@ -228,10 +261,11 @@ pub fn render_hud(
     y += 1;
 
     stdout.queue(MoveTo(x, y))?;
-    let hammer_str  = format!("[Z] Hammer x{}", engine.bonuses.hammer);
-    let laser_str   = format!("[X] Laser  x{}", engine.bonuses.laser);
-    let blaster_str = format!("[C] Blast  x{}", engine.bonuses.blaster);
-    let warp_str    = format!("[V] Warp   x{}", engine.bonuses.warp);
+    let hammer_str     = format!("[Z] Hammer x{}", engine.bonuses.hammer);
+    let laser_str      = format!("[X] Laser  x{}", engine.bonuses.laser);
+    let blaster_str    = format!("[C] Blast  x{}", engine.bonuses.blaster);
+    let warp_str       = format!("[V] Warp   x{}", engine.bonuses.warp);
+    let color_bomb_str = format!("[B] CBomb  x{}", engine.bonuses.color_bomb);
 
     let dim_if_zero = |s: String, count: u16| {
         if count == 0 { format!("\x1b[2m{}\x1b[0m", s) } else { s }
@@ -245,6 +279,9 @@ pub fn render_hud(
     stdout.queue(Print(dim_if_zero(blaster_str, engine.bonuses.blaster)))?;
     stdout.queue(Print("  "))?;
     stdout.queue(Print(dim_if_zero(warp_str,    engine.bonuses.warp)))?;
+    y += 1;
+    stdout.queue(MoveTo(x, y))?;
+    stdout.queue(Print(dim_if_zero(color_bomb_str, engine.bonuses.color_bomb)))?;
 
     Ok(())
 }
@@ -259,8 +296,10 @@ pub fn render_key_bar(stdout: &mut Stdout, bonus_state: &BonusState) -> io::Resu
     let bar = match bonus_state {
         BonusState::HammerActive { .. } =>
             "Arrows Move  Enter Destroy  Esc Cancel".to_string(),
+        BonusState::ColorBombActive { .. } =>
+            "Arrows Move  Enter Clear Color  Esc Cancel".to_string(),
         BonusState::None =>
-            "Arrows Move  Enter Select  H Help  Z Hammer  X Laser  C Blast  V Warp  Esc Menu  Q Quit".to_string(),
+            "Arrows Move  Enter Select  H Help  Z Hammer  X Laser  C Blast  V Warp  B CBomb  Esc Menu  Q Quit".to_string(),
     };
 
     let padded = format!("{:<width$}", bar, width = term_w as usize);

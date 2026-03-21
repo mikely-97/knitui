@@ -1,9 +1,10 @@
 #[derive(Debug, Clone)]
 pub struct BonusInventory {
-    pub hammer:  u16,
-    pub laser:   u16,
-    pub blaster: u16,
-    pub warp:    u16,
+    pub hammer:     u16,
+    pub laser:      u16,
+    pub blaster:    u16,
+    pub warp:       u16,
+    pub color_bomb: u16,
 }
 
 impl BonusInventory {
@@ -19,6 +20,9 @@ impl BonusInventory {
     pub fn consume_warp(&mut self) -> bool {
         if self.warp > 0 { self.warp -= 1; true } else { false }
     }
+    pub fn consume_color_bomb(&mut self) -> bool {
+        if self.color_bomb > 0 { self.color_bomb -= 1; true } else { false }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -28,6 +32,8 @@ pub enum BonusState {
     /// `saved_*` is the cursor position before hammer was activated,
     /// restored if the player cancels with Esc.
     HammerActive { saved_row: usize, saved_col: usize },
+    /// Color Bomb is active: next confirm clears all gems matching cursor color.
+    ColorBombActive { saved_row: usize, saved_col: usize },
 }
 
 #[cfg(test)]

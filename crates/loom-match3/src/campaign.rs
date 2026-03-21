@@ -39,6 +39,8 @@ pub struct CampaignState {
     pub banked_laser: u16,
     pub banked_blaster: u16,
     pub banked_warp: u16,
+    #[serde(default)]
+    pub banked_color_bomb: u16,
     pub completed: bool,
     #[serde(default)]
     pub blessings: Vec<String>,
@@ -56,10 +58,11 @@ impl CampaignState {
         Self {
             track_idx,
             current_level: 0,
-            banked_hammer: 0,
+            banked_hammer: 2,
             banked_laser: 0,
             banked_blaster: 0,
             banked_warp: 0,
+            banked_color_bomb: 1,
             completed: false,
             blessings: Vec::new(),
         }
@@ -75,10 +78,12 @@ impl CampaignState {
         cfg.color_number     = level.color_number;
         cfg.move_limit       = level.move_limit;
         cfg.special_tile_pct = level.special_tile_pct;
-        cfg.hammer  = self.banked_hammer;
-        cfg.laser   = self.banked_laser;
-        cfg.blaster = self.banked_blaster;
-        cfg.warp    = self.banked_warp;
+        cfg.hammer      = self.banked_hammer;
+        cfg.laser       = self.banked_laser;
+        cfg.blaster     = self.banked_blaster;
+        cfg.warp        = self.banked_warp;
+        cfg.color_bomb  = self.banked_color_bomb;
+        cfg.ice_tile_pct = level.ice_tile_pct;
 
         // Apply blessing config effects
         if blessings::has(&self.blessings, "extra_moves") {
@@ -96,10 +101,11 @@ impl CampaignState {
         }
         let levels = levels_for_track(self.track_idx);
         let level = &levels[self.current_level];
-        self.banked_hammer  += level.reward_hammer;
-        self.banked_laser   += level.reward_laser;
-        self.banked_blaster += level.reward_blaster;
-        self.banked_warp    += level.reward_warp;
+        self.banked_hammer     += level.reward_hammer;
+        self.banked_laser      += level.reward_laser;
+        self.banked_blaster    += level.reward_blaster;
+        self.banked_warp       += level.reward_warp;
+        self.banked_color_bomb += level.reward_color_bomb;
         self.current_level += 1;
         if self.current_level >= levels.len() {
             self.completed = true;

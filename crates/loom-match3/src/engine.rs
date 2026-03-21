@@ -75,6 +75,10 @@ pub struct GameEngine {
     /// The pair swapped in the last player move (used to revert on Bouncing).
     pending_swap: Option<((usize, usize), (usize, usize))>,
     pub blessing_flags: BlessingFlags,
+    /// Number of consecutive cascade resolves since the last player input.
+    pub cascade_depth: u32,
+    /// Countdown ticks for combo display (set to ~30 when cascade_depth >= 2).
+    pub combo_display_ticks: u8,
 }
 
 impl GameEngine {
@@ -85,6 +89,7 @@ impl GameEngine {
             config.board_width as usize,
             &palette,
             config.special_tile_pct,
+            config.ice_tile_pct,
         );
         Self {
             board,
@@ -101,10 +106,13 @@ impl GameEngine {
                 laser: config.laser,
                 blaster: config.blaster,
                 warp: config.warp,
+                color_bomb: config.color_bomb,
             },
             bonus_state: BonusState::None,
             pending_swap: None,
             blessing_flags: BlessingFlags::default(),
+            cascade_depth: 0,
+            combo_display_ticks: 0,
         }
     }
 
@@ -287,8 +295,16 @@ impl GameEngine {
     /// Returns true if state changed (trigger re-render).
     /// Called unconditionally each event-loop cycle (~50 ms).
     pub fn tick(&mut self) -> bool {
+        // Tick down combo display
+        if self.combo_display_ticks > 0 {
+            self.combo_display_ticks -= 1;
+        }
+
         match &self.phase.clone() {
-            GamePhase::PlayerInput => false,
+            GamePhase::PlayerInput => {
+                self.cascade_depth = 0;
+                false
+            }
 
             GamePhase::Bouncing { ticks_left } => {
                 let tl = *ticks_left;
@@ -320,8 +336,13 @@ impl GameEngine {
                 let new_groups = matches::find_matches(&self.board);
                 if new_groups.is_empty() {
                     self.phase = GamePhase::PlayerInput;
+                    self.cascade_depth = 0;
                 } else {
                     // Cascade: new matches from the refill
+                    self.cascade_depth += 1;
+                    if self.cascade_depth >= 2 {
+                        self.combo_display_ticks = 30;
+                    }
                     self.phase = GamePhase::Resolving {
                         match_groups: new_groups,
                         spawn_at: None, // no player-initiated spawn during cascade
@@ -407,8 +428,13 @@ impl GameEngine {
             self.damage_modifier(r, c, true);
         }
 
-        // 6. Clear the cells
+        // 6. Clear the cells (skip cells where Ice modifier still present — first hit removes ice,
+        //    second hit clears the gem. The damage_modifier call above already decremented Ice hp.)
         for &(r, c) in &to_clear {
+            if matches!(self.board.cells[r][c].modifier, Some(TileModifier::Ice { .. })) {
+                // Ice was hit but not yet removed; leave the gem in place.
+                continue;
+            }
             self.board.cells[r][c].content = CellContent::Empty;
         }
 
@@ -586,8 +612,43 @@ impl GameEngine {
                 self.bonuses.hammer += 1; // refund
                 self.bonus_state = BonusState::None;
             }
+            BonusState::ColorBombActive { saved_row, saved_col } => {
+                self.cursor_row = saved_row;
+                self.cursor_col = saved_col;
+                self.bonuses.color_bomb += 1; // refund
+                self.bonus_state = BonusState::None;
+            }
             BonusState::None => {}
         }
+    }
+
+    /// Activate Color Bomb: enter targeting mode. No-op if inventory empty or bonus active.
+    pub fn activate_color_bomb(&mut self) {
+        if !matches!(self.bonus_state, BonusState::None) { return; }
+        if !self.bonuses.consume_color_bomb() { return; }
+        self.bonus_state = BonusState::ColorBombActive {
+            saved_row: self.cursor_row,
+            saved_col: self.cursor_col,
+        };
+    }
+
+    /// Confirm Color Bomb: clear all gems on the board matching the cursor cell's color.
+    pub fn confirm_color_bomb(&mut self) {
+        if !matches!(self.bonus_state, BonusState::ColorBombActive { .. }) { return; }
+        let (r, c) = (self.cursor_row, self.cursor_col);
+        if let Some(target_color) = self.board.cells[r][c].color() {
+            for rr in 0..self.board.height {
+                for cc in 0..self.board.width {
+                    if self.board.cells[rr][cc].color() == Some(target_color) {
+                        self.damage_modifier(rr, cc, true);
+                        self.board.cells[rr][cc].content = CellContent::Empty;
+                        self.score += 10;
+                    }
+                }
+            }
+        }
+        self.bonus_state = BonusState::None;
+        self.phase = GamePhase::Falling;
     }
 
     /// Laser: destroy entire cursor row immediately.

@@ -40,6 +40,7 @@ enum TuiState {
     Help,
     Options { selected: usize },
     WatchingAd { started_at: Instant, quote: String, reward: AdReward },
+    InvExpansion { label: String },
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────
@@ -63,6 +64,7 @@ fn help_lines() -> Vec<(&'static str, &'static str)> {
         ("D",       "Deliver selected to order"),
         ("S",       "Store selected in inventory"),
         ("I",       "Open inventory"),
+        ("U",       "Upgrade generator (costs 3★)"),
         ("A",       "Watch ad (if available)"),
         ("+/-",     "Scale up / down"),
         ("N/P",     "Next/prev color mode"),
@@ -197,6 +199,14 @@ fn run_loop(
                 let elapsed = started_at.elapsed().as_secs();
                 renderer::render_ad_overlay(stdout, quote, elapsed)?;
             }
+            TuiState::InvExpansion { label } => {
+                if let (Some(e), Some(g)) = (&engine, &geo) {
+                    renderer::render_hud(stdout, e, label)?;
+                    renderer::render_board(stdout, e, g)?;
+                    renderer::render_orders(stdout, e, g)?;
+                }
+                renderer::render_inv_expansion_popup(stdout)?;
+            }
         }
 
         stdout.flush()?;
@@ -212,6 +222,16 @@ fn run_loop(
                         apply_scaling(e);
                         endless_merges_at_last_scale = merges;
                     }
+                }
+            }
+        }
+
+        // ── Inventory expansion popup check ─────────────────────────────
+        if matches!(tui_state, TuiState::Playing { .. }) {
+            if let Some(e) = &engine {
+                if e.inv_expansion_pending {
+                    let label = make_label(&campaign_ctx, is_endless);
+                    tui_state = TuiState::InvExpansion { label };
                 }
             }
         }
@@ -367,6 +387,10 @@ fn run_loop(
 
                     KeyCode::Char('e') | KeyCode::Char('E') => {
                         if let Some(e) = &mut engine { e.activate_enhanced(); }
+                    }
+
+                    KeyCode::Char('u') | KeyCode::Char('U') => {
+                        if let Some(e) = &mut engine { e.upgrade_generator_at_cursor(); }
                     }
 
                     KeyCode::Char('+') | KeyCode::Char('=') => {
@@ -686,6 +710,22 @@ fn run_loop(
                     },
                     KeyCode::Esc => {
                         tui_state = TuiState::MainMenu { selected: 0, flash: None };
+                    }
+                    _ => {}
+                }
+            }
+
+            // ── Inventory Expansion ───────────────────────────────────────
+            TuiState::InvExpansion { label } => {
+                let label = label.clone();
+                match key.code {
+                    KeyCode::Char('y') | KeyCode::Char('Y') | KeyCode::Enter => {
+                        if let Some(e) = &mut engine { e.accept_inv_expansion(); }
+                        tui_state = TuiState::Playing { label };
+                    }
+                    KeyCode::Char('n') | KeyCode::Char('N') | KeyCode::Esc => {
+                        if let Some(e) = &mut engine { e.dismiss_inv_expansion(); }
+                        tui_state = TuiState::Playing { label };
                     }
                     _ => {}
                 }

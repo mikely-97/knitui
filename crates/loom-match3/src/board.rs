@@ -88,6 +88,7 @@ impl Board {
         width: usize,
         palette: &[Color],
         special_tile_pct: u16,
+        ice_tile_pct: u16,
     ) -> Self {
         let mut rng = rand::rng();
 
@@ -142,6 +143,19 @@ impl Board {
                             _ => TileModifier::Locked,
                         };
                         cells[r][c].modifier = Some(modifier);
+                    }
+                }
+            }
+        }
+
+        // Place additional Ice tile modifiers (campaign levels 4+)
+        if ice_tile_pct > 0 {
+            for r in 0..height {
+                for c in 0..width {
+                    if cells[r][c].modifier.is_none()
+                        && rng.random_range(0u16..100) < ice_tile_pct
+                    {
+                        cells[r][c].modifier = Some(TileModifier::Ice { hp: 2 });
                     }
                 }
             }
@@ -241,7 +255,7 @@ mod tests {
 
     #[test]
     fn make_random_correct_dimensions() {
-        let b = Board::make_random(8, 8, &four_color_palette(), 0);
+        let b = Board::make_random(8, 8, &four_color_palette(), 0, 0);
         assert_eq!(b.height, 8);
         assert_eq!(b.width, 8);
         assert_eq!(b.cells.len(), 8);
@@ -251,7 +265,7 @@ mod tests {
     #[test]
     fn make_random_no_pre_existing_horizontal_match() {
         for _ in 0..10 {
-            let b = Board::make_random(8, 8, &four_color_palette(), 0);
+            let b = Board::make_random(8, 8, &four_color_palette(), 0, 0);
             for r in 0..8 {
                 for c in 0..6 {
                     let (a, b2, c2) = (
@@ -271,7 +285,7 @@ mod tests {
     #[test]
     fn make_random_no_pre_existing_vertical_match() {
         for _ in 0..10 {
-            let b = Board::make_random(8, 8, &four_color_palette(), 0);
+            let b = Board::make_random(8, 8, &four_color_palette(), 0, 0);
             for r in 0..6 {
                 for c in 0..8 {
                     let (a, b2, c2) = (
@@ -290,7 +304,7 @@ mod tests {
 
     #[test]
     fn make_random_zero_special_pct_all_gems() {
-        let b = Board::make_random(4, 4, &four_color_palette(), 0);
+        let b = Board::make_random(4, 4, &four_color_palette(), 0, 0);
         for r in 0..4 {
             for c in 0..4 {
                 assert!(
@@ -305,7 +319,7 @@ mod tests {
     #[test]
     fn make_random_high_special_pct_produces_modifiers() {
         // 100% special_tile_pct → every cell gets a modifier
-        let b = Board::make_random(4, 4, &four_color_palette(), 100);
+        let b = Board::make_random(4, 4, &four_color_palette(), 100, 0);
         let with_modifier = b.cells.iter().flatten().filter(|c| c.modifier.is_some()).count();
         assert!(with_modifier > 0, "Expected some cells with modifiers");
     }
@@ -359,7 +373,7 @@ mod tests {
 
     #[test]
     fn swap_cells_exchanges_content() {
-        let mut b = Board::make_random(4, 4, &four_color_palette(), 0);
+        let mut b = Board::make_random(4, 4, &four_color_palette(), 0, 0);
         let orig_00 = b.cells[0][0].content.clone();
         let orig_01 = b.cells[0][1].content.clone();
         b.swap_cells((0, 0), (0, 1));
@@ -369,7 +383,7 @@ mod tests {
 
     #[test]
     fn swap_cells_leaves_modifiers_in_place() {
-        let mut b = Board::make_random(4, 4, &four_color_palette(), 0);
+        let mut b = Board::make_random(4, 4, &four_color_palette(), 0, 0);
         b.cells[0][0].modifier = Some(TileModifier::Ice { hp: 2 });
         b.cells[0][1].modifier = None;
         b.swap_cells((0, 0), (0, 1));

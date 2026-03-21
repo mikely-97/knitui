@@ -385,6 +385,19 @@ pub fn render_orders(
                 stdout.queue(Print("│"))?;
                 *y += 1;
             }
+
+            // Follow-up indicator
+            if order.follow_up.is_some() {
+                stdout.queue(MoveTo(x, *y))?;
+                stdout.queue(SetForegroundColor(Color::DarkGrey))?;
+                stdout.queue(Print("│"))?;
+                stdout.queue(SetForegroundColor(Color::Cyan))?;
+                let fu_line = format!("{:<w$}", " → more", w = inner_w);
+                stdout.queue(Print(fu_line))?;
+                stdout.queue(SetForegroundColor(Color::DarkGrey))?;
+                stdout.queue(Print("│"))?;
+                *y += 1;
+            }
         }
 
         stdout.queue(MoveTo(x, *y))?;
@@ -468,6 +481,7 @@ pub fn render_key_bar(
         ("D", "Deliver"),
         ("S", "Store"),
         ("I", "Inventory"),
+        ("U", "Upgrade gen"),
         ("A", "Ad"),
         ("H", "Help"),
         ("Q", "Quit"),
@@ -954,6 +968,41 @@ pub fn render_blessing_selection(
     stdout.queue(MoveTo(bx, ey + 1))?;
     stdout.queue(SetForegroundColor(Color::DarkGrey))?;
     stdout.queue(Print("  ↑↓ Move  Enter Toggle  Space Start  Esc Back"))?;
+    stdout.queue(ResetColor)?;
+    Ok(())
+}
+
+// ── Inventory expansion popup ─────────────────────────────────────────────
+
+pub fn render_inv_expansion_popup(stdout: &mut Stdout) -> io::Result<()> {
+    let (term_w, term_h) = term_size().unwrap_or((80, 24));
+    let box_w = 32u16;
+    let bx = (term_w / 2).saturating_sub(box_w / 2);
+    let by = (term_h / 2).saturating_sub(3);
+
+    stdout.queue(MoveTo(bx, by))?;
+    stdout.queue(SetForegroundColor(Color::Yellow))?;
+    stdout.queue(SetAttribute(Attribute::Bold))?;
+    stdout.queue(Print(format!("╔{}╗", "═".repeat(box_w as usize - 2))))?;
+
+    stdout.queue(MoveTo(bx, by + 1))?;
+    let title = format!("{:^w$}", "INVENTORY EXPANDED!", w = box_w as usize - 2);
+    stdout.queue(Print(format!("║{}║", title)))?;
+
+    stdout.queue(MoveTo(bx, by + 2))?;
+    stdout.queue(SetAttribute(Attribute::Reset))?;
+    stdout.queue(SetForegroundColor(Color::White))?;
+    let msg = format!("{:^w$}", "+1 inventory slot unlocked", w = box_w as usize - 2);
+    stdout.queue(Print(format!("║{}║", msg)))?;
+
+    stdout.queue(MoveTo(bx, by + 3))?;
+    stdout.queue(SetForegroundColor(Color::DarkGrey))?;
+    let hint = format!("{:^w$}", "Y Accept  N Decline", w = box_w as usize - 2);
+    stdout.queue(Print(format!("║{}║", hint)))?;
+
+    stdout.queue(MoveTo(bx, by + 4))?;
+    stdout.queue(SetForegroundColor(Color::Yellow))?;
+    stdout.queue(Print(format!("╚{}╝", "═".repeat(box_w as usize - 2))))?;
     stdout.queue(ResetColor)?;
     Ok(())
 }

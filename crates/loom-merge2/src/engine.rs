@@ -66,6 +66,9 @@ pub enum Notification {
     OnCooldown,
     AdWatched,
     Invalid,
+    BubblePopped { piece: Piece },
+    GeneratorUpgraded { pos: (usize, usize), level: u8 },
+    InventoryExpansion,
 }
 
 // ── Deliver target ────────────────────────────────────────────────────────
@@ -109,6 +112,11 @@ pub struct GameEngine {
     pub notifications: Vec<Notification>,
     /// The hint pair for keen_eye blessing (updated each action).
     pub hint_pair: Option<((usize, usize), (usize, usize))>,
+    /// Merges since last inventory expansion event check.
+    pub merges_since_inv_event: u64,
+    /// Whether an inventory expansion popup is pending (player must dismiss).
+    #[serde(skip)]
+    pub inv_expansion_pending: bool,
 }
 
 impl GameEngine {
@@ -158,6 +166,8 @@ impl GameEngine {
             blessing_flags: BlessingFlags::default(),
             notifications: Vec::new(),
             hint_pair: None,
+            merges_since_inv_event: 0,
+            inv_expansion_pending: false,
         };
         engine.set_blessings(blessings);
         engine.fill_random_orders();
@@ -183,6 +193,7 @@ impl GameEngine {
                 family,
                 tier: 1,
                 cooldown_remaining: 0,
+                upgrade_level: 0,
             };
         }
 
@@ -280,6 +291,7 @@ impl GameEngine {
                                 family: f1,
                                 tier: new_tier,
                                 cooldown_remaining: 0,
+                                upgrade_level: 0,
                             };
                             self.selected = None;
                             self.score += 50 * new_tier as u32;
@@ -402,6 +414,7 @@ impl GameEngine {
                 family: fam,
                 tier: 1,
                 cooldown_remaining: 0,
+                upgrade_level: 0,
             };
             self.notifications.push(Notification::MergeResult {
                 piece: Piece::Blueprint(fam),
@@ -440,6 +453,13 @@ impl GameEngine {
                 self.board.thaw_adjacent(dst.0, dst.1);
             }
 
+            // bubble popped: notify
+            if result.bubble_popped {
+                self.notifications.push(Notification::BubblePopped {
+                    piece: Piece::Regular(final_item.clone()),
+                });
+            }
+
             self.score += final_item.score_value();
 
             // Soft generator creation from high-tier merge
@@ -450,6 +470,7 @@ impl GameEngine {
                     tier: 1,
                     charges,
                     cooldown_remaining: 0,
+                    upgrade_level: 0,
                 };
             }
 
@@ -462,6 +483,17 @@ impl GameEngine {
                 piece: Piece::Regular(final_item),
                 thawed: result.thawed,
             });
+        }
+
+        // Inventory expansion event: every ~20 merges, random trigger
+        self.merges_since_inv_event += 1;
+        if self.merges_since_inv_event >= 20 {
+            let mut rng = rand::rng();
+            if rng.random_range(0u8..100) < 25 {
+                self.inv_expansion_pending = true;
+                self.notifications.push(Notification::InventoryExpansion);
+            }
+            self.merges_since_inv_event = 0;
         }
 
         self.update_hint();
@@ -551,29 +583,43 @@ impl GameEngine {
     fn try_deliver_piece(&mut self, piece: &Piece) -> bool {
         let deliver_count = if self.blessing_flags.double_deliver { 2 } else { 1 };
 
+        // Collect delivery result outside the borrow
+        let mut found = false;
+        let mut fulfilled_rewards: Option<Vec<Reward>> = None;
+        let mut follow_up_order: Option<Order> = None;
+
         for order in &mut self.active_orders {
             if order.accepts(piece) {
+                found = true;
                 for _ in 0..deliver_count {
                     if !order.try_deliver(piece) {
                         break;
                     }
                 }
-                if let Piece::Regular(item) = piece {
-                    self.score += item.score_value() * 2;
-                }
                 if order.is_fulfilled() {
-                    let rewards = order.rewards.clone();
-                    self.apply_rewards(&rewards);
-                    self.notifications.push(Notification::OrderCompleted { rewards });
+                    fulfilled_rewards = Some(order.rewards.clone());
+                    follow_up_order = order.follow_up.take().map(|b| *b);
                 }
-                return true;
+                break;
             }
         }
 
-        // Remove fulfilled orders and replenish
-        self.active_orders.retain(|o| !o.is_fulfilled());
-        self.fill_random_orders();
-        false
+        if found {
+            if let Piece::Regular(item) = piece {
+                self.score += item.score_value() * 2;
+            }
+            if let Some(rewards) = fulfilled_rewards {
+                self.apply_rewards(&rewards);
+                self.notifications.push(Notification::OrderCompleted { rewards });
+            }
+            // Remove fulfilled orders, add follow-up, replenish
+            self.active_orders.retain(|o| !o.is_fulfilled());
+            if let Some(fu) = follow_up_order {
+                self.active_orders.push(fu);
+            }
+            self.fill_random_orders();
+        }
+        found
     }
 
     pub fn apply_rewards(&mut self, rewards: &[Reward]) {
@@ -611,6 +657,59 @@ impl GameEngine {
             // Board full — try inventory
             let _ = self.inventory.store(piece);
         }
+    }
+
+    // ── Generator upgrade ─────────────────────────────────────────────────
+
+    /// Upgrade the generator at the cursor position (costs stars).
+    /// Returns true if upgraded successfully.
+    pub fn upgrade_generator_at_cursor(&mut self) -> bool {
+        let pos = (self.cursor_row, self.cursor_col);
+        let upgrade_cost: u16 = 3;
+
+        match &self.board.cells[pos.0][pos.1] {
+            Cell::HardGenerator { family, tier, cooldown_remaining, upgrade_level } => {
+                if *upgrade_level >= 2 { return false; }
+                if self.stars < upgrade_cost { return false; }
+                let new_level = upgrade_level + 1;
+                let (fam, t, cd) = (*family, *tier, *cooldown_remaining);
+                self.stars -= upgrade_cost;
+                self.board.cells[pos.0][pos.1] = Cell::HardGenerator {
+                    family: fam, tier: t, cooldown_remaining: cd, upgrade_level: new_level,
+                };
+                self.notifications.push(Notification::GeneratorUpgraded { pos, level: new_level });
+                true
+            }
+            Cell::SoftGenerator { family, tier, charges, cooldown_remaining, upgrade_level } => {
+                if *upgrade_level >= 2 { return false; }
+                if self.stars < upgrade_cost { return false; }
+                let new_level = upgrade_level + 1;
+                let (fam, t, ch, cd) = (*family, *tier, *charges, *cooldown_remaining);
+                self.stars -= upgrade_cost;
+                self.board.cells[pos.0][pos.1] = Cell::SoftGenerator {
+                    family: fam, tier: t, charges: ch, cooldown_remaining: cd,
+                    upgrade_level: new_level,
+                };
+                self.notifications.push(Notification::GeneratorUpgraded { pos, level: new_level });
+                true
+            }
+            _ => false,
+        }
+    }
+
+    // ── Inventory expansion event ─────────────────────────────────────────
+
+    /// Dismiss the inventory expansion popup and apply the +1 slot.
+    pub fn accept_inv_expansion(&mut self) {
+        if self.inv_expansion_pending {
+            self.inventory.expand(1);
+            self.inv_expansion_pending = false;
+        }
+    }
+
+    /// Dismiss the inventory expansion popup without applying it.
+    pub fn dismiss_inv_expansion(&mut self) {
+        self.inv_expansion_pending = false;
     }
 
     // ── Inventory ─────────────────────────────────────────────────────────

@@ -46,6 +46,14 @@ pub struct Config {
     /// Starting Warp bonus count
     #[arg(long, default_value_t = 1)]
     pub warp: u16,
+
+    /// Starting Color Bomb bonus count
+    #[arg(long, default_value_t = 0)]
+    pub color_bomb: u16,
+
+    /// Percentage of cells that start with Ice tile modifier (0–100, applied on top of special_tile_pct)
+    #[arg(long, default_value_t = 0)]
+    pub ice_tile_pct: u16,
 }
 
 impl loom_engine::game::GameConfig for Config {

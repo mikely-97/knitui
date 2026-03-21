@@ -14,20 +14,22 @@ fn short_track() -> Vec<LevelDef> {
     (0..15usize).map(|i| {
         let difficulty = i as u32;
         LevelDef {
-            board_height:     (5 + i / 3) as u16,
-            board_width:      (5 + i / 3) as u16,
-            color_number:     (4 + i / 5) as u8,
-            move_limit:       30 + difficulty * 2,
-            special_tile_pct: (i * 2) as u16,
+            board_height:      (5 + i / 3) as u16,
+            board_width:       (5 + i / 3) as u16,
+            color_number:      (4 + i / 5) as u8,
+            move_limit:        30 + difficulty * 2,
+            special_tile_pct:  (i * 2) as u16,
             objective: LevelObjective {
                 score_target:       Some(1000 + difficulty * 500),
                 gem_quota:          vec![],
                 clear_all_specials: i >= 10,
             },
-            reward_hammer:  if i % 5 == 4 { 1 } else { 0 },
-            reward_laser:   if i % 7 == 6 { 1 } else { 0 },
-            reward_blaster: 0,
-            reward_warp:    if i == 14   { 1 } else { 0 },
+            reward_hammer:     if i % 5 == 4 { 1 } else { 0 },
+            reward_laser:      if i % 7 == 6 { 1 } else { 0 },
+            reward_blaster:    0,
+            reward_warp:       if i == 14   { 1 } else { 0 },
+            reward_color_bomb: if i % 8 == 7 { 1 } else { 0 },
+            ice_tile_pct:      if i >= 4 { ((i - 4) * 2).min(10) as u16 } else { 0 },
         }
     }).collect()
 }
@@ -38,20 +40,22 @@ fn medium_track() -> Vec<LevelDef> {
     (0..30usize).map(|i| {
         let difficulty = i as u32;
         LevelDef {
-            board_height:     (6 + i / 5) as u16,
-            board_width:      (6 + i / 5) as u16,
-            color_number:     (5 + i / 6) as u8,
-            move_limit:       28 + difficulty,
-            special_tile_pct: (5 + i * 2) as u16,
+            board_height:      (6 + i / 5) as u16,
+            board_width:       (6 + i / 5) as u16,
+            color_number:      (5 + i / 6) as u8,
+            move_limit:        28 + difficulty,
+            special_tile_pct:  (5 + i * 2) as u16,
             objective: LevelObjective {
                 score_target:       Some(2000 + difficulty * 800),
                 gem_quota:          if i % 4 == 0 { vec![(0, 20 + difficulty * 2)] } else { vec![] },
                 clear_all_specials: i >= 20,
             },
-            reward_hammer:  if i % 3 == 2 { 1 } else { 0 },
-            reward_laser:   if i % 4 == 3 { 1 } else { 0 },
-            reward_blaster: if i % 5 == 4 { 1 } else { 0 },
-            reward_warp:    if i % 7 == 6 { 1 } else { 0 },
+            reward_hammer:     if i % 3 == 2 { 1 } else { 0 },
+            reward_laser:      if i % 4 == 3 { 1 } else { 0 },
+            reward_blaster:    if i % 5 == 4 { 1 } else { 0 },
+            reward_warp:       if i % 7 == 6 { 1 } else { 0 },
+            reward_color_bomb: if i % 6 == 5 { 1 } else { 0 },
+            ice_tile_pct:      if i >= 4 { ((i - 4) * 2).min(15) as u16 } else { 0 },
         }
     }).collect()
 }
@@ -62,36 +66,41 @@ fn long_track() -> Vec<LevelDef> {
     (0..50usize).map(|i| {
         let difficulty = i as u32;
         LevelDef {
-            board_height:     (7 + i / 7) as u16,
-            board_width:      (7 + i / 7) as u16,
-            color_number:     (6 + i / 8) as u8,
-            move_limit:       25 + difficulty,
-            special_tile_pct: (10 + i * 2) as u16,
+            board_height:      (7 + i / 7) as u16,
+            board_width:       (7 + i / 7) as u16,
+            color_number:      (6 + i / 8) as u8,
+            move_limit:        25 + difficulty,
+            special_tile_pct:  (10 + i * 2) as u16,
             objective: LevelObjective {
                 score_target:       Some(5000 + difficulty * 1000),
                 gem_quota:          if i % 3 == 0 { vec![(0, 30 + difficulty * 2)] } else { vec![] },
                 clear_all_specials: i >= 30,
             },
-            reward_hammer:  if i % 3 == 2 { 1 } else { 0 },
-            reward_laser:   if i % 4 == 3 { 1 } else { 0 },
-            reward_blaster: if i % 5 == 4 { 1 } else { 0 },
-            reward_warp:    if i % 7 == 6 { 1 } else { 0 },
+            reward_hammer:     if i % 3 == 2 { 1 } else { 0 },
+            reward_laser:      if i % 4 == 3 { 1 } else { 0 },
+            reward_blaster:    if i % 5 == 4 { 1 } else { 0 },
+            reward_warp:       if i % 7 == 6 { 1 } else { 0 },
+            reward_color_bomb: if i % 5 == 4 { 1 } else { 0 },
+            ice_tile_pct:      if i >= 4 { ((i - 4) * 2).min(20) as u16 } else { 0 },
         }
     }).collect()
 }
 
 #[derive(Clone, Debug)]
 pub struct LevelDef {
-    pub board_height:     u16,
-    pub board_width:      u16,
-    pub color_number:     u8,
-    pub move_limit:       u32,
-    pub special_tile_pct: u16,
-    pub objective:        LevelObjective,
-    pub reward_hammer:    u16,
-    pub reward_laser:     u16,
-    pub reward_blaster:   u16,
-    pub reward_warp:      u16,
+    pub board_height:      u16,
+    pub board_width:       u16,
+    pub color_number:      u8,
+    pub move_limit:        u32,
+    pub special_tile_pct:  u16,
+    pub objective:         LevelObjective,
+    pub reward_hammer:     u16,
+    pub reward_laser:      u16,
+    pub reward_blaster:    u16,
+    pub reward_warp:       u16,
+    pub reward_color_bomb: u16,
+    /// Percentage of Ice tile modifiers to place on board (0 = none).
+    pub ice_tile_pct:      u16,
 }
 
 #[derive(Clone, Debug)]

@@ -50,21 +50,33 @@ pub fn cell_label(cell: &Cell) -> (String, Color, bool) {
             (glyph, Color::DarkGrey, false)
         }
 
-        // Hard generator: "G∞" for T1, "G2"/"G3"... for higher tiers. Bold.
-        Cell::HardGenerator { family, tier, cooldown_remaining } => {
+        // Hard generator: "G∞"/"G2" with optional ★/★★ suffix for upgrade levels.
+        Cell::HardGenerator { family, tier, cooldown_remaining, upgrade_level } => {
             let color = if *cooldown_remaining > 0 { Color::DarkGrey } else { family_color(*family) };
-            let label = if *tier == 1 { "G∞".to_string() } else { format!("G{}", tier) };
+            let base = if *tier == 1 { "G∞".to_string() } else { format!("G{}", tier) };
+            let stars = match upgrade_level { 1 => "★", 2 => "★★", _ => "" };
+            let label = format!("{}{}", base, stars);
             (label, color, true)
         }
 
-        // Soft generator: "Gn" where n = remaining charges
-        Cell::SoftGenerator { family, charges, cooldown_remaining, .. } => {
+        // Soft generator: "Gn" where n = remaining charges, with ★ for upgrades.
+        Cell::SoftGenerator { family, charges, cooldown_remaining, upgrade_level, .. } => {
             let color = if *charges == 0 || *cooldown_remaining > 0 {
                 Color::DarkGrey
             } else {
                 family_color(*family)
             };
-            (format!("G{}", charges), color, false)
+            let stars = match upgrade_level { 1 => "★", 2 => "★★", _ => "" };
+            (format!("G{}{}", charges, stars), color, false)
+        }
+
+        // Bubble: same glyph as the piece but with a surrounding indicator
+        Cell::Bubble(piece) => {
+            let glyph = match piece {
+                Piece::Regular(item) => item.glyph().to_string(),
+                Piece::Blueprint(fam) => format!("B{}", &fam.name()[..1]),
+            };
+            (format!("({})", glyph.trim()), Color::Cyan, false)
         }
     }
 }

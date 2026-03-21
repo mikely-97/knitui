@@ -74,6 +74,9 @@ pub struct Order {
     pub order_type: OrderType,
     pub requirements: Vec<OrderRequirement>,
     pub rewards: Vec<Reward>,
+    /// Optional follow-up order that becomes active when this one is completed.
+    #[serde(default)]
+    pub follow_up: Option<Box<Order>>,
 }
 
 impl Order {
@@ -143,6 +146,7 @@ impl StoryOrderDef {
                 .map(|&(fam, tier, qty)| OrderRequirement::new(fam, tier, qty))
                 .collect(),
             rewards: self.rewards.clone(),
+            follow_up: None,
         }
     }
 }
@@ -170,6 +174,7 @@ pub fn generate_random_order(
             Reward::Score(score_reward),
             Reward::Energy(5 * tier as u16),
         ],
+        follow_up: None,
     }
 }
 
@@ -193,6 +198,7 @@ pub fn generate_timed_order(
         },
         requirements: vec![OrderRequirement::new(family, tier, quantity)],
         rewards: vec![Reward::Score(score_reward), Reward::Stars(star_reward)],
+        follow_up: None,
     }
 }
 
@@ -208,6 +214,7 @@ mod tests {
                 OrderRequirement::new(Family::Stone, 2, 1),
             ],
             rewards: vec![Reward::Score(500)],
+            follow_up: None,
         }
     }
 
@@ -272,6 +279,7 @@ mod tests {
             },
             requirements: vec![],
             rewards: vec![],
+            follow_up: None,
         };
         assert!(!order.tick());
         assert!(!order.tick());

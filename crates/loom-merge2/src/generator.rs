@@ -69,21 +69,21 @@ pub fn try_activate(
     enhanced: bool,
     surge_bonus: bool,
 ) -> ActivationResult {
-    let (family, gen_tier) = match &board.cells[r][c] {
-        Cell::HardGenerator { family, tier, cooldown_remaining } => {
+    let (family, gen_tier, upgrade_level) = match &board.cells[r][c] {
+        Cell::HardGenerator { family, tier, cooldown_remaining, upgrade_level } => {
             if *cooldown_remaining > 0 {
                 return ActivationResult::OnCooldown;
             }
-            (*family, *tier)
+            (*family, *tier, *upgrade_level)
         }
-        Cell::SoftGenerator { family, tier, charges, cooldown_remaining } => {
+        Cell::SoftGenerator { family, tier, charges, cooldown_remaining, upgrade_level } => {
             if *charges == 0 {
                 return ActivationResult::Exhausted;
             }
             if *cooldown_remaining > 0 {
                 return ActivationResult::OnCooldown;
             }
-            (*family, *tier)
+            (*family, *tier, *upgrade_level)
         }
         _ => return ActivationResult::NotAGenerator,
     };
@@ -101,7 +101,9 @@ pub fn try_activate(
     }
 
     // Determine spawned tier using probabilistic system
-    let tier = spawn_tier(gen_tier, enhanced, surge_bonus);
+    // upgrade_level adds directly to effective gen_tier for spawn calculation
+    let effective_gen_tier = gen_tier.saturating_add(upgrade_level).min(MAX_TIER);
+    let tier = spawn_tier(effective_gen_tier, enhanced, surge_bonus);
 
     // Spawn the item
     board.cells[spawn_pos.0][spawn_pos.1] = Cell::Piece(Piece::Regular(Item::new(family, tier)));
@@ -162,6 +164,7 @@ mod tests {
             family: Family::Wood,
             tier: 1,
             cooldown_remaining: 0,
+            upgrade_level: 0,
         };
         let energy = Energy::new(100, 30);
         (board, energy)
@@ -190,6 +193,7 @@ mod tests {
             family: Family::Wood,
             tier: 1,
             cooldown_remaining: 3,
+            upgrade_level: 0,
         };
         let mut energy = Energy::new(100, 30);
         let result = try_activate(&mut board, 0, 0, &mut energy, 1, 0, false, false);
@@ -203,6 +207,7 @@ mod tests {
             family: Family::Wood,
             tier: 1,
             cooldown_remaining: 0,
+            upgrade_level: 0,
         };
         board.cells[0][1] = Cell::Piece(Piece::Regular(Item::new(Family::Stone, 1)));
         let mut energy = Energy::new(100, 30);
@@ -219,6 +224,7 @@ mod tests {
             tier: 1,
             charges: 2,
             cooldown_remaining: 0,
+            upgrade_level: 0,
         };
         let mut energy = Energy::new(100, 30);
         let result = try_activate(&mut board, 0, 0, &mut energy, 1, 0, false, false);
@@ -238,6 +244,7 @@ mod tests {
             tier: 1,
             charges: 1,
             cooldown_remaining: 0,
+            upgrade_level: 0,
         };
         let mut energy = Energy::new(100, 30);
         let result = try_activate(&mut board, 0, 0, &mut energy, 1, 0, false, false);
@@ -260,12 +267,14 @@ mod tests {
             family: Family::Wood,
             tier: 1,
             cooldown_remaining: 3,
+            upgrade_level: 0,
         };
         board.cells[1][1] = Cell::SoftGenerator {
             family: Family::Metal,
             tier: 1,
             charges: 5,
             cooldown_remaining: 2,
+            upgrade_level: 0,
         };
         tick_cooldowns(&mut board);
         if let Cell::HardGenerator { cooldown_remaining, .. } = &board.cells[0][0] {
@@ -291,6 +300,7 @@ mod tests {
             family: Family::Wood,
             tier: 2,
             cooldown_remaining: 0,
+            upgrade_level: 0,
         };
         let mut energy = Energy::new(100, 30);
         let result = try_activate(&mut board, 0, 0, &mut energy, 1, 0, false, false);

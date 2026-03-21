@@ -344,9 +344,11 @@ fn run_loop(
                         KeyCode::Left  => { eng.move_cursor(0, -1); }
                         KeyCode::Right => { eng.move_cursor(0, 1); }
 
-                        KeyCode::Enter => {
+                        KeyCode::Enter | KeyCode::Char(' ') => {
                             if matches!(eng.bonus_state, BonusState::HammerActive { .. }) {
                                 eng.confirm_hammer();
+                            } else if matches!(eng.bonus_state, BonusState::ColorBombActive { .. }) {
+                                eng.confirm_color_bomb();
                             } else if matches!(eng.phase, GamePhase::PlayerInput) {
                                 eng.confirm_selection();
                             }
@@ -390,6 +392,12 @@ fn run_loop(
                             // Warp
                             if !bonus_active && eng.bonuses.warp > 0 {
                                 eng.activate_warp();
+                            }
+                        }
+                        KeyCode::Char('b') | KeyCode::Char('B') => {
+                            // Color Bomb
+                            if !bonus_active && eng.bonuses.color_bomb > 0 {
+                                eng.activate_color_bomb();
                             }
                         }
                         KeyCode::Char('q') | KeyCode::Char('Q') => {
