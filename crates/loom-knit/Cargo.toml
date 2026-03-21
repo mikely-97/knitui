@@ -23,6 +23,10 @@ path = "src/bin/knitui_solvcheck.rs"
 name = "knitui-replay"
 path = "src/bin/knitui_replay.rs"
 
+[[bin]]
+name = "knitui-editor"
+path = "src/bin/knitui_editor.rs"
+
 [dependencies]
 loom-engine = { path = "../loom-engine" }
 crossterm = { workspace = true }
