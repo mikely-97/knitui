@@ -295,6 +295,7 @@ pub fn render_board(stdout: &mut Stdout, engine: &GameEngine, x0: u16, y0: u16, 
                     BoardEntity::Conveyor(data) => Some(data.color),
                     _ => None,
                 };
+                let anim_frame = engine.anim_cells.get(&(row_idx, col_idx)).copied();
                 for (sy_idx, glyph_row) in glyph_rows.iter().enumerate() {
                     let cell_x = x0 + 1 + (col_idx as u16) * (sw + 1);
                     let cell_y = content_y + sy_idx as u16;
@@ -318,6 +319,19 @@ pub fn render_board(stdout: &mut Stdout, engine: &GameEngine, x0: u16, y0: u16, 
                             None => { stdout.queue(Print(&inner))?; }
                         }
                         stdout.queue(Print(close_bracket.bold().white()))?;
+                    } else if let Some(frame) = anim_frame {
+                        use crossterm::style::SetForegroundColor;
+                        let (ch, anim_color) = match frame {
+                            3 => ('█', crossterm::style::Color::White),
+                            2 => ('✦', crossterm::style::Color::Yellow),
+                            1 => ('·', crossterm::style::Color::DarkGrey),
+                            _ => (' ', crossterm::style::Color::Reset),
+                        };
+                        stdout.queue(SetForegroundColor(anim_color))?;
+                        // Fill the full cell width with the burst glyph
+                        let cell_str: String = std::iter::repeat(ch).take(sw as usize).collect();
+                        stdout.queue(Print(cell_str))?;
+                        stdout.queue(SetAttribute(Attribute::Reset))?;
                     } else {
                         match color {
                             Some(col) => { stdout.queue(Print(glyph_row.as_str().with(col)))?; }
@@ -355,9 +369,21 @@ pub fn render_board(stdout: &mut Stdout, engine: &GameEngine, x0: u16, y0: u16, 
                     // Cell content: inverted colors for cursor cell; bright-white bg for hint cell
                     let is_hint = engine.hint_ticks > 0
                         && engine.hint_cell == Some((row_idx, col_idx));
+                    let anim_frame = engine.anim_cells.get(&(row_idx, col_idx)).copied();
                     if is_cursor {
                         stdout.queue(SetAttribute(Attribute::Reverse))?;
                         for _ in 0..sw { stdout.queue(Print(cell))?; }
+                        stdout.queue(SetAttribute(Attribute::Reset))?;
+                    } else if let Some(frame) = anim_frame {
+                        use crossterm::style::{SetForegroundColor};
+                        let (ch, color) = match frame {
+                            3 => ('█', crossterm::style::Color::White),
+                            2 => ('✦', crossterm::style::Color::Yellow),
+                            1 => ('·', crossterm::style::Color::DarkGrey),
+                            _ => (' ', crossterm::style::Color::Reset),
+                        };
+                        stdout.queue(SetForegroundColor(color))?;
+                        for _ in 0..sw { stdout.queue(Print(ch))?; }
                         stdout.queue(SetAttribute(Attribute::Reset))?;
                     } else if is_hint {
                         use crossterm::style::{SetBackgroundColor, SetForegroundColor};

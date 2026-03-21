@@ -102,6 +102,8 @@ pub struct GameEngine {
     pub hint_cell: Option<(usize, usize)>,
     /// Frames remaining to show the hint highlight.
     pub hint_ticks: u8,
+    /// Burst animation overlay: (row, col) -> frame countdown 3..=1
+    pub anim_cells: std::collections::HashMap<(usize, usize), u8>,
 }
 
 impl GameEngine {
@@ -206,6 +208,7 @@ impl GameEngine {
             generation_attempts: attempts,
             hint_cell: None,
             hint_ticks: 0,
+            anim_cells: std::collections::HashMap::new(),
         }
     }
 
@@ -237,13 +240,22 @@ impl GameEngine {
     }
 
     /// Decrement hint_ticks and clear hint_cell when it reaches zero.
+    /// Also advances burst animations.
     pub fn tick_hint(&mut self) {
+        self.tick_anims();
         if self.hint_ticks > 0 {
             self.hint_ticks -= 1;
             if self.hint_ticks == 0 {
                 self.hint_cell = None;
             }
         }
+    }
+
+    /// Advance burst animations by one frame; remove finished entries.
+    pub fn tick_anims(&mut self) {
+        self.anim_cells.retain(|_, frame| {
+            if *frame == 0 { false } else { *frame -= 1; true }
+        });
     }
 
     // ── Actions ────────────────────────────────────────────────────────────
@@ -299,10 +311,22 @@ impl GameEngine {
 
         let picked_color = spool.color;
         self.held_spools.push(spool);
+        self.anim_cells.insert((row, col), 3);
         self.board.board[row][col] = BoardEntity::Void;
 
         if let Some((gr, gc)) = find_conveyor_for_output(&self.board.board, row, col) {
+            let (dr, dc) = {
+                if let BoardEntity::Conveyor(ref data) = self.board.board[gr][gc] {
+                    data.output_dir.offset()
+                } else { (0, 0) }
+            };
+            let spawn_r = (gr as i32 + dr) as usize;
+            let spawn_c = (gc as i32 + dc) as usize;
             advance_conveyor(&mut self.board.board, gr, gc, row, col);
+            // Flash newly-spawned conveyor spool
+            if matches!(self.board.board[spawn_r][spawn_c], BoardEntity::Spool(_)) {
+                self.anim_cells.insert((spawn_r, spawn_c), 2);
+            }
         }
 
         // Exit tweezers mode after successful pick
@@ -758,6 +782,7 @@ impl GameStateSnapshot {
             generation_attempts: self.generation_attempts,
             hint_cell: None,
             hint_ticks: 0,
+            anim_cells: std::collections::HashMap::new(),
         })
     }
 }
@@ -867,6 +892,7 @@ mod tests {
             generation_attempts: 0,
             hint_cell: None,
             hint_ticks: 0,
+            anim_cells: std::collections::HashMap::new(),
         }
     }
 
@@ -1005,6 +1031,7 @@ mod tests {
             generation_attempts: 0,
             hint_cell: None,
             hint_ticks: 0,
+            anim_cells: std::collections::HashMap::new(),
         };
         assert!(e.move_cursor(Direction::Down).is_ok());
         assert_eq!(e.cursor_row, 2); // skipped row 1
@@ -1088,6 +1115,7 @@ mod tests {
             generation_attempts: 0,
             hint_cell: None,
             hint_ticks: 0,
+            anim_cells: std::collections::HashMap::new(),
         };
         assert!(e.is_won());
     }
@@ -1257,6 +1285,7 @@ mod tests {
             generation_attempts: 0,
             hint_cell: None,
             hint_ticks: 0,
+            anim_cells: std::collections::HashMap::new(),
         };
         assert_eq!(e.status(), GameStatus::Won);
     }
@@ -1288,6 +1317,7 @@ mod tests {
             generation_attempts: 0,
             hint_cell: None,
             hint_ticks: 0,
+            anim_cells: std::collections::HashMap::new(),
         };
         assert_eq!(e.status(), GameStatus::Stuck);
     }
@@ -1322,6 +1352,7 @@ mod tests {
             generation_attempts: 0,
             hint_cell: None,
             hint_ticks: 0,
+            anim_cells: std::collections::HashMap::new(),
         };
         assert_eq!(e.status(), GameStatus::Stuck);
     }
@@ -1353,6 +1384,7 @@ mod tests {
             generation_attempts: 0,
             hint_cell: None,
             hint_ticks: 0,
+            anim_cells: std::collections::HashMap::new(),
         };
         assert_eq!(e.status(), GameStatus::Playing);
     }
