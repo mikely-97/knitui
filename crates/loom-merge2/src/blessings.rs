@@ -3,38 +3,9 @@
 /// 12 blessings across 4 tiers (D/C/B/A), designed for persistent-board
 /// merge-2 gameplay with generators, frozen cells, energy, and inventory.
 
-use crate::blessings::Tier::*;
-
-// ── Tier ──────────────────────────────────────────────────────────────────
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
-pub enum Tier { D, C, B, A }
-
-impl Tier {
-    pub fn label(self) -> &'static str {
-        match self { D => "D", C => "C", B => "B", A => "A" }
-    }
-}
-
-/// The highest tier unlocked given the number of completed campaign tracks.
-pub fn unlocked_tier(completed_tracks: usize) -> Tier {
-    match completed_tracks {
-        0 => D,
-        1 => C,
-        2 => B,
-        _ => A,
-    }
-}
-
-// ── Blessing definition ───────────────────────────────────────────────────
-
-pub struct Blessing {
-    pub id: &'static str,
-    pub name: &'static str,
-    pub tier: Tier,
-    pub description: &'static str,
-    pub ascii_art: [&'static str; 5],
-}
+// Re-export shared infrastructure from loom-engine.
+pub use loom_engine::blessings::{Tier, Blessing, has, unlocked_tier, is_unlocked, tracks_required};
+use Tier::*;
 
 // ── The 12 blessings ─────────────────────────────────────────────────────
 
@@ -216,21 +187,6 @@ pub fn available_blessings(completed_tracks: usize) -> Vec<&'static Blessing> {
 /// Look up a blessing by ID.
 pub fn lookup(id: &str) -> Option<&'static Blessing> {
     ALL_BLESSINGS.iter().find(|b| b.id == id)
-}
-
-/// Check whether a list of selected blessing IDs contains a given ID.
-pub fn has(ids: &[String], target: &str) -> bool {
-    ids.iter().any(|s| s == target)
-}
-
-/// Whether a blessing's tier is unlocked at the given track-completion count.
-pub fn is_unlocked(blessing: &Blessing, completed_tracks: usize) -> bool {
-    blessing.tier <= unlocked_tier(completed_tracks)
-}
-
-/// How many tracks must be completed to unlock the given tier.
-pub fn tracks_required(tier: Tier) -> usize {
-    match tier { D => 0, C => 1, B => 2, A => 3 }
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────
