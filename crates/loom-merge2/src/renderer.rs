@@ -7,6 +7,7 @@ use crossterm::{
     QueueableCommand,
 };
 
+use crate::anim::AnimKind;
 use crate::blessings::{self, ALL_BLESSINGS};
 use crate::board::Cell;
 use crate::engine::{GameEngine, GameStatus};
@@ -125,6 +126,73 @@ fn render_cell_content(
     let is_selected = engine.selected == Some((r, c));
     let is_hint     = engine.hint_pair
         .map_or(false, |(a, b)| a == (r, c) || b == (r, c));
+
+    // Animation overlay: render burst frame and return early (skip normal content)
+    if sub_row == mid {
+        if let Some(anim) = engine.anim_cells.get(&(r, c)) {
+            match (anim.kind, anim.frame) {
+                (AnimKind::Dissolve, 3) => {
+                    stdout.queue(SetForegroundColor(Color::White))?;
+                    stdout.queue(SetAttribute(Attribute::Bold))?;
+                    let label = "██";
+                    let pad = cw.saturating_sub(label.chars().count());
+                    stdout.queue(Print(format!("{}{}{}", " ".repeat(pad / 2), label, " ".repeat(pad - pad / 2))))?;
+                    stdout.queue(SetAttribute(Attribute::Reset))?;
+                    stdout.queue(ResetColor)?;
+                    return Ok(());
+                }
+                (AnimKind::Dissolve, 2) => {
+                    stdout.queue(SetForegroundColor(Color::Yellow))?;
+                    let label = "✦ ";
+                    let pad = cw.saturating_sub(label.chars().count());
+                    stdout.queue(Print(format!("{}{}{}", " ".repeat(pad / 2), label, " ".repeat(pad - pad / 2))))?;
+                    stdout.queue(ResetColor)?;
+                    return Ok(());
+                }
+                (AnimKind::Dissolve, 1) => {
+                    stdout.queue(SetForegroundColor(Color::DarkGrey))?;
+                    let label = "· ";
+                    let pad = cw.saturating_sub(label.chars().count());
+                    stdout.queue(Print(format!("{}{}{}", " ".repeat(pad / 2), label, " ".repeat(pad - pad / 2))))?;
+                    stdout.queue(ResetColor)?;
+                    return Ok(());
+                }
+                (AnimKind::Rise, 3) => {
+                    stdout.queue(SetForegroundColor(Color::Cyan))?;
+                    let label = "✦ ";
+                    let pad = cw.saturating_sub(label.chars().count());
+                    stdout.queue(Print(format!("{}{}{}", " ".repeat(pad / 2), label, " ".repeat(pad - pad / 2))))?;
+                    stdout.queue(ResetColor)?;
+                    return Ok(());
+                }
+                (AnimKind::Rise, 2) => {
+                    stdout.queue(SetForegroundColor(Color::Yellow))?;
+                    let label = "★ ";
+                    let pad = cw.saturating_sub(label.chars().count());
+                    stdout.queue(Print(format!("{}{}{}", " ".repeat(pad / 2), label, " ".repeat(pad - pad / 2))))?;
+                    stdout.queue(ResetColor)?;
+                    return Ok(());
+                }
+                (AnimKind::Rise, 1) => {
+                    // Frame 1: render actual item with bold/bright to show it just appeared
+                    let (label, color, _) = glyphs::cell_label(cell);
+                    stdout.queue(SetForegroundColor(color))?;
+                    stdout.queue(SetAttribute(Attribute::Bold))?;
+                    let chars = label.chars().count();
+                    let pad = cw.saturating_sub(chars);
+                    stdout.queue(Print(format!("{}{}{}", " ".repeat(pad / 2), label, " ".repeat(pad - pad / 2))))?;
+                    stdout.queue(SetAttribute(Attribute::Reset))?;
+                    stdout.queue(ResetColor)?;
+                    return Ok(());
+                }
+                _ => {} // frame 0 or unexpected: fall through to normal render
+            }
+        }
+    } else if engine.anim_cells.contains_key(&(r, c)) {
+        // Non-mid rows during animation: blank them out
+        stdout.queue(Print(" ".repeat(cw)))?;
+        return Ok(());
+    }
 
     // Background tint
     if is_selected {

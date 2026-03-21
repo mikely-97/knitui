@@ -1,3 +1,4 @@
+pub mod anim;
 pub mod item;
 pub mod order;
 pub mod board;

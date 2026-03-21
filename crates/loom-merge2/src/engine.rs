@@ -117,6 +117,9 @@ pub struct GameEngine {
     /// Whether an inventory expansion popup is pending (player must dismiss).
     #[serde(skip)]
     pub inv_expansion_pending: bool,
+    /// Active cell animations (merge dissolve / rise).
+    #[serde(skip)]
+    pub anim_cells: std::collections::HashMap<(usize, usize), crate::anim::CellAnim>,
 }
 
 impl GameEngine {
@@ -168,6 +171,7 @@ impl GameEngine {
             hint_pair: None,
             merges_since_inv_event: 0,
             inv_expansion_pending: false,
+            anim_cells: std::collections::HashMap::new(),
         };
         engine.set_blessings(blessings);
         engine.fill_random_orders();
@@ -380,6 +384,11 @@ impl GameEngine {
                     family,
                     pos: (r, c),
                 });
+                // Spawn rise animation (starts at frame 2 — shorter than merge)
+                self.anim_cells.insert((r, c), crate::anim::CellAnim {
+                    kind: crate::anim::AnimKind::Rise,
+                    frame: 2,
+                });
                 self.update_hint();
                 true
             }
@@ -406,6 +415,16 @@ impl GameEngine {
 
         self.selected = None;
         self.total_merges += 1;
+
+        // Merge burst animation: dissolve source, rise destination
+        self.anim_cells.insert(src, crate::anim::CellAnim {
+            kind: crate::anim::AnimKind::Dissolve,
+            frame: 3,
+        });
+        self.anim_cells.insert(dst, crate::anim::CellAnim {
+            kind: crate::anim::AnimKind::Rise,
+            frame: 3,
+        });
 
         // Handle blueprint merge → hard generator (always T1)
         if let Piece::Blueprint(family) = &result.piece {
@@ -935,7 +954,25 @@ impl GameEngine {
         // Maybe spawn a new timed order
         self.maybe_spawn_timed_order();
 
+        // Advance cell animations
+        if !self.anim_cells.is_empty() {
+            self.tick_anims();
+            changed = true;
+        }
+
         changed
+    }
+
+    /// Advance all cell animations by one frame, removing finished ones.
+    pub fn tick_anims(&mut self) {
+        self.anim_cells.retain(|_, anim| {
+            if anim.frame == 0 {
+                false
+            } else {
+                anim.frame -= 1;
+                true
+            }
+        });
     }
 
     // ── Status ────────────────────────────────────────────────────────────
