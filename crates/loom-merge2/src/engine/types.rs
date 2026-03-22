@@ -43,6 +43,27 @@ pub struct BlessingFlags {
     pub deep_thaw: bool,
 }
 
+impl BlessingFlags {
+    /// Return true if the blessing identified by `id` is active.
+    pub fn has_id(&self, id: &str) -> bool {
+        match id {
+            "energy_saver"   => self.energy_saver,
+            "quick_regen"    => self.quick_regen,
+            "keen_eye"       => self.keen_eye,
+            "bigger_pockets" => self.bigger_pockets,
+            "thaw_aura"      => self.thaw_aura,
+            "lucky_orders"   => self.lucky_orders,
+            "chain_merge"    => self.chain_merge,
+            "tier_boost"     => self.tier_boost,
+            "generator_surge"=> self.generator_surge,
+            "double_deliver" => self.double_deliver,
+            "soft_gen_master"=> self.soft_gen_master,
+            "deep_thaw"      => self.deep_thaw,
+            _                => false,
+        }
+    }
+}
+
 // ── Pending UI notifications ──────────────────────────────────────────────
 
 /// An event the TUI should display to the player.

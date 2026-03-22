@@ -184,6 +184,7 @@ impl CampaignState {
                 .collect();
             self.active_orders.retain(|o| !matches!(o.order_type, crate::order::OrderType::Story));
             self.active_orders.extend(story_orders);
+            self.active_orders.extend(mission.extra_orders.iter().cloned());
             self.story_orders_completed = 0;
         }
     }

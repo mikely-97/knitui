@@ -666,15 +666,13 @@ pub fn blessings_has(ids: &[String], id: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::board::BoardLayout;
-    use crate::board::CellInit;
-
     fn test_engine() -> GameEngine {
         let mut board = Board::new_empty(4, 4);
         board.cells[0][0] = Cell::HardGenerator {
             family: Family::Wood,
             tier: 1,
             cooldown_remaining: 0,
+            upgrade_level: 0,
         };
         board.cells[1][1] = Cell::Piece(Piece::Regular(Item::new(Family::Wood, 1)));
         board.cells[1][2] = Cell::Piece(Piece::Regular(Item::new(Family::Wood, 1)));
@@ -816,6 +814,7 @@ mod tests {
             order_type: crate::order::OrderType::Story,
             requirements: vec![crate::order::OrderRequirement::new(Family::Wood, 2, 1)],
             rewards: vec![crate::order::Reward::Score(100)],
+            follow_up: None,
         });
         // Create a Wood T2 on board
         e.board.cells[3][3] = Cell::Piece(Piece::Regular(Item::new(Family::Wood, 2)));

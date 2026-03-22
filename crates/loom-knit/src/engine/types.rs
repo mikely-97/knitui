@@ -51,6 +51,19 @@ impl BlessingFlags {
             match_hint:     blessings::has(ids, "match_hint"),
         }
     }
+
+    /// Return true if the blessing identified by `id` is active.
+    pub fn has_id(&self, id: &str) -> bool {
+        match id {
+            "scouts_eye"     => self.scouts_eye,
+            "wrap_around"    => self.wrap_around,
+            "tidy_workspace" => self.tidy_workspace,
+            "conveyor_peek"  => self.conveyor_peek,
+            "color_count"    => self.color_count,
+            "match_hint"     => self.match_hint,
+            _                => false,
+        }
+    }
 }
 
 #[derive(Debug, PartialEq, Clone)]

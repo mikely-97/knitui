@@ -239,9 +239,11 @@ name = "loom"
 version = "0.1.0"
 dependencies = [
  "crossterm",
+ "loom-engine",
  "loom-knit",
  "loom-match3",
  "loom-merge2",
+ "loom-picross",
 ]
 
 [[package]]
@@ -290,6 +292,17 @@ dependencies = [
  "dirs",
  "loom-engine",
  "rand",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "loom-picross"
+version = "0.1.0"
+dependencies = [
+ "crossterm",
+ "dirs",
+ "loom-engine",
  "serde",
  "serde_json",
 ]

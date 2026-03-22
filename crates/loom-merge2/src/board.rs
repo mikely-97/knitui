@@ -398,8 +398,6 @@ impl BoardLayout {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::item::MAX_TIER;
-
     fn test_board() -> Board {
         let mut board = Board::new_empty(3, 3);
         board.cells[0][0] = Cell::Piece(Piece::Regular(Item::new(Family::Wood, 1)));

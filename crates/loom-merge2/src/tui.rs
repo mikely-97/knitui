@@ -179,7 +179,7 @@ fn run_loop(
                 }
             }
             TuiState::Help => {
-                renderer::render_help(stdout, &help_lines())?;
+                renderer::render_help(stdout, &help_lines(), None)?;
             }
             TuiState::Options { selected } => {
                 renderer::render_options(stdout, user_settings, *selected)?;
