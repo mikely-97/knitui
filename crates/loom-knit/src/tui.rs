@@ -36,6 +36,7 @@ enum TuiState {
     CampaignLevelIntro,
     Options { selected: usize },
     Playing,
+    Celebration { ticks_remaining: u8, next_status: GameStatus },
     GameOver(GameStatus),
     Help,
     WatchingAd { started_at: Instant, quote: String },
@@ -728,6 +729,10 @@ fn run_event_loop(
                                             renderer::do_render(&mut stdout, engine.as_ref().unwrap(), geo.layout, geo.yarn_x, geo.board_x, geo.board_y, geo.scale)?;
                                             continue;
                                         }
+                                        s @ GameStatus::Won => {
+                                            tui_state = TuiState::Celebration { ticks_remaining: 16, next_status: s };
+                                            continue;
+                                        }
                                         s => {
                                             if endless_ctx.is_some() && s == GameStatus::Stuck {
                                                 let wave = endless_ctx.as_ref().unwrap().wave;
@@ -801,6 +806,9 @@ fn run_event_loop(
 
                         renderer::do_render(&mut stdout, engine.as_ref().unwrap(), geo.layout, geo.yarn_x, geo.board_x, geo.board_y, geo.scale)?;
                     }
+                    TuiState::Celebration { .. } => {
+                        // Celebration is driven by the tick loop below, ignore keypresses
+                    }
                 }
             }
         } else if matches!(tui_state, TuiState::Playing) {
@@ -813,6 +821,9 @@ fn run_event_loop(
                 GameStatus::Won if endless_ctx.is_some() => {
                     advance_endless_wave(&mut endless_ctx, &mut game_config, &cli_config, &mut geo, &mut engine);
                     renderer::do_render(&mut stdout, engine.as_ref().unwrap(), geo.layout, geo.yarn_x, geo.board_x, geo.board_y, geo.scale)?;
+                }
+                s @ GameStatus::Won => {
+                    tui_state = TuiState::Celebration { ticks_remaining: 16, next_status: s };
                 }
                 s => {
                     if endless_ctx.is_some() && s == GameStatus::Stuck {
@@ -827,6 +838,27 @@ fn run_event_loop(
                     tui_state = TuiState::GameOver(s);
                 }
             };
+        }
+
+        // ── Celebration animation tick ──────────────────────────────────
+        if let TuiState::Celebration { ref mut ticks_remaining, ref next_status } = tui_state {
+            if *ticks_remaining > 0 {
+                let e = engine.as_ref().unwrap();
+                renderer::do_render(&mut stdout, e, geo.layout, geo.yarn_x, geo.board_x, geo.board_y, geo.scale)?;
+                let (bx, by) = match geo.layout {
+                    Layout::Horizontal => (geo.board_x, 0),
+                    Layout::Vertical => (0, geo.board_y),
+                };
+                renderer::render_celebration(&mut stdout, e, bx, by, geo.scale, 16 - *ticks_remaining)?;
+                stdout.flush()?;
+                *ticks_remaining -= 1;
+                std::thread::sleep(Duration::from_millis(80));
+            } else {
+                let status = next_status.clone();
+                let overlay = campaign_overlay_msg(&campaign_ctx, &status);
+                renderer::do_render_overlay(&mut stdout, engine.as_ref().unwrap(), geo.layout, geo.yarn_x, geo.board_x, geo.board_y, geo.scale, &status, overlay.as_deref())?;
+                tui_state = TuiState::GameOver(status);
+            }
         }
 
         if let TuiState::WatchingAd { ref started_at, ref quote } = tui_state {

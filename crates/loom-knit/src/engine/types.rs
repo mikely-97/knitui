@@ -14,7 +14,7 @@ pub enum PickError {
     ActiveFull,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum GameStatus {
     Playing,
     Won,

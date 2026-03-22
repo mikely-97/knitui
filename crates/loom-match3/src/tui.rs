@@ -41,6 +41,16 @@ enum TuiState {
         chosen: Vec<usize>,
     },
     CampaignLevelIntro,
+    Celebration {
+        ticks_remaining: u8,
+        next: CelebrationNext,
+    },
+    LevelSummary {
+        score: u32,
+        target: Option<u32>,
+        level_num: usize,
+        total_levels: usize,
+    },
     GameOver {
         status: GameStatus,
         can_retry: bool,
@@ -49,6 +59,14 @@ enum TuiState {
     Options {
         selected: usize,
     },
+}
+
+#[derive(Clone)]
+enum CelebrationNext {
+    /// Campaign level done but more levels remain
+    NextLevel,
+    /// Campaign track complete (or non-campaign win)
+    WinScreen { can_retry: bool },
 }
 
 // ── Layout helper ─────────────────────────────────────────────────────────
@@ -184,11 +202,12 @@ fn run_loop(
                             let done = ctx.complete_level();
                             campaign_saves.upsert(ctx.clone());
                             campaign_saves.save("m3tui");
-                            if done {
-                                tui_state = TuiState::GameOver { status: GameStatus::Won, can_retry: false };
+                            let next = if done {
+                                CelebrationNext::WinScreen { can_retry: false }
                             } else {
-                                tui_state = TuiState::CampaignLevelIntro;
-                            }
+                                CelebrationNext::NextLevel
+                            };
+                            tui_state = TuiState::Celebration { ticks_remaining: 16, next };
                         }
                     } else if let Some(ref mut ctx) = endless_ctx {
                         // Endless wave completion
@@ -234,6 +253,59 @@ fn run_loop(
                             }
                             GameStatus::Playing | GameStatus::Won => {}
                         }
+                    }
+                }
+            }
+        }
+
+        // ── Celebration animation tick ──────────────────────────────────
+        if let TuiState::Celebration { ref mut ticks_remaining, ref next } = tui_state {
+            if *ticks_remaining > 0 {
+                if let Some(ref eng) = engine {
+                    let label = objective_label_for(eng, &campaign_ctx);
+                    renderer::do_render(stdout, eng, &geo, &label)?;
+                    renderer::render_celebration(stdout, eng, &geo, 16 - *ticks_remaining)?;
+                    stdout.flush()?;
+                }
+                *ticks_remaining -= 1;
+                if !poll(Duration::from_millis(80))? {
+                    continue;
+                }
+                let _ = read()?; // consume any keypress during animation
+                continue;
+            } else {
+                // Animation done — transition
+                let next = next.clone();
+                match next {
+                    CelebrationNext::NextLevel => {
+                        if let Some(ref ctx) = campaign_ctx {
+                            let eng = engine.as_ref().unwrap();
+                            let def = ctx.current_level_def();
+                            let target = def.objective.score_target;
+                            tui_state = TuiState::LevelSummary {
+                                score: eng.score,
+                                target,
+                                level_num: ctx.current_level,
+                                total_levels: ctx.total_levels(),
+                            };
+                            renderer::render_level_summary(
+                                stdout, eng.score, target,
+                                ctx.current_level, ctx.total_levels(),
+                                &eng.bonuses,
+                            )?;
+                            stdout.flush()?;
+                        } else {
+                            tui_state = TuiState::CampaignLevelIntro;
+                        }
+                        continue;
+                    }
+                    CelebrationNext::WinScreen { can_retry } => {
+                        tui_state = TuiState::GameOver { status: GameStatus::Won, can_retry };
+                        if let Some(ref eng) = engine {
+                            renderer::render_game_over(stdout, &GameStatus::Won, eng.score)?;
+                            stdout.flush()?;
+                        }
+                        continue;
                     }
                 }
             }
@@ -414,6 +486,20 @@ fn run_loop(
                     _ => {}
                 }
             }
+
+            // ── Level summary (between campaign levels) ──────────────────
+            TuiState::LevelSummary { .. } => {
+                match key.code {
+                    KeyCode::Enter => {
+                        tui_state = TuiState::CampaignLevelIntro;
+                        render_current_state(stdout, &tui_state, engine.as_ref(), &geo, &campaign_ctx, &campaign_saves, &user_settings)?;
+                    }
+                    _ => {}
+                }
+            }
+
+            // ── Celebration (no-op, handled above) ───────────────────────
+            TuiState::Celebration { .. } => {}
 
             // ── Help ──────────────────────────────────────────────────────
             TuiState::Help => {
@@ -663,6 +749,14 @@ fn render_current_state(
         }
         TuiState::CampaignLevelIntro => {
             render_level_intro(stdout, campaign_ctx)?;
+        }
+        TuiState::Celebration { .. } => {
+            // Rendered in the tick loop above
+        }
+        TuiState::LevelSummary { score, target, level_num, total_levels } => {
+            if let Some(eng) = engine {
+                renderer::render_level_summary(stdout, *score, *target, *level_num, *total_levels, &eng.bonuses)?;
+            }
         }
         TuiState::CustomGame { preset_idx, selected_field, config } => {
             render_custom_game(stdout, *preset_idx, *selected_field, config)?;
