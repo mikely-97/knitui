@@ -27,3 +27,7 @@ target
 
 # Worktrees
 .worktrees/
+
+# Local Claude Code plugin config (context-mode routing rules) — machine-specific,
+# not project documentation.
+/CLAUDE.md
