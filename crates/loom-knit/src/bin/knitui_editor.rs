@@ -359,10 +359,8 @@ fn prompt_save(editor: &mut Editor, stdout: &mut io::Stdout) -> io::Result<()> {
                 let trimmed = name.trim().to_string();
                 if trimmed.is_empty() {
                     editor.status_msg = "Save cancelled (empty name).".into();
-                } else {
-                    if let Err(e) = editor.save_preset(&trimmed) {
-                        editor.status_msg = format!("Save error: {}", e);
-                    }
+                } else if let Err(e) = editor.save_preset(&trimmed) {
+                    editor.status_msg = format!("Save error: {}", e);
                 }
                 return Ok(());
             }

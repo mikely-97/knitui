@@ -1,5 +1,5 @@
 /// Tests for hard mode, hint system, and solvability.
-use knitui::engine::{GameEngine, BonusInventory, BonusState, BlessingFlags};
+use knitui::engine::GameEngine;
 use knitui::config::Config;
 use knitui::board_entity::BoardEntity;
 use knitui::game_board::GameBoard;
@@ -138,8 +138,6 @@ fn test_compute_hint_without_blessing_still_returns_cell() {
 /// yarn has exactly one of each color.
 fn make_trivial_solvable() -> (GameBoard, Yarn) {
     use knitui::yarn::Stitch;
-    use knitui::color_counter::ColorCounter;
-    use std::collections::HashMap;
 
     // Board: top-row spools are accessible (selectable), rest Void
     let board = GameBoard {

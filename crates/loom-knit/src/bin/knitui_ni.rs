@@ -371,7 +371,7 @@ fn main() {
 
             match args.command {
                 Some(NiCommand::Move { direction }) => {
-                    if let Err(_) = engine.move_cursor(direction.into()) {
+                    if engine.move_cursor(direction.into()).is_err() {
                         err_response("out_of_bounds", "cursor is already at the board edge");
                         return;
                     }
