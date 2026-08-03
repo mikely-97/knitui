@@ -674,7 +674,64 @@ In `crates/loom-knit/src/renderer/panels.rs`, in `render_bonus_display_h` (start
     }
 ```
 
-Do the same in `render_bonus_panel` (starts line 567) — find its equivalent held-spool-counter block and add the same snippet before its final `Ok(())`, adjusting the `MoveTo` row offset the same way the existing held-spool counter does in that function (match the pattern already used there for consistency — read the function body first to place it on its own row like the other panel does, since `render_bonus_panel` is the vertical/multi-row layout, unlike `render_bonus_display_h`'s single inline row).
+In the same file, `render_bonus_panel` (starts line 567) is the vertical/multi-row layout — it already tracks a mutable `row` offset for the color-count blessing block. Its current tail (from the held-spool counter onward) is:
+
+```rust
+    // Held spool counter
+    let held = engine.held_spools.len() as u16;
+    let limit = engine.spool_limit as u16;
+    let mut row = bonuses.len() as u16;
+    stdout.queue(MoveTo(x, y + row))?;
+    let counter_str = format!("⊞ {}/{}", held, limit);
+    if held >= limit.saturating_sub(1) {
+        stdout.queue(Print(counter_str.red()))?;
+    } else if held >= limit.saturating_sub(2) {
+        stdout.queue(Print(counter_str.yellow()))?;
+    } else {
+        stdout.queue(Print(counter_str.white()))?;
+    }
+    // Color count blessing: show remaining spools per color
+    if engine.blessing_flags.color_count {
+        row += 1;
+        stdout.queue(MoveTo(x, y + row))?;
+        render_color_counts(stdout, engine)?;
+    }
+    Ok(())
+}
+```
+
+Change it to (adding the endless rows-remaining line after the color-count block, following the same `row +=` pattern):
+
+```rust
+    // Held spool counter
+    let held = engine.held_spools.len() as u16;
+    let limit = engine.spool_limit as u16;
+    let mut row = bonuses.len() as u16;
+    stdout.queue(MoveTo(x, y + row))?;
+    let counter_str = format!("⊞ {}/{}", held, limit);
+    if held >= limit.saturating_sub(1) {
+        stdout.queue(Print(counter_str.red()))?;
+    } else if held >= limit.saturating_sub(2) {
+        stdout.queue(Print(counter_str.yellow()))?;
+    } else {
+        stdout.queue(Print(counter_str.white()))?;
+    }
+    // Color count blessing: show remaining spools per color
+    if engine.blessing_flags.color_count {
+        row += 1;
+        stdout.queue(MoveTo(x, y + row))?;
+        render_color_counts(stdout, engine)?;
+    }
+    // Endless mode: rows remaining in the buffer
+    if engine.total_rows > 0 {
+        row += 1;
+        let remaining = engine.total_rows.saturating_sub(engine.rows_cleared);
+        stdout.queue(MoveTo(x, y + row))?;
+        stdout.queue(Print(format!("Rows: {} remaining", remaining).dark_grey()))?;
+    }
+    Ok(())
+}
+```
 
 - [ ] **Step 3: Build to confirm it compiles**
 
