@@ -44,7 +44,7 @@ pub enum BoardEntity {
 
 (`Color` from `crossterm::style` and `Direction` from `loom_engine::direction` — the two external types `ConveyorData`/`BoardEntity` hold — already derive `Clone`/`Debug`/`PartialEq`/`Copy`, so this compiles without touching either of those.)
 
-Run: `cargo build -p knitui 2>&1 | tail -20`
+Run: `cargo build -p loom-knit 2>&1 | tail -20`
 Expected: builds cleanly (pure derive addition, no behavior change).
 
 - [ ] **Step 2: Add the three fields to the `GameEngine` struct**
@@ -90,7 +90,7 @@ For **every** match (9 in `engine/mod.rs`'s test module, 3 in `game_flow_test.rs
 
 - [ ] **Step 5: Run the full loom-knit test suite to confirm it compiles and passes**
 
-Run: `cargo test -p knitui 2>&1 | tail -30`
+Run: `cargo test -p loom-knit 2>&1 | tail -30`
 Expected: compiles cleanly, all existing tests still pass (no behavior change yet — every new field is zero-valued).
 
 - [ ] **Step 6: Add the same three fields to `GameStateSnapshot`, gated with `#[serde(default)]`**
@@ -159,7 +159,7 @@ Add to the `#[cfg(test)] mod tests` block in `crates/loom-knit/src/engine/mod.rs
 
 - [ ] **Step 9: Run the test and confirm it passes**
 
-Run: `cargo test -p knitui snapshot_roundtrip_preserves_row_buffer -- --nocapture`
+Run: `cargo test -p loom-knit snapshot_roundtrip_preserves_row_buffer -- --nocapture`
 Expected: PASS
 
 - [ ] **Step 10: Commit**
@@ -264,7 +264,7 @@ Add to the `#[cfg(test)] mod tests` block:
 
 - [ ] **Step 3: Run the tests to verify they fail**
 
-Run: `cargo test -p knitui new_endless -- --nocapture`
+Run: `cargo test -p loom-knit new_endless -- --nocapture`
 Expected: FAIL with "no function or associated item named `new_endless`"
 
 - [ ] **Step 4: Implement `new_endless`**
@@ -352,12 +352,12 @@ In `crates/loom-knit/src/engine/mod.rs`, inside `impl GameEngine { ... }`, add a
 
 - [ ] **Step 5: Run the tests to verify they pass**
 
-Run: `cargo test -p knitui new_endless -- --nocapture`
+Run: `cargo test -p loom-knit new_endless -- --nocapture`
 Expected: PASS (both tests)
 
 - [ ] **Step 6: Run the full loom-knit suite**
 
-Run: `cargo test -p knitui 2>&1 | tail -20`
+Run: `cargo test -p loom-knit 2>&1 | tail -20`
 Expected: all pass
 
 - [ ] **Step 7: Commit**
@@ -474,7 +474,7 @@ Add to the `#[cfg(test)] mod tests` block:
 
 - [ ] **Step 2: Run the tests to verify they fail**
 
-Run: `cargo test -p knitui process_all_active_shifts -- --nocapture`
+Run: `cargo test -p loom-knit process_all_active_shifts -- --nocapture`
 Expected: FAIL (`process_all_active` doesn't shift rows yet; `is_won` doesn't check `row_buffer` yet — the two `is_won_*` tests should currently fail or pass vacuously wrong)
 
 - [ ] **Step 3: Fix `is_won()`**
@@ -584,12 +584,12 @@ to:
 
 - [ ] **Step 5: Run the tests to verify they pass**
 
-Run: `cargo test -p knitui process_all_active -- --nocapture` and `cargo test -p knitui is_won -- --nocapture`
+Run: `cargo test -p loom-knit process_all_active -- --nocapture` and `cargo test -p loom-knit is_won -- --nocapture`
 Expected: all PASS
 
 - [ ] **Step 6: Run the full loom-knit suite**
 
-Run: `cargo test -p knitui 2>&1 | tail -20`
+Run: `cargo test -p loom-knit 2>&1 | tail -20`
 Expected: all pass (this includes the pre-existing `is_won_true_when_board_cleared` and `is_won_false_while_board_has_spools` tests — both construct engines via the pre-Task-1 literal style with `row_buffer: Vec::new()` from Step 3 of Task 1, so `is_won()`'s new `row_buffer.is_empty()` check is trivially true for them and doesn't change their outcome)
 
 - [ ] **Step 7: Commit**
@@ -678,7 +678,7 @@ Do the same in `render_bonus_panel` (starts line 567) — find its equivalent he
 
 - [ ] **Step 3: Build to confirm it compiles**
 
-Run: `cargo build -p knitui 2>&1 | tail -20`
+Run: `cargo build -p loom-knit 2>&1 | tail -20`
 Expected: builds cleanly (renderer changes only, no test to run yet — this crate's renderer has no unit tests, matching existing convention)
 
 - [ ] **Step 4: Commit**
@@ -695,7 +695,7 @@ git commit -m "feat(knit): show rows-cleared and remaining-rows in endless mode 
 **Files:**
 - Modify: `crates/loom-knit/src/endless.rs` (remove `EndlessState` struct/impl/tests entirely, keep only the `EndlessHighScore` re-export)
 - Modify: `crates/loom-knit/src/tui.rs` (endless flow: menu entry, restart, tick-loop status handling, remove `advance_endless_wave`)
-- Test: `cargo test -p knitui` (no new unit tests here — this is UI wiring; behavior is already covered by Task 2/3's engine tests. Manual verification via `cargo run --bin knitui` is the real check, per this plan's final task)
+- Test: `cargo test -p loom-knit` (no new unit tests here — this is UI wiring; behavior is already covered by Task 2/3's engine tests. Manual verification via `cargo run --bin knitui` is the real check, per this plan's final task)
 
 **Interfaces:**
 - Consumes: `GameEngine::new_endless` (Task 2), `GameEngine.total_rows`/`.rows_cleared` (Task 1), `render_endless_gameover(rows_cleared: u32, best_rows_cleared: usize)` (Task 4).
@@ -872,10 +872,10 @@ Expected: no matches remain.
 
 - [ ] **Step 10: Build and run the full test suite**
 
-Run: `cargo build -p knitui 2>&1 | tail -30`
+Run: `cargo build -p loom-knit 2>&1 | tail -30`
 Expected: builds cleanly with no leftover references to `EndlessState`/`endless_ctx`.
 
-Run: `cargo test -p knitui 2>&1 | tail -20`
+Run: `cargo test -p loom-knit 2>&1 | tail -20`
 Expected: all pass.
 
 - [ ] **Step 11: Commit**
@@ -1047,7 +1047,7 @@ fn test_endless_game_persists_row_buffer_across_commands() {
 
 - [ ] **Step 7: Run the knitui-ni tests**
 
-Run: `cargo test -p knitui --test knitui_ni_test 2>&1 | tail -30`
+Run: `cargo test -p loom-knit --test knitui_ni_test 2>&1 | tail -30`
 Expected: all pass.
 
 - [ ] **Step 8: Build and run the full workspace test suite**
@@ -1055,7 +1055,7 @@ Expected: all pass.
 Run: `cargo build --workspace --all-targets 2>&1 | tail -20`
 Expected: no errors, no leftover references to `EndlessState`, `endless_wave`, or `DescribeWave` anywhere in the workspace.
 
-Run: `cargo test -p knitui 2>&1 | tail -20`
+Run: `cargo test -p loom-knit 2>&1 | tail -20`
 Expected: all pass.
 
 - [ ] **Step 9: Commit**
@@ -1083,7 +1083,7 @@ Expected: every `test result:` line shows `0 failed`.
 
 - [ ] **Step 3: Clippy check on the touched crate**
 
-Run: `cargo clippy -p knitui --all-targets 2>&1 | tail -40`
+Run: `cargo clippy -p loom-knit --all-targets 2>&1 | tail -40`
 Expected: no new warnings beyond whatever pre-existing ones were already there before this plan (compare against a `git stash` + clippy run if unsure which warnings are pre-existing).
 
 - [ ] **Step 4: Manual playtest via the TUI**
