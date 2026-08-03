@@ -431,10 +431,37 @@ impl GameEngine {
             }
         }
         self.yarn.cleanup_balloon_columns();
+        self.shift_exhausted_rows();
+    }
+
+    /// Shift exhausted top rows out of the visible board and pull buffered
+    /// rows in from the bottom. No-op for non-endless engines (`total_rows == 0`).
+    fn shift_exhausted_rows(&mut self) {
+        if self.total_rows == 0 {
+            return;
+        }
+        loop {
+            let Some(top_row) = self.board.board.first() else { break };
+            let exhausted = top_row.iter().all(|cell| matches!(
+                cell,
+                BoardEntity::Void | BoardEntity::Obstacle | BoardEntity::EmptyConveyor
+            ));
+            if !exhausted {
+                break;
+            }
+            self.board.board.remove(0);
+            self.rows_cleared += 1;
+            self.cursor_row = self.cursor_row.saturating_sub(1);
+            if !self.row_buffer.is_empty() {
+                self.board.board.push(self.row_buffer.remove(0));
+            }
+            self.board.height = self.board.board.len() as u16;
+        }
     }
 
     pub fn is_won(&self) -> bool {
-        self.held_spools.is_empty()
+        self.row_buffer.is_empty()
+            && self.held_spools.is_empty()
             && self.yarn.board.iter().all(|col| col.is_empty())
             && self.board.board.iter().all(|row| {
                 row.iter().all(|cell| !matches!(
@@ -968,6 +995,93 @@ mod tests {
             total_rows: 0,
             rows_cleared: 0,
         }
+    }
+
+    fn endless_test_engine(visible: Vec<Vec<BoardEntity>>, buffer: Vec<Vec<BoardEntity>>) -> GameEngine {
+        let height = visible.len() as u16;
+        let width = visible[0].len() as u16;
+        let total_rows = height as u32 + buffer.len() as u32;
+        GameEngine {
+            board: GameBoard { board: visible, height, width, spool_capacity: 1 },
+            yarn: Yarn { board: vec![vec![]], yarn_lines: 1, visible_stitches: 3, balloon_columns: Vec::new() },
+            held_spools: vec![],
+            cursor_row: 2, cursor_col: 0,
+            spool_capacity: 1, spool_limit: 5,
+            bonuses: BonusInventory { scissors: 999, tweezers: 999, balloons: 999, scissors_spools: 1, balloon_count: 2 },
+            bonus_state: BonusState::None,
+            blessing_flags: BlessingFlags::default(),
+            last_picked_color: None,
+            ad_limit: None, ads_used: 0,
+            generation_attempts: 0,
+            hint_cell: None, hint_ticks: 0,
+            anim_cells: loom_engine::anim::AnimOverlay::new(),
+            row_buffer: buffer,
+            total_rows,
+            rows_cleared: 0,
+        }
+    }
+
+    #[test]
+    fn process_all_active_shifts_exhausted_top_row_from_buffer() {
+        let visible = vec![
+            vec![BoardEntity::Void, BoardEntity::Obstacle],       // row 0: exhausted
+            vec![BoardEntity::Spool(Color::Red), BoardEntity::Void], // row 1: has content
+        ];
+        let buffer = vec![
+            vec![BoardEntity::Spool(Color::Blue), BoardEntity::Void], // next buffered row
+        ];
+        let mut e = endless_test_engine(visible, buffer);
+        e.process_all_active(); // no held spools, but the shift check still runs
+
+        assert_eq!(e.board.board.len(), 2, "still 6-tall.. here 2-tall since test board is 2 rows");
+        assert_eq!(e.board.board[0], vec![BoardEntity::Spool(Color::Red), BoardEntity::Void]);
+        assert_eq!(e.board.board[1], vec![BoardEntity::Spool(Color::Blue), BoardEntity::Void]);
+        assert!(e.row_buffer.is_empty());
+        assert_eq!(e.rows_cleared, 1);
+        assert_eq!(e.cursor_row, 1, "cursor at row 2 saturating_sub(1) = 1");
+    }
+
+    #[test]
+    fn process_all_active_shrinks_board_when_buffer_empty() {
+        let visible = vec![
+            vec![BoardEntity::Void, BoardEntity::Obstacle],
+            vec![BoardEntity::Spool(Color::Red), BoardEntity::Void],
+        ];
+        let mut e = endless_test_engine(visible, Vec::new());
+        e.process_all_active();
+
+        assert_eq!(e.board.board.len(), 1);
+        assert_eq!(e.board.height, 1);
+        assert_eq!(e.rows_cleared, 1);
+    }
+
+    #[test]
+    fn process_all_active_does_not_shift_for_non_endless_engine() {
+        let mut e = default_engine(); // total_rows == 0
+        let before = e.board.board.clone();
+        e.process_all_active();
+        assert_eq!(e.board.board, before);
+    }
+
+    #[test]
+    fn is_won_false_while_row_buffer_has_rows_even_if_visible_board_clear() {
+        let visible = vec![
+            vec![BoardEntity::Void, BoardEntity::Void],
+        ];
+        let buffer = vec![
+            vec![BoardEntity::Spool(Color::Red), BoardEntity::Void],
+        ];
+        let e = endless_test_engine(visible, buffer);
+        assert!(!e.is_won(), "row_buffer still has content, must not be won");
+    }
+
+    #[test]
+    fn is_won_true_when_board_and_buffer_both_clear() {
+        let visible = vec![
+            vec![BoardEntity::Void, BoardEntity::Void],
+        ];
+        let e = endless_test_engine(visible, Vec::new());
+        assert!(e.is_won());
     }
 
     #[test]
