@@ -1,9 +1,9 @@
 # Loom
 
-A multi-game terminal puzzle engine built with Rust and crossterm. Currently ships two playable games — **Knit** (spool-knitting puzzle) and **Match-3** (classic gem-matching) — plus a **Merge-2** stub, all selectable from a single binary.
+A multi-game terminal puzzle engine built with Rust and crossterm. Currently ships four playable games — **Knit** (spool-knitting puzzle), **Match-3** (classic gem-matching), **Merge-2** (merge/order-fulfillment), and **Picross** (nonogram) — all selectable from a single binary.
 
 Binaries:
-- **loom** — game selector menu → launches Knit, Match-3, or Merge-2
+- **loom** — game selector menu → launches Knit, Match-3, Merge-2, or Picross
 - **knitui** — launch Knit directly (interactive TUI)
 - **knitui-ni** — non-interactive CLI driver for Knit (JSON in/out, for scripting and AI agents)
 - **knitui-solvcheck** — independent solvability checker for Knit (reads NDJSON, runs DFS verification)
@@ -258,9 +258,24 @@ crates/
 │       ├── game.rs         — impl Game for M3Game
 │       └── ...             — bonuses, campaign_levels, config, etc.
 │
-└── loom-merge2/            — Merge-2 game stub (lib: m2tui)
+├── loom-merge2/            — Merge-2 game (lib: m2tui)
+│   └── src/
+│       ├── engine/          — GameEngine: merging, generators, order delivery
+│       ├── renderer/        — merge2-specific TUI rendering
+│       ├── tui.rs           — merge2 TUI event loop + menus
+│       ├── campaign.rs      — campaign state + mission progression
+│       ├── blessings.rs     — campaign blessing modifiers
+│       ├── game.rs          — impl Game for M2Game
+│       └── ...              — item, order, generator, endless, config, etc.
+│
+└── loom-picross/           — Picross/nonogram game (lib: picrosstui)
     └── src/
-        └── game.rs         — impl Game for M2Game (placeholder)
+        ├── engine.rs       — GameEngine: cell fill/flag + line-solve checks
+        ├── renderer.rs     — picross-specific TUI rendering
+        ├── tui.rs          — picross TUI event loop + menus
+        ├── puzzle.rs       — puzzle/clue definitions
+        ├── game.rs         — impl Game for PicrossGame
+        └── ...              — campaign, puzzles, config
 ```
 
 ### Core traits (loom-engine)
@@ -305,7 +320,6 @@ cargo build --release           # build all binaries
 ## TODO
 
 - [ ] Wire up `GameEngine` trait implementations (currently `create_engine()` is stubbed)
-- [ ] Merge-2 game implementation
 - [ ] Puzzle editor / non-random board generation
 - [ ] Further unify shared code (game-configurable palettes and color modes)
 

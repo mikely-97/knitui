@@ -13,7 +13,7 @@ and per-game crates, producing a single binary with a game-selector menu.
 4. **Define Game + GameEngine traits** — `Game`, `GameEngine`, `GameConfig` traits plus `Action`, `GameStatus`, `RenderArea` types
 5. **Extract TUI framework** — terminal setup/teardown, panic hook, `run_cli()` entry point in each game crate's `tui.rs`
 6. **Port m3-tui** — match-3 game ported into `crates/loom-match3/` (124 tests passing)
-7. **Single binary + game selector** — root `src/main.rs` with game selector, merge-2 stub
+7. **Single binary + game selector** — root `src/main.rs` with game selector for knit, match-3, merge-2, and picross
 
 ### Key design decisions
 
@@ -21,6 +21,14 @@ and per-game crates, producing a single binary with a game-selector menu.
 - **Game-specific settings kept local**: m3's COLOR_MODES (dark, bright, colorblind, + RGB variants) differ from knit's. Each game keeps its own `settings.rs` with hardcoded config dir paths.
 - **Re-export pattern**: loom-knit re-exports `loom_engine::{palette, color_serde, settings, ad_content}` via `pub use` so internal `crate::` imports continue to work.
 - **CampaignEntry trait**: generic campaign persistence uses a `CampaignEntry` trait with serde bounds. Each game defines its own campaign state struct (with game-specific bonus fields) implementing this trait.
+
+---
+
+## Completed: Merge-2 Game
+
+`crates/loom-merge2/` is a full game, not a stub: campaign (3 tracks, blessings system),
+endless mode, generators/merging mechanics, level design pass, engine tests, and
+celebration/mission-summary popups on mission completion.
 
 ---
 
@@ -50,10 +58,6 @@ All features from the original knitui roadmap are implemented:
 ### Wire up GameEngine trait (low priority)
 
 `create_engine()` is currently `unimplemented!()` in both KnitGame and M3Game. This would allow the shared TUI framework to fully own the event loop rather than each game having its own `tui.rs`. Not blocking — both games work fine with their own event loops.
-
-### Merge-2 game implementation
-
-`crates/loom-merge2/` is a stub. Design the merge-2 mechanics and implement the full game.
 
 ### Further unification opportunities
 

@@ -1,6 +1,14 @@
 # Batch 1: Quick Fixes Implementation Plan
 
-> **For agentic workers:** REQUIRED: Use superpowers:subagent-driven-development (if subagents available) or superpowers:executing-plans to implement this plan. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **Status: DONE.** Verified in code as of 2026-08-02: `MAX_BOARD_DIM` is defined and
+> enforced (`crates/loom-knit/src/config.rs`, `tui.rs`, `endless.rs`), the key-spawn fix
+> is in `crates/loom-knit/src/game_board.rs`, and the held-spool counter is in
+> `crates/loom-knit/src/renderer/panels.rs`. This plan predates the `crates/` workspace
+> migration and references old flat `src/` paths — the underlying fixes shipped, just
+> under the current crate layout, so the checkboxes below were never ticked. Marking
+> them done now to match reality rather than rewriting the plan's history.
+
+> **For agentic workers:** REQUIRED: Use superpowers:subagent-driven-development (if subagents available) or superpowers:executing-plans to implement this plan. Steps use checkbox (`- [x]`) syntax for tracking.
 
 **Goal:** Fix board max size to 6x6, make locks/keys actually spawn, and add a held-spool counter.
 
@@ -21,7 +29,7 @@
 - Modify: `src/campaign_levels.rs` — clamp all levels exceeding 6 in either dimension
 - Test: existing tests in `src/campaign_levels.rs` (the `all_levels_have_valid_board_sizes` test gets a stricter assertion)
 
-- [ ] **Step 1: Add MAX_BOARD_DIM constant to config.rs**
+- [x] **Step 1: Add MAX_BOARD_DIM constant to config.rs**
 
 In `src/config.rs`, add before the `Config` struct:
 
@@ -30,7 +38,7 @@ In `src/config.rs`, add before the `Config` struct:
 pub const MAX_BOARD_DIM: u16 = 6;
 ```
 
-- [ ] **Step 2: Write a test enforcing the cap on campaign levels**
+- [x] **Step 2: Write a test enforcing the cap on campaign levels**
 
 In `src/campaign_levels.rs`, add to the `tests` module:
 
@@ -49,12 +57,12 @@ fn all_levels_respect_max_board_dim() {
 }
 ```
 
-- [ ] **Step 3: Run test to verify it fails**
+- [x] **Step 3: Run test to verify it fails**
 
 Run: `cargo test all_levels_respect_max_board_dim -- --nocapture`
 Expected: FAIL — several Short/Medium/Long campaign levels exceed 6.
 
-- [ ] **Step 4: Clamp campaign levels that exceed 6**
+- [x] **Step 4: Clamp campaign levels that exceed 6**
 
 In `src/campaign_levels.rs`, find every `CampaignLevel` with `board_height > 6` or `board_width > 6` and clamp both to 6. To compensate for the smaller board, bump `color_number` by +1 (capped at 8) and/or `conveyor_capacity` by +1 on each clamped level, as the spec prescribes.
 
@@ -66,12 +74,12 @@ grep -n 'board_width: [789]' src/campaign_levels.rs
 
 For each match: set the offending dimension to 6, and add +1 to `color_number` (cap at 8) or +1 to `conveyor_capacity` (cap at 5) to compensate for the reduced cell count.
 
-- [ ] **Step 5: Run the new test to verify it passes**
+- [x] **Step 5: Run the new test to verify it passes**
 
 Run: `cargo test all_levels_respect_max_board_dim -- --nocapture`
 Expected: PASS
 
-- [ ] **Step 6: Cap the custom game sliders in main.rs**
+- [x] **Step 6: Cap the custom game sliders in main.rs**
 
 In `src/main.rs`, function `adjust_custom_field`, change:
 
@@ -87,7 +95,7 @@ In `src/main.rs`, function `adjust_custom_field`, change:
 
 Add `use knitui::config::MAX_BOARD_DIM;` to imports at the top of `main.rs`.
 
-- [ ] **Step 7: Cap endless mode scaling in endless.rs**
+- [x] **Step 7: Cap endless mode scaling in endless.rs**
 
 In `src/endless.rs`, function `to_config()`, change:
 
@@ -103,7 +111,7 @@ cfg.board_height = (4 + w / 3).min(MAX_BOARD_DIM);
 cfg.board_width  = (4 + w / 3).min(MAX_BOARD_DIM);
 ```
 
-- [ ] **Step 8: Update the endless to_config test**
+- [x] **Step 8: Update the endless to_config test**
 
 In `src/endless.rs`, the existing test `to_config_scales_with_wave` asserts that higher waves produce larger boards. After the cap change, the scaling formula `(4 + w/3).min(6)` still produces growth from wave 1 (4x4) to wave 6+ (6x6), so the existing `cfg10.board_height > cfg1.board_height` assertion still holds (6 > 4). However, any assertion that boards reach 10x10 must be updated. Find any `assert_eq!(..., 10)` or `assert!(... >= 10)` on board dimensions and change to `<= 6`. Specifically:
 
@@ -117,12 +125,12 @@ assert_eq!(cfg20.board_width, 6);
 
 Read the full test body before editing to identify every assertion that references the old cap of 10.
 
-- [ ] **Step 9: Run all tests**
+- [x] **Step 9: Run all tests**
 
 Run: `cargo test`
 Expected: all pass
 
-- [ ] **Step 10: Commit**
+- [x] **Step 10: Commit**
 
 ```bash
 git add src/config.rs src/main.rs src/endless.rs src/campaign_levels.rs
@@ -139,7 +147,7 @@ git commit -m "feat: enforce 6x6 max board size everywhere"
 - Modify: `src/game_board.rs:16-100` — add Pass 4 for KeySpool placement
 - Test: `src/game_board.rs` (tests module)
 
-- [ ] **Step 1: Write the failing test for key spawning**
+- [x] **Step 1: Write the failing test for key spawning**
 
 In `src/game_board.rs`, add to the `tests` module:
 
@@ -167,12 +175,12 @@ fn test_no_keys_on_tiny_boards() {
 }
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 Run: `cargo test test_keys_spawn -- --nocapture`
 Expected: `test_keys_spawn_on_large_boards` FAILS, `test_no_keys_on_tiny_boards` PASSES (vacuously).
 
-- [ ] **Step 3: Implement Pass 4 in make_random**
+- [x] **Step 3: Implement Pass 4 in make_random**
 
 In `src/game_board.rs`, inside `make_random`, after the conveyor reversion block (after line 97 `}`), add:
 
@@ -197,17 +205,17 @@ In `src/game_board.rs`, inside `make_random`, after the conveyor reversion block
         }
 ```
 
-- [ ] **Step 4: Run the key-spawn tests**
+- [x] **Step 4: Run the key-spawn tests**
 
 Run: `cargo test test_keys_spawn -- --nocapture`
 Expected: both PASS
 
-- [ ] **Step 5: Run full test suite**
+- [x] **Step 5: Run full test suite**
 
 Run: `cargo test`
 Expected: all pass
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add src/game_board.rs
@@ -220,7 +228,7 @@ git commit -m "feat: auto-spawn KeySpools on boards with ≥12 spools"
 - Modify: `src/engine.rs:75-140` — after yarn generation, lock stitches matching KeySpool colors
 - Test: `src/engine.rs` (tests module)
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 In `src/engine.rs`, add to the `tests` module:
 
@@ -257,12 +265,12 @@ fn new_engine_has_locked_stitches_when_keys_present() {
 }
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `cargo test new_engine_has_locked_stitches -- --nocapture`
 Expected: FAIL — lock_count is 0 because yarn never gets locked stitches.
 
-- [ ] **Step 3: Add lock-placement logic in GameEngine::new**
+- [x] **Step 3: Add lock-placement logic in GameEngine::new**
 
 In `src/engine.rs`, inside `GameEngine::new`, after the generation loop ends (after `if attempts >= 100 { break; }`) and before the cursor-finding code, add:
 
@@ -296,17 +304,17 @@ In `src/engine.rs`, inside `GameEngine::new`, after the generation loop ends (af
         }
 ```
 
-- [ ] **Step 4: Run the test**
+- [x] **Step 4: Run the test**
 
 Run: `cargo test new_engine_has_locked_stitches -- --nocapture`
 Expected: PASS
 
-- [ ] **Step 5: Run full test suite**
+- [x] **Step 5: Run full test suite**
 
 Run: `cargo test`
 Expected: all pass
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add src/engine.rs
@@ -322,7 +330,7 @@ git commit -m "feat: lock yarn stitches to match KeySpools on the board"
 **Files:**
 - Modify: `src/renderer.rs:733-770` — add counter to `render_bonus_display_h` and `render_bonus_panel`
 
-- [ ] **Step 1: Add held counter to render_bonus_display_h**
+- [x] **Step 1: Add held counter to render_bonus_display_h**
 
 In `src/renderer.rs`, function `render_bonus_display_h`, after the bonus loop, before `Ok(())`, add:
 
@@ -341,7 +349,7 @@ In `src/renderer.rs`, function `render_bonus_display_h`, after the bonus loop, b
     }
 ```
 
-- [ ] **Step 2: Add held counter to render_bonus_panel**
+- [x] **Step 2: Add held counter to render_bonus_panel**
 
 In `src/renderer.rs`, function `render_bonus_panel`, after the bonus loop, before `Ok(())`, add:
 
@@ -361,19 +369,19 @@ In `src/renderer.rs`, function `render_bonus_panel`, after the bonus loop, befor
     }
 ```
 
-- [ ] **Step 3: Run full test suite**
+- [x] **Step 3: Run full test suite**
 
 Run: `cargo test`
 Expected: all pass (renderer functions have no unit tests, but compilation confirms correctness)
 
-- [ ] **Step 4: Manual verification**
+- [x] **Step 4: Manual verification**
 
 Run: `cargo run` and start a custom game. Verify:
 - Counter shows `⊞ 0/7` (or current spool_limit) in the bonus area
 - Picking up spools increments the counter
 - Counter turns yellow when 2 away from limit, red when 1 away
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/renderer.rs
@@ -384,7 +392,7 @@ git commit -m "feat: add held spool counter to bonus display panels"
 
 ## Final Step
 
-- [ ] **Run full test suite one last time**
+- [x] **Run full test suite one last time**
 
 Run: `cargo test`
 Expected: all pass
