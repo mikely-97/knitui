@@ -154,6 +154,9 @@ fn test_engine_cursor_traversal() {
         hint_cell: None,
         hint_ticks: 0,
         anim_cells: loom_engine::anim::AnimOverlay::new(),
+        row_buffer: Vec::new(),
+        total_rows: 0,
+        rows_cleared: 0,
     };
 
     // Traverse to bottom-right corner
@@ -203,6 +206,9 @@ fn test_engine_json_roundtrip_preserves_game_state() {
         hint_cell: None,
         hint_ticks: 0,
         anim_cells: loom_engine::anim::AnimOverlay::new(),
+        row_buffer: Vec::new(),
+        total_rows: 0,
+        rows_cleared: 0,
     };
 
     // Make some moves
@@ -291,6 +297,9 @@ fn test_input_during_processing() {
         hint_cell: None,
         hint_ticks: 0,
         anim_cells: loom_engine::anim::AnimOverlay::new(),
+        row_buffer: Vec::new(),
+        total_rows: 0,
+        rows_cleared: 0,
     };
 
     // Pick up a spool

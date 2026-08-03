@@ -7,6 +7,7 @@ use std::fmt;
 
 pub use loom_engine::direction::Direction;
 
+#[derive(Clone, Debug, PartialEq)]
 pub struct ConveyorData {
     /// Color displayed on the conveyor cell itself.
     pub color: Color,
@@ -16,6 +17,7 @@ pub struct ConveyorData {
     pub queue: Vec<Color>,
 }
 
+#[derive(Clone, Debug, PartialEq)]
 pub enum BoardEntity {
     /// A normal selectable spool.
     Spool(Color),

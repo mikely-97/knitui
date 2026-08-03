@@ -41,6 +41,12 @@ pub struct GameEngine {
     pub hint_ticks: u8,
     /// Burst animation overlay: (row, col) -> frame countdown 3..=1
     pub anim_cells: loom_engine::anim::AnimOverlay,
+    /// Rows not yet shifted into the visible board (endless mode only; empty otherwise).
+    pub row_buffer: Vec<Vec<BoardEntity>>,
+    /// Total rows in the full generated board (endless mode only; 0 otherwise).
+    pub total_rows: u32,
+    /// Rows successfully shifted through so far (endless mode only).
+    pub rows_cleared: u32,
 }
 
 impl GameEngine {
@@ -146,6 +152,9 @@ impl GameEngine {
             hint_cell: None,
             hint_ticks: 0,
             anim_cells: loom_engine::anim::AnimOverlay::new(),
+            row_buffer: Vec::new(),
+            total_rows: 0,
+            rows_cleared: 0,
         }
     }
 
@@ -599,6 +608,12 @@ pub struct GameStateSnapshot {
     pub ads_used: u16,
     #[serde(default)]
     pub generation_attempts: u32,
+    #[serde(default)]
+    pub row_buffer: Vec<Vec<String>>,
+    #[serde(default)]
+    pub total_rows: u32,
+    #[serde(default)]
+    pub rows_cleared: u32,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -648,6 +663,11 @@ impl GameStateSnapshot {
             ad_limit: e.ad_limit,
             ads_used: e.ads_used,
             generation_attempts: e.generation_attempts,
+            row_buffer: e.row_buffer.iter()
+                .map(|row| row.iter().map(cell_to_str).collect())
+                .collect(),
+            total_rows: e.total_rows,
+            rows_cleared: e.rows_cleared,
         }
     }
 
@@ -684,6 +704,11 @@ impl GameStateSnapshot {
             .collect();
         let balloon_cols = balloon_cols?;
 
+        let row_buffer: Result<Vec<Vec<BoardEntity>>, String> = self.row_buffer.iter()
+            .map(|row| row.iter().map(|s| str_to_cell(s)).collect())
+            .collect();
+        let row_buffer = row_buffer?;
+
         Ok(GameEngine {
             board: GameBoard {
                 board: board_cells,
@@ -718,6 +743,9 @@ impl GameStateSnapshot {
             hint_cell: None,
             hint_ticks: 0,
             anim_cells: loom_engine::anim::AnimOverlay::new(),
+            row_buffer,
+            total_rows: self.total_rows,
+            rows_cleared: self.rows_cleared,
         })
     }
 }
@@ -828,6 +856,9 @@ mod tests {
             hint_cell: None,
             hint_ticks: 0,
             anim_cells: loom_engine::anim::AnimOverlay::new(),
+            row_buffer: Vec::new(),
+            total_rows: 0,
+            rows_cleared: 0,
         }
     }
 
@@ -893,6 +924,23 @@ mod tests {
         assert_eq!(e2.board.height, e.board.height);
         assert_eq!(e2.yarn.yarn_lines, e.yarn.yarn_lines);
     }
+
+    #[test]
+    fn snapshot_roundtrip_preserves_row_buffer() {
+        let mut e = default_engine();
+        e.row_buffer = vec![
+            vec![BoardEntity::Spool(Color::Red), BoardEntity::Void, BoardEntity::Obstacle],
+            vec![BoardEntity::KeySpool(Color::Blue), BoardEntity::EmptyConveyor, BoardEntity::Void],
+        ];
+        e.total_rows = 66;
+        e.rows_cleared = 12;
+        let json = e.to_json();
+        let e2 = GameEngine::from_json(&json).expect("roundtrip");
+        assert_eq!(e2.row_buffer, e.row_buffer);
+        assert_eq!(e2.total_rows, 66);
+        assert_eq!(e2.rows_cleared, 12);
+    }
+
     #[test]
     fn cell_roundtrip_all_variants() {
         let cells = vec![
@@ -967,6 +1015,9 @@ mod tests {
             hint_cell: None,
             hint_ticks: 0,
             anim_cells: loom_engine::anim::AnimOverlay::new(),
+            row_buffer: Vec::new(),
+            total_rows: 0,
+            rows_cleared: 0,
         };
         assert!(e.move_cursor(Direction::Down).is_ok());
         assert_eq!(e.cursor_row, 2); // skipped row 1
@@ -1051,6 +1102,9 @@ mod tests {
             hint_cell: None,
             hint_ticks: 0,
             anim_cells: loom_engine::anim::AnimOverlay::new(),
+            row_buffer: Vec::new(),
+            total_rows: 0,
+            rows_cleared: 0,
         };
         assert!(e.is_won());
     }
@@ -1221,6 +1275,9 @@ mod tests {
             hint_cell: None,
             hint_ticks: 0,
             anim_cells: loom_engine::anim::AnimOverlay::new(),
+            row_buffer: Vec::new(),
+            total_rows: 0,
+            rows_cleared: 0,
         };
         assert_eq!(e.status(), GameStatus::Won);
     }
@@ -1253,6 +1310,9 @@ mod tests {
             hint_cell: None,
             hint_ticks: 0,
             anim_cells: loom_engine::anim::AnimOverlay::new(),
+            row_buffer: Vec::new(),
+            total_rows: 0,
+            rows_cleared: 0,
         };
         assert_eq!(e.status(), GameStatus::Stuck);
     }
@@ -1288,6 +1348,9 @@ mod tests {
             hint_cell: None,
             hint_ticks: 0,
             anim_cells: loom_engine::anim::AnimOverlay::new(),
+            row_buffer: Vec::new(),
+            total_rows: 0,
+            rows_cleared: 0,
         };
         assert_eq!(e.status(), GameStatus::Stuck);
     }
@@ -1320,6 +1383,9 @@ mod tests {
             hint_cell: None,
             hint_ticks: 0,
             anim_cells: loom_engine::anim::AnimOverlay::new(),
+            row_buffer: Vec::new(),
+            total_rows: 0,
+            rows_cleared: 0,
         };
         assert_eq!(e.status(), GameStatus::Playing);
     }
