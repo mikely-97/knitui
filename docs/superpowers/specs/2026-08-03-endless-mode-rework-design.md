@@ -60,7 +60,7 @@ After each pick-up + process cycle, before computing `status()`:
 3. Clamp `cursor_row` if it now points past the shifted board (shift up by the number of removed rows, clamped to `0..board.height`).
 4. If `row_buffer` is empty when a shift would occur, don't pull anything in — the visible board just plays out to completion (fewer than 6 rows of real content remaining is fine).
 
-**Ordering requirement**: this shift must run *before* `status()` is evaluated in the same tick. `status()`'s stuck check (`!self.board.has_selectable_spool()`) doesn't know about the row buffer — if a row empties and the shift hasn't happened yet, a real continuous game could flash `Stuck` for one frame while more content is waiting in the buffer. The engine's per-tick sequence becomes: apply pick/process → shift exhausted rows → compute status.
+**Where this hooks in**: both callers of the engine (`crates/loom-knit/src/tui.rs` and `crates/loom-knit/src/bin/knitui_ni.rs`) already follow the same pattern — call `process_all_active()`, then check `status()`. `process_one_active()` (a second, per-step variant) has no production call sites; only tests use it. So the shift check belongs as the **last step inside `process_all_active()` itself**, gated on `self.total_rows > 0` (a no-op for every non-endless engine, where `total_rows` is always 0). Neither caller needs new code, and the ordering requirement (`status()`'s stuck check must never see a row that's exhausted but not yet refilled) is automatically satisfied since `process_all_active()` always completes before either caller calls `status()`.
 
 ## Win / Stuck Semantics
 
