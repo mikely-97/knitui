@@ -178,7 +178,7 @@ impl GameEngine {
             base_config.conveyor_capacity,
         );
 
-        let yarn = Yarn::make_from_color_counter(
+        let mut yarn = Yarn::make_from_color_counter(
             full_board.count_spools(),
             base_config.yarn_lines,
             base_config.visible_stitches,
@@ -187,6 +187,35 @@ impl GameEngine {
             crate::solvability::count_balance(&full_board, &yarn, base_config.spool_capacity),
             "endless yarn must balance the full generated board by construction"
         );
+
+        // Lock yarn stitches to match KeySpools on the full board.
+        // This must happen before split_off to see all KeySpools across the entire 66-row board.
+        let mut key_colors: Vec<Color> = Vec::new();
+        for row in &full_board.board {
+            for cell in row {
+                if let BoardEntity::KeySpool(c) = cell {
+                    key_colors.push(*c);
+                }
+            }
+        }
+        for key_color in &key_colors {
+            // Find the deepest (last) unlocked stitch of this color in any yarn column
+            let mut best: Option<(usize, usize)> = None; // (col_idx, stitch_idx)
+            for (ci, col) in yarn.board.iter().enumerate() {
+                for (si, stitch) in col.iter().enumerate() {
+                    if stitch.color == *key_color && !stitch.locked {
+                        match best {
+                            None => best = Some((ci, si)),
+                            Some((_, prev_si)) if si > prev_si => best = Some((ci, si)),
+                            _ => {}
+                        }
+                    }
+                }
+            }
+            if let Some((ci, si)) = best {
+                yarn.board[ci][si].locked = true;
+            }
+        }
 
         // Split into visible window (top `visible_rows` rows) + buffer (the rest).
         // `Vec::split_off(n)` returns everything from index `n` onward and leaves
