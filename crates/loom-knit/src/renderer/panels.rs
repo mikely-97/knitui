@@ -488,8 +488,8 @@ pub fn render_level_intro(
 /// Render the endless mode game-over screen (shown when stuck).
 pub fn render_endless_gameover(
     stdout: &mut Stdout,
-    wave: usize,
-    best_wave: usize,
+    rows_cleared: u32,
+    best_rows_cleared: usize,
 ) -> io::Result<()> {
     stdout.queue(BeginSynchronizedUpdate)?;
     stdout.queue(Hide)?;
@@ -503,18 +503,18 @@ pub fn render_endless_gameover(
     stdout.queue(MoveTo(tx, start_y))?;
     stdout.queue(Print(title))?;
 
-    let wave_str = format!("You reached wave {}", wave);
-    let wx = (term_w.saturating_sub(wave_str.chars().count() as u16)) / 2;
-    stdout.queue(MoveTo(wx, start_y + 2))?;
-    stdout.queue(Print(&wave_str))?;
+    let rows_str = format!("You cleared {} rows", rows_cleared);
+    let rx2 = (term_w.saturating_sub(rows_str.chars().count() as u16)) / 2;
+    stdout.queue(MoveTo(rx2, start_y + 2))?;
+    stdout.queue(Print(&rows_str))?;
 
-    if wave >= best_wave {
+    if rows_cleared as usize >= best_rows_cleared {
         let record_str = "New record!";
         let rx = (term_w.saturating_sub(record_str.chars().count() as u16)) / 2;
         stdout.queue(MoveTo(rx, start_y + 3))?;
         stdout.queue(Print(record_str))?;
     } else {
-        let best_str = format!("Best: wave {}", best_wave);
+        let best_str = format!("Best: {} rows", best_rows_cleared);
         let bx = (term_w.saturating_sub(best_str.chars().count() as u16)) / 2;
         stdout.queue(MoveTo(bx, start_y + 3))?;
         stdout.queue(Print(best_str.dark_grey()))?;
@@ -561,6 +561,12 @@ pub fn render_bonus_display_h(stdout: &mut Stdout, engine: &GameEngine, x: u16, 
         stdout.queue(MoveTo(x, y + 1))?;
         render_color_counts(stdout, engine)?;
     }
+    // Endless mode: rows remaining in the buffer
+    if engine.total_rows > 0 {
+        let remaining = engine.total_rows.saturating_sub(engine.rows_cleared);
+        stdout.queue(Print("  "))?;
+        stdout.queue(Print(format!("Rows: {} remaining", remaining).dark_grey()))?;
+    }
     Ok(())
 }
 
@@ -596,6 +602,13 @@ pub fn render_bonus_panel(stdout: &mut Stdout, engine: &GameEngine, x: u16, y: u
         row += 1;
         stdout.queue(MoveTo(x, y + row))?;
         render_color_counts(stdout, engine)?;
+    }
+    // Endless mode: rows remaining in the buffer
+    if engine.total_rows > 0 {
+        row += 1;
+        let remaining = engine.total_rows.saturating_sub(engine.rows_cleared);
+        stdout.queue(MoveTo(x, y + row))?;
+        stdout.queue(Print(format!("Rows: {} remaining", remaining).dark_grey()))?;
     }
     Ok(())
 }
