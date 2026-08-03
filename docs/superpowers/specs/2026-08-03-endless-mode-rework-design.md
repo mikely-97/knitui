@@ -79,9 +79,9 @@ After each pick-up + process cycle, before computing `status()`:
 
 ## Scoring
 
-- `EndlessHighScore.best_wave: usize` → `best_rows_cleared: usize`.
-- Migration: `#[serde(alias = "best_wave")]` on the renamed field so existing save files deserialize without losing the recorded high score (the old wave count becomes the initial "rows cleared" baseline — imperfect but harmless, since it's immediately overwritable by real play).
-- Game-over screen shows rows cleared instead of wave reached.
+**Correction from the original proposal**: `EndlessHighScore` (`pub best_wave: usize`) is defined once in `crates/loom-engine/src/endless.rs` and shared by loom-knit, loom-match3, and loom-merge2 — it is not knit-local. Renaming `best_wave` there would rename it for match3 and merge2 too, where it still genuinely means "wave" since neither has been reworked. No change to `loom-engine` or the shared struct.
+
+Instead: knit's endless flow keeps calling `EndlessHighScore::update(n)`/`.best_wave` exactly as today, just passing `rows_cleared` as the `n` instead of a wave number. The stored field name (`best_wave`) becomes a misnomer for knit specifically, but no save-file migration is needed — it's the same field, same type, existing high score files load fine and just get reinterpreted as a rows-cleared baseline going forward (the old wave-based number gets overwritten by real play on the first continuous-endless run). Only the on-screen label changes ("Best: N waves" → "Best: N rows"), in `crates/loom-knit/src/renderer.rs` / `tui.rs` — not the underlying struct.
 
 ## Bonuses
 
