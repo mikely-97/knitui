@@ -16,6 +16,9 @@ use crate::palette::select_palette;
 use crate::solvability::{is_solvable, count_solutions};
 use crate::color_serde;
 
+/// Total rows generated for a continuous-endless board (visible + buffered).
+pub const ENDLESS_TOTAL_ROWS: u16 = 66;
+
 // ── GameEngine ─────────────────────────────────────────────────────────────
 
 pub struct GameEngine {
@@ -154,6 +157,82 @@ impl GameEngine {
             anim_cells: loom_engine::anim::AnimOverlay::new(),
             row_buffer: Vec::new(),
             total_rows: 0,
+            rows_cleared: 0,
+        }
+    }
+
+    /// Build a fresh continuous-endless engine: one tall board (visible + buffer),
+    /// yarn generated to match the whole board's color demand, unlimited bonuses.
+    pub fn new_endless(base_config: &Config) -> Self {
+        let visible_rows = crate::config::MAX_BOARD_DIM;
+        let color_mode = base_config.parsed_color_mode();
+        let selected_palette = select_palette(color_mode, base_config.color_number);
+
+        let mut full_board = GameBoard::make_random(
+            ENDLESS_TOTAL_ROWS,
+            visible_rows, // width stays fixed at the visible column count
+            &selected_palette,
+            base_config.obstacle_percentage,
+            base_config.spool_capacity,
+            base_config.conveyor_percentage,
+            base_config.conveyor_capacity,
+        );
+
+        let yarn = Yarn::make_from_color_counter(
+            full_board.count_spools(),
+            base_config.yarn_lines,
+            base_config.visible_stitches,
+        );
+        debug_assert!(
+            crate::solvability::count_balance(&full_board, &yarn, base_config.spool_capacity),
+            "endless yarn must balance the full generated board by construction"
+        );
+
+        // Split into visible window (top `visible_rows` rows) + buffer (the rest).
+        // `Vec::split_off(n)` returns everything from index `n` onward and leaves
+        // the first `n` elements in place, so `full_board.board` is already left
+        // holding exactly the visible rows after this call.
+        let row_buffer = full_board.board.split_off(visible_rows as usize);
+        full_board.height = visible_rows;
+
+        // Find first focusable cell for initial cursor position (same logic as `new`).
+        let (mut init_row, mut init_col) = (0u16, 0u16);
+        'find_cursor: for r in 0..full_board.height {
+            for c in 0..full_board.width {
+                if full_board.is_focusable(r as usize, c as usize) {
+                    init_row = r;
+                    init_col = c;
+                    break 'find_cursor;
+                }
+            }
+        }
+
+        Self {
+            board: full_board,
+            yarn,
+            held_spools: Vec::new(),
+            cursor_row: init_row,
+            cursor_col: init_col,
+            spool_capacity: base_config.spool_capacity,
+            spool_limit: base_config.spool_limit,
+            bonuses: BonusInventory {
+                scissors: 999,
+                tweezers: 999,
+                balloons: 999,
+                scissors_spools: base_config.scissors_spools,
+                balloon_count: base_config.balloon_count,
+            },
+            bonus_state: BonusState::None,
+            blessing_flags: BlessingFlags::default(),
+            last_picked_color: None,
+            ad_limit: None,
+            ads_used: 0,
+            generation_attempts: 0,
+            hint_cell: None,
+            hint_ticks: 0,
+            anim_cells: loom_engine::anim::AnimOverlay::new(),
+            row_buffer,
+            total_rows: ENDLESS_TOTAL_ROWS as u32,
             rows_cleared: 0,
         }
     }
@@ -1567,5 +1646,69 @@ mod tests {
 
         assert_eq!(key_count, lock_count,
             "keys={} but locked_stitches={}", key_count, lock_count);
+    }
+
+    #[test]
+    fn new_endless_builds_visible_and_buffered_rows() {
+        let config = Config {
+            board_height: 6, board_width: 6, color_number: 4,
+            color_mode: "dark".into(), spool_limit: 7,
+            spool_capacity: 2, yarn_lines: 4, obstacle_percentage: 5,
+            visible_stitches: 6, conveyor_capacity: 3, conveyor_percentage: 5,
+            layout: "auto".into(), scale: 1,
+            scissors: 0, tweezers: 0, balloons: 0,
+            scissors_spools: 1, balloon_count: 2, ad_file: None,
+            max_solutions: None,
+            hard_mode: false,
+        };
+        let e = GameEngine::new_endless(&config);
+
+        assert_eq!(e.board.height, 6);
+        assert_eq!(e.board.width, 6);
+        assert_eq!(e.board.board.len(), 6);
+        assert_eq!(e.total_rows, ENDLESS_TOTAL_ROWS as u32);
+        assert_eq!(e.rows_cleared, 0);
+        // 60 buffered rows (66 total - 6 visible), each 6 cells wide
+        assert_eq!(e.row_buffer.len(), 60);
+        for row in &e.row_buffer {
+            assert_eq!(row.len(), 6);
+        }
+        assert_eq!(e.bonuses.scissors, 999);
+        assert_eq!(e.bonuses.tweezers, 999);
+        assert_eq!(e.bonuses.balloons, 999);
+    }
+
+    #[test]
+    fn new_endless_yarn_matches_full_board_color_demand() {
+        let config = Config {
+            board_height: 6, board_width: 6, color_number: 3,
+            color_mode: "dark".into(), spool_limit: 7,
+            spool_capacity: 2, yarn_lines: 4, obstacle_percentage: 0,
+            visible_stitches: 6, conveyor_capacity: 3, conveyor_percentage: 0,
+            layout: "auto".into(), scale: 1,
+            scissors: 0, tweezers: 0, balloons: 0,
+            scissors_spools: 1, balloon_count: 2, ad_file: None,
+            max_solutions: None,
+            hard_mode: false,
+        };
+        let e = GameEngine::new_endless(&config);
+        // Yarn was generated from the FULL board (visible + buffer), so the
+        // visible board alone won't balance — but every color used anywhere
+        // in the yarn must appear somewhere in either the visible board or
+        // the buffer (nothing invented, nothing missing).
+        use std::collections::HashSet;
+        let yarn_colors: HashSet<Color> = e.yarn.board.iter()
+            .flat_map(|col| col.iter().map(|s| s.color))
+            .collect();
+        let mut board_colors: HashSet<Color> = e.board.board.iter().flatten()
+            .filter_map(|c| match c {
+                BoardEntity::Spool(col) | BoardEntity::KeySpool(col) => Some(*col),
+                _ => None,
+            }).collect();
+        board_colors.extend(e.row_buffer.iter().flatten().filter_map(|c| match c {
+            BoardEntity::Spool(col) | BoardEntity::KeySpool(col) => Some(*col),
+            _ => None,
+        }));
+        assert!(yarn_colors.is_subset(&board_colors));
     }
 }
