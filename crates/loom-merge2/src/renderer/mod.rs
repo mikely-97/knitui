@@ -7,7 +7,7 @@ pub use panels::{render_hud, render_score, render_orders, render_inventory, rend
 pub use popups::{
     render_help, render_main_menu, render_campaign_select, render_level_intro,
     render_ad_overlay, render_options, render_custom_game, render_blessing_selection,
-    render_inv_expansion_popup,
+    render_inv_expansion_popup, render_celebration, render_mission_summary,
 };
 
 use crossterm::terminal::size as term_size;

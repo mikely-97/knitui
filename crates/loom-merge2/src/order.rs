@@ -77,6 +77,12 @@ pub struct Order {
     /// Optional follow-up order that becomes active when this one is completed.
     #[serde(default)]
     pub follow_up: Option<Box<Order>>,
+    /// Whether this order counts toward a campaign mission's required story-order
+    /// tally (`CampaignState::current_mission_complete`). True only for orders built
+    /// directly from a mission's `story_orders` list — chain/bonus orders (`extra_orders`)
+    /// are `OrderType::Story` too but must NOT unlock mission completion on their own.
+    #[serde(default)]
+    pub is_mission_story: bool,
 }
 
 impl Order {
@@ -147,6 +153,7 @@ impl StoryOrderDef {
                 .collect(),
             rewards: self.rewards.clone(),
             follow_up: None,
+            is_mission_story: true,
         }
     }
 }
@@ -175,6 +182,7 @@ pub fn generate_random_order(
             Reward::Energy(5 * tier as u16),
         ],
         follow_up: None,
+        is_mission_story: false,
     }
 }
 
@@ -199,6 +207,7 @@ pub fn generate_timed_order(
         requirements: vec![OrderRequirement::new(family, tier, quantity)],
         rewards: vec![Reward::Score(score_reward), Reward::Stars(star_reward)],
         follow_up: None,
+        is_mission_story: false,
     }
 }
 
@@ -215,6 +224,7 @@ mod tests {
             ],
             rewards: vec![Reward::Score(500)],
             follow_up: None,
+            is_mission_story: true,
         }
     }
 
@@ -280,6 +290,7 @@ mod tests {
             requirements: vec![],
             rewards: vec![],
             follow_up: None,
+            is_mission_story: false,
         };
         assert!(!order.tick());
         assert!(!order.tick());

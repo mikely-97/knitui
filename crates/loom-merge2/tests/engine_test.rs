@@ -18,6 +18,7 @@ fn make_engine(board: Board, inventory: Inventory, energy: Energy, orders: Vec<O
         stars, // stars
         0,     // total_merges
         0,     // cells_thawed
+        0,     // story_orders_completed
         1,     // scale
         5,     // ad_limit
         0,     // random_order_count — 0 so we don't get noise orders
@@ -135,12 +136,14 @@ fn chain_order_follow_up_activates_on_completion() {
         requirements: vec![OrderRequirement::new(Family::Stone, 1, 1)],
         rewards: vec![Reward::Score(500)],
         follow_up: None,
+        is_mission_story: false,
     };
     let parent = Order {
         order_type: OrderType::Story,
         requirements: vec![OrderRequirement::new(Family::Wood, 1, 1)],
         rewards: vec![Reward::Score(200)],
         follow_up: Some(Box::new(follow_up)),
+        is_mission_story: false,
     };
 
     let mut board = small_board();
@@ -250,6 +253,7 @@ fn bubble_item_cannot_be_delivered_directly() {
         requirements: vec![OrderRequirement::new(Family::Wood, 1, 1)],
         rewards: vec![Reward::Score(100)],
         follow_up: None,
+        is_mission_story: true,
     };
 
     let mut board = small_board();

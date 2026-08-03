@@ -248,7 +248,7 @@ pub struct Item {
 
 impl Item {
     pub fn new(family: Family, tier: u8) -> Self {
-        Self { family, tier: tier.min(MAX_TIER).max(1) }
+        Self { family, tier: tier.clamp(1, MAX_TIER) }
     }
 
     pub fn can_merge(&self, other: &Item) -> bool {

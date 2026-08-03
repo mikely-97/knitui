@@ -70,12 +70,14 @@ fn chain_order(
         requirements: vec![OrderRequirement::new(fam2, tier2, qty2)],
         rewards: rewards2,
         follow_up: None,
+        is_mission_story: false,
     };
     Order {
         order_type: OrderType::Story,
         requirements: vec![OrderRequirement::new(fam1, tier1, qty1)],
         rewards: rewards1,
         follow_up: Some(Box::new(follow_up)),
+        is_mission_story: false,
     }
 }
 

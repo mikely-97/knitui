@@ -50,6 +50,7 @@ impl GameEngine {
         let mut found = false;
         let mut fulfilled_rewards: Option<Vec<Reward>> = None;
         let mut follow_up_order: Option<Order> = None;
+        let mut fulfilled_story = false;
 
         for order in &mut self.active_orders {
             if order.accepts(piece) {
@@ -62,9 +63,14 @@ impl GameEngine {
                 if order.is_fulfilled() {
                     fulfilled_rewards = Some(order.rewards.clone());
                     follow_up_order = order.follow_up.take().map(|b| *b);
+                    fulfilled_story = order.is_mission_story;
                 }
                 break;
             }
+        }
+
+        if fulfilled_story {
+            self.story_orders_completed += 1;
         }
 
         if found {

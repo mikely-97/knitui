@@ -118,6 +118,7 @@ impl CampaignState {
             self.stars,
             self.total_merges,
             self.cells_thawed,
+            self.story_orders_completed,
             1, // scale — loaded from settings separately
             def.ad_limit,
             def.random_order_count,
@@ -138,6 +139,7 @@ impl CampaignState {
         self.active_orders = engine.active_orders.clone();
         self.total_merges = engine.total_merges;
         self.cells_thawed = engine.cells_thawed;
+        self.story_orders_completed = engine.story_orders_completed;
         self.stars = engine.stars;
         self.score = engine.score;
     }
@@ -243,6 +245,35 @@ mod tests {
         engine.score = 9999;
         s.sync_from_engine(&engine);
         assert_eq!(s.score, 9999);
+    }
+
+    #[test]
+    fn story_order_delivery_completes_mission() {
+        use crate::board::Cell;
+        use crate::item::{Item, Piece};
+
+        let mut s = CampaignState::new(0);
+        s.load_mission_orders();
+        assert!(!s.current_mission_complete());
+
+        let mut engine = s.build_engine();
+        // Track 0 mission 1 requires delivering 2x Wood T1.
+        let piece = Piece::Regular(Item::new(Family::Wood, 1));
+        engine.board.cells[0][0] = Cell::Piece(piece.clone());
+        engine.board.cells[0][1] = Cell::Piece(piece);
+
+        engine.cursor_row = 0;
+        engine.cursor_col = 0;
+        engine.activate();
+        assert!(engine.deliver_from_board());
+
+        engine.cursor_row = 0;
+        engine.cursor_col = 1;
+        engine.activate();
+        assert!(engine.deliver_from_board());
+
+        s.sync_from_engine(&engine);
+        assert!(s.current_mission_complete());
     }
 
     #[test]

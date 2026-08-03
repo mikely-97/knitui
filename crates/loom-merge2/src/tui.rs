@@ -34,6 +34,10 @@ enum TuiState {
     CampaignSelect { selected: usize },
     BlessingSelection { cursor: usize, chosen: Vec<usize> },
     CampaignLevelIntro,
+    /// Brief board-sweep animation shown after a campaign mission is won,
+    /// before the mission summary screen.
+    Celebration { ticks_remaining: u8 },
+    MissionSummary { ctx: CampaignState },
     GameOver(GameStatus),
     Help,
     Options { selected: usize },
@@ -151,6 +155,23 @@ fn run_loop(
                     renderer::render_key_bar(stdout, e, g)?;
                 }
             }
+            TuiState::Celebration { ticks_remaining } => {
+                if let (Some(e), Some(g)) = (&engine, &geo) {
+                    let label = make_label(&campaign_ctx, is_endless);
+                    renderer::render_hud(stdout, e, &label)?;
+                    renderer::render_board(stdout, e, g)?;
+                    renderer::render_orders(stdout, e, g)?;
+                    renderer::render_celebration(stdout, e, g, 16u8.saturating_sub(*ticks_remaining))?;
+                }
+            }
+            TuiState::MissionSummary { ctx } => {
+                if let (Some(e), Some(g)) = (&engine, &geo) {
+                    renderer::render_hud(stdout, e, "Mission Complete")?;
+                    renderer::render_board(stdout, e, g)?;
+                    renderer::render_orders(stdout, e, g)?;
+                }
+                renderer::render_mission_summary(stdout, ctx)?;
+            }
             TuiState::GameOver(status) => {
                 if let (Some(e), Some(g)) = (&engine, &geo) {
                     renderer::render_hud(stdout, e, "Game Over")?;
@@ -238,6 +259,24 @@ fn run_loop(
             }
         }
 
+        // ── Celebration animation tick ─────────────────────────────────────
+        if let TuiState::Celebration { ref mut ticks_remaining } = tui_state {
+            if *ticks_remaining > 0 {
+                *ticks_remaining -= 1;
+                if !poll(Duration::from_millis(80))? {
+                    continue;
+                }
+                let _ = read()?; // consume any keypress during animation
+                continue;
+            } else {
+                tui_state = match campaign_ctx.clone() {
+                    Some(ctx) => TuiState::MissionSummary { ctx },
+                    None => TuiState::MainMenu { selected: 0, flash: None },
+                };
+                continue;
+            }
+        }
+
         // ── Input ───────────────────────────────────────────────────────
         if !poll(Duration::from_millis(50))? { continue; }
         let Event::Key(key) = read()? else { continue; };
@@ -313,38 +352,26 @@ fn run_loop(
                     KeyCode::Enter | KeyCode::Char(' ') => { move_count = 0;
                         if let Some(e) = &mut engine {
                             e.activate();
-                            // Check win/loss/stuck
-                            let status = check_status(e, &campaign_ctx);
-                            if status != GameStatus::Playing {
-                                // Campaign: advance mission on win
-                                if status == GameStatus::Won {
-                                    if let Some(ctx) = &mut campaign_ctx {
-                                        ctx.sync_from_engine(e);
-                                        if ctx.advance_mission() {
-                                            // More missions remain
-                                            ctx.load_mission_orders();
-                                            let new_e = ctx.build_engine();
-                                            geo = Some(LayoutGeometry::compute(&new_e));
-                                            *e = new_e;
-                                            tui_state = TuiState::CampaignLevelIntro;
-                                            continue;
-                                        } else {
-                                            // Track complete
-                                            campaign_saves.upsert(ctx.clone());
-                                            campaign_saves.save("m2tui");
-                                        }
-                                    } else if is_endless {
-                                        endless_high.update(e.total_merges as usize);
-                                        save_high_score(&endless_high);
-                                    }
-                                }
-                                tui_state = TuiState::GameOver(status);
+                            if let Some(next) = resolve_win_transition(
+                                e, &mut campaign_ctx, &mut campaign_saves, &mut endless_high, is_endless,
+                            ) {
+                                tui_state = next;
+                                continue;
                             }
                         }
                     }
 
                     KeyCode::Char('d') | KeyCode::Char('D') => {
-                        if let Some(e) = &mut engine { e.deliver_from_board(); }
+                        if let Some(e) = &mut engine {
+                            if e.deliver_from_board() {
+                                if let Some(next) = resolve_win_transition(
+                                    e, &mut campaign_ctx, &mut campaign_saves, &mut endless_high, is_endless,
+                                ) {
+                                    tui_state = next;
+                                    continue;
+                                }
+                            }
+                        }
                     }
 
                     KeyCode::Char('s') | KeyCode::Char('S') => {
@@ -449,7 +476,14 @@ fn run_loop(
                     }
                     KeyCode::Char('d') | KeyCode::Char('D') => {
                         if let Some(e) = &mut engine {
-                            e.deliver_from_inventory(slot);
+                            if e.deliver_from_inventory(slot) {
+                                if let Some(next) = resolve_win_transition(
+                                    e, &mut campaign_ctx, &mut campaign_saves, &mut endless_high, is_endless,
+                                ) {
+                                    tui_state = next;
+                                    continue;
+                                }
+                            }
                         }
                     }
                     KeyCode::Esc => {
@@ -658,6 +692,30 @@ fn run_loop(
                 }
             }
 
+            // ── Celebration (animation-driven; no input handled here) ──────
+            TuiState::Celebration { .. } => {}
+
+            // ── Mission Summary ────────────────────────────────────────────
+            TuiState::MissionSummary { ctx } => {
+                if key.code == KeyCode::Enter || key.code == KeyCode::Char(' ') {
+                    let mut ctx = ctx.clone();
+                    let campaign_complete = ctx.advance_mission();
+                    if campaign_complete {
+                        campaign_saves.upsert(ctx.clone());
+                        campaign_saves.save("m2tui");
+                        campaign_ctx = Some(ctx);
+                        tui_state = TuiState::GameOver(GameStatus::Won);
+                    } else {
+                        ctx.load_mission_orders();
+                        let new_e = ctx.build_engine();
+                        geo = Some(LayoutGeometry::compute(&new_e));
+                        engine = Some(new_e);
+                        campaign_ctx = Some(ctx);
+                        tui_state = TuiState::CampaignLevelIntro;
+                    }
+                }
+            }
+
             // ── Help ─────────────────────────────────────────────────────
             TuiState::Help => {
                 let label = make_label(&campaign_ctx, is_endless);
@@ -746,16 +804,44 @@ fn run_loop(
 // ── Helpers ───────────────────────────────────────────────────────────────
 
 fn check_status(engine: &GameEngine, ctx: &Option<CampaignState>) -> GameStatus {
-    if let Some(ctx) = ctx {
-        if ctx.current_mission_complete() {
-            // Recheck via engine state
-        }
+    if let Some(ctx) = ctx
+        && ctx.current_mission_complete()
+    {
+        return GameStatus::Won;
     }
     if engine.is_stuck() {
         GameStatus::Stuck
     } else {
         GameStatus::Playing
     }
+}
+
+/// After an action that might complete an order, check whether the mission/game
+/// just ended and return the `TuiState` to transition to, if any.
+fn resolve_win_transition(
+    e: &mut GameEngine,
+    campaign_ctx: &mut Option<CampaignState>,
+    campaign_saves: &mut CampaignSaves<CampaignState>,
+    endless_high: &mut crate::endless::EndlessHighScore,
+    is_endless: bool,
+) -> Option<TuiState> {
+    let status = check_status(e, campaign_ctx);
+    if status == GameStatus::Playing {
+        return None;
+    }
+    if status == GameStatus::Won {
+        if let Some(ctx) = campaign_ctx {
+            ctx.sync_from_engine(e);
+            campaign_saves.upsert(ctx.clone());
+            campaign_saves.save("m2tui");
+            return Some(TuiState::Celebration { ticks_remaining: 16 });
+        }
+        if is_endless {
+            endless_high.update(e.total_merges as usize);
+            save_high_score(endless_high);
+        }
+    }
+    Some(TuiState::GameOver(status))
 }
 
 fn make_label(ctx: &Option<CampaignState>, is_endless: bool) -> String {
@@ -789,16 +875,16 @@ fn adjust_config_field(config: &mut Config, field: usize, preset_idx: &mut usize
             let new_cfg = PRESETS[*preset_idx].to_config(config);
             *config = new_cfg;
         }
-        1 => config.board_rows = (config.board_rows as i32 + delta).max(4).min(20) as u16,
-        2 => config.board_cols = (config.board_cols as i32 + delta).max(4).min(16) as u16,
-        3 => config.scale      = (config.scale as i32 + delta).max(1).min(3) as u16,
-        4 => config.energy_max = (config.energy_max as i32 + delta * 10).max(10).min(500) as u16,
-        5 => config.energy_regen_secs = (config.energy_regen_secs as i32 + delta * 5).max(5).min(300) as u32,
-        6 => config.generator_cost = (config.generator_cost as i32 + delta).max(0).min(20) as u16,
-        7 => config.family_count = (config.family_count as i32 + delta).max(1).min(6) as u16,
-        8 => config.random_order_count = (config.random_order_count as i32 + delta).max(0).min(5) as u16,
-        9 => config.max_order_tier = (config.max_order_tier as i32 + delta).max(1).min(8) as u8,
-        10 => config.inventory_slots = (config.inventory_slots as i32 + delta).max(0).min(16) as u16,
+        1 => config.board_rows = (config.board_rows as i32 + delta).clamp(4, 20) as u16,
+        2 => config.board_cols = (config.board_cols as i32 + delta).clamp(4, 16) as u16,
+        3 => config.scale      = (config.scale as i32 + delta).clamp(1, 3) as u16,
+        4 => config.energy_max = (config.energy_max as i32 + delta * 10).clamp(10, 500) as u16,
+        5 => config.energy_regen_secs = (config.energy_regen_secs as i32 + delta * 5).clamp(5, 300) as u32,
+        6 => config.generator_cost = (config.generator_cost as i32 + delta).clamp(0, 20) as u16,
+        7 => config.family_count = (config.family_count as i32 + delta).clamp(1, 6) as u16,
+        8 => config.random_order_count = (config.random_order_count as i32 + delta).clamp(0, 5) as u16,
+        9 => config.max_order_tier = (config.max_order_tier as i32 + delta).clamp(1, 8) as u8,
+        10 => config.inventory_slots = (config.inventory_slots as i32 + delta).clamp(0, 16) as u16,
         _ => {}
     }
 }

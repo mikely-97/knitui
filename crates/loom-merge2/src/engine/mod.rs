@@ -29,6 +29,8 @@ pub struct GameEngine {
     pub stars: u16,
     pub total_merges: u64,
     pub cells_thawed: usize,
+    /// Number of this mission's story orders fulfilled so far (campaign use).
+    pub story_orders_completed: usize,
     pub scale: u16,
     pub tick_count: u32,
     pub ads_used: u16,
@@ -68,6 +70,7 @@ impl GameEngine {
         stars: u16,
         total_merges: u64,
         cells_thawed: usize,
+        story_orders_completed: usize,
         scale: u16,
         ad_limit: u16,
         random_order_count: usize,
@@ -90,6 +93,7 @@ impl GameEngine {
             stars,
             total_merges,
             cells_thawed,
+            story_orders_completed,
             scale,
             tick_count: 0,
             ads_used: 0,
@@ -144,6 +148,7 @@ impl GameEngine {
             inventory,
             energy,
             Vec::new(),
+            0,
             0,
             0,
             0,
@@ -688,6 +693,7 @@ mod tests {
             0,
             0,
             0,
+            0,
             1,
             5,
             2,
@@ -759,7 +765,7 @@ mod tests {
         board.cells[4][4] = Cell::Piece(Piece::Regular(Item::new(Family::Crystal, 3)));
         let mut e = GameEngine::from_state(
             board, Inventory::new(4), Energy::new(100, 30),
-            Vec::new(), 0, 0, 0, 0, 1, 5, 0, 4, 1, 0, 0,
+            Vec::new(), 0, 0, 0, 0, 0, 1, 5, 0, 4, 1, 0, 0,
             vec![Family::Crystal], &[],
         );
         e.cursor_row = 0; e.cursor_col = 0;
@@ -809,12 +815,16 @@ mod tests {
     #[test]
     fn delivery() {
         let mut e = test_engine();
+        // Isolate from test_engine()'s auto-filled random orders, which could
+        // otherwise "steal" the delivery ahead of the story order below.
+        e.active_orders.clear();
         // Add a story order for Wood T2
         e.active_orders.push(crate::order::Order {
             order_type: crate::order::OrderType::Story,
             requirements: vec![crate::order::OrderRequirement::new(Family::Wood, 2, 1)],
             rewards: vec![crate::order::Reward::Score(100)],
             follow_up: None,
+            is_mission_story: true,
         });
         // Create a Wood T2 on board
         e.board.cells[3][3] = Cell::Piece(Piece::Regular(Item::new(Family::Wood, 2)));
@@ -824,6 +834,7 @@ mod tests {
         let ok = e.deliver_from_board();
         assert!(ok);
         assert!(e.board.cells[3][3].is_empty());
+        assert_eq!(e.story_orders_completed, 1);
     }
 
     #[test]
@@ -833,7 +844,7 @@ mod tests {
         board.cells[2][2] = Cell::Piece(Piece::Blueprint(Family::Metal));
         let mut e = GameEngine::from_state(
             board, Inventory::new(4), Energy::new(100, 30),
-            Vec::new(), 0, 0, 0, 0, 1, 5, 0, 4, 1, 0, 0,
+            Vec::new(), 0, 0, 0, 0, 0, 1, 5, 0, 4, 1, 0, 0,
             vec![Family::Metal], &[],
         );
         e.cursor_row = 0; e.cursor_col = 0;
