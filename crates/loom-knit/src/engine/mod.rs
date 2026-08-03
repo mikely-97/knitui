@@ -1085,6 +1085,44 @@ mod tests {
     }
 
     #[test]
+    fn process_all_active_shifts_multiple_consecutive_exhausted_rows() {
+        let visible = vec![
+            vec![BoardEntity::Void, BoardEntity::Obstacle],          // row 0: exhausted
+            vec![BoardEntity::EmptyConveyor, BoardEntity::Void],     // row 1: exhausted
+            vec![BoardEntity::Spool(Color::Red), BoardEntity::Void], // row 2: has content
+        ];
+        let buffer = vec![
+            vec![BoardEntity::Spool(Color::Blue), BoardEntity::Void], // one buffered row
+        ];
+        let mut e = endless_test_engine(visible, buffer);
+        e.process_all_active();
+
+        assert_eq!(e.board.board.len(), 2, "board shrank by 1 (2 removed, 1 pulled in)");
+        assert_eq!(e.board.board[0], vec![BoardEntity::Spool(Color::Red), BoardEntity::Void]);
+        assert_eq!(e.board.board[1], vec![BoardEntity::Spool(Color::Blue), BoardEntity::Void]);
+        assert!(e.row_buffer.is_empty());
+        assert_eq!(e.rows_cleared, 2);
+    }
+
+    #[test]
+    fn process_all_active_shifts_through_immediately_exhausted_buffered_row() {
+        let visible = vec![
+            vec![BoardEntity::Void, BoardEntity::Void], // row 0: exhausted
+        ];
+        let buffer = vec![
+            vec![BoardEntity::Void, BoardEntity::Obstacle],           // also exhausted — should shift straight through
+            vec![BoardEntity::Spool(Color::Red), BoardEntity::Void],  // real content
+        ];
+        let mut e = endless_test_engine(visible, buffer);
+        e.process_all_active();
+
+        assert_eq!(e.board.board.len(), 1);
+        assert_eq!(e.board.board[0], vec![BoardEntity::Spool(Color::Red), BoardEntity::Void]);
+        assert!(e.row_buffer.is_empty());
+        assert_eq!(e.rows_cleared, 2, "both the original row and the exhausted buffered row count as cleared");
+    }
+
+    #[test]
     fn move_cursor_right_succeeds() {
         let mut e = default_engine();
         assert!(e.move_cursor(Direction::Right).is_ok());
