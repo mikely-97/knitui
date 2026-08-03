@@ -4,7 +4,6 @@ use loom_engine::game::{Game, GameId, GameEngine};
 use crate::config::Config;
 use crate::campaign_levels::{TRACK_NAMES, TRACK_COUNT, levels_for_track};
 use crate::campaign::CampaignState;
-use crate::endless::EndlessState;
 use crate::preset::PRESETS;
 
 pub struct KnitGame;
@@ -50,11 +49,8 @@ impl Game for KnitGame {
         ]
     }
 
-    fn endless_wave_config(&self, wave: u32, base: &Config) -> Config {
-        let mut state = EndlessState::new();
-        // Fast-forward to the requested wave
-        for _ in 1..wave { state.advance(); }
-        state.to_config(base)
+    fn endless_wave_config(&self, _wave: u32, base: &Config) -> Config {
+        base.clone()
     }
 
     fn help_lines(&self) -> Vec<(&'static str, &'static str)> {
