@@ -107,9 +107,9 @@ Full DFS solvability (`count_solutions`, `is_solvable`) is skipped — a 6×66 b
 
 ## Testing
 
-- Engine: row-shift triggers correctly on row exhaustion; cursor clamps correctly after a shift; `is_won()` only becomes true once `row_buffer` is empty; snapshot round-trip preserves `row_buffer`/`total_rows`/`rows_cleared`; tick ordering test confirming shift-before-status.
-- `knitui-ni`: `--endless` produces a valid game; `--game` round-trip across multiple commands preserves buffer state and correctly shifts rows.
-- `EndlessHighScore`: old `best_wave`-keyed JSON deserializes via the alias without error.
+- Engine: row-shift triggers correctly on row exhaustion; cursor clamps correctly after a shift; `is_won()` only becomes true once `row_buffer` is empty; snapshot round-trip preserves `row_buffer`/`total_rows`/`rows_cleared`. No separate ordering test is needed — the shift lives inside `process_all_active()` itself, so there's no external call-ordering left to get wrong.
+- `knitui-ni`: `--endless` produces a valid game with a 6×6 visible board.
+- `EndlessHighScore`: unchanged shared struct, no migration needed — existing save files keep working as-is since the field isn't renamed.
 
 ## Out of Scope (unchanged from original)
 
