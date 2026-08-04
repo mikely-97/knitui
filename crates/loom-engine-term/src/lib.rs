@@ -1,3 +1,7 @@
+// Crossterm-backed terminal frontend support. Split out of `loom-engine` so
+// the core crate stays crossterm-free and portable to non-terminal targets
+// (web, FFI hosts). The crossterm `Surface` impl (Phase 1) lands here too.
+
 use crossterm::{
     execute,
     terminal::{self, EnterAlternateScreen, LeaveAlternateScreen},

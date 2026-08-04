@@ -33,6 +33,21 @@ impl EndlessHighScore {
         }
     }
 
+    /// Load via an injected `Storage` backend (e.g. for web/FFI hosts).
+    pub fn load_from(storage: &dyn crate::storage::Storage, namespace: &str) -> Self {
+        storage
+            .load(namespace, ENDLESS_FILE)
+            .and_then(|s| serde_json::from_str(&s).ok())
+            .unwrap_or_default()
+    }
+
+    /// Save via an injected `Storage` backend.
+    pub fn save_from(&self, storage: &dyn crate::storage::Storage, namespace: &str) {
+        if let Ok(json) = serde_json::to_string_pretty(self) {
+            storage.save(namespace, ENDLESS_FILE, &json);
+        }
+    }
+
     /// Update if current wave beats the record. Returns true if new record.
     pub fn update(&mut self, wave: usize) -> bool {
         if wave > self.best_wave {

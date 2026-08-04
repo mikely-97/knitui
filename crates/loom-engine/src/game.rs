@@ -1,6 +1,5 @@
-use std::io::{self, Stdout};
-use crossterm::event::KeyEvent;
-use crossterm::style::Color;
+use crate::input::KeyEvent;
+use crate::render::{Color, Surface};
 
 /// Identifies which game is running.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -59,10 +58,10 @@ pub trait GameEngine {
     fn status(&self) -> GameStatus;
 
     /// Render the game area (board + game-specific HUD) at the given origin.
-    fn render(&self, stdout: &mut Stdout, area: RenderArea) -> io::Result<()>;
+    fn render(&self, surface: &mut dyn Surface, area: RenderArea);
 
     /// Render the key bar (bottom of screen, shows available keys).
-    fn render_keybar(&self, stdout: &mut Stdout, y: u16) -> io::Result<()>;
+    fn render_keybar(&self, surface: &mut dyn Surface, y: u16);
 
     /// Score for game-over display.
     fn score(&self) -> u32;

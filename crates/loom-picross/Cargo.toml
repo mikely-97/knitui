@@ -9,6 +9,7 @@ path = "src/lib.rs"
 
 [dependencies]
 loom-engine = { path = "../loom-engine" }
+loom-engine-term = { path = "../loom-engine-term" }
 crossterm = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }

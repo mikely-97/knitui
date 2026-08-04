@@ -505,8 +505,8 @@ fn run_editor() -> io::Result<()> {
 }
 
 fn main() -> io::Result<()> {
-    loom_engine::terminal::init()?;
+    loom_engine_term::init()?;
     let result = run_editor();
-    loom_engine::terminal::restore()?;
+    loom_engine_term::restore()?;
     result
 }

@@ -55,4 +55,19 @@ impl AllStats {
     fn path() -> std::path::PathBuf {
         dirs::data_dir().unwrap_or_default().join("loom").join("stats.json")
     }
+
+    /// Load via an injected `Storage` backend (e.g. for web/FFI hosts).
+    pub fn load_from(storage: &dyn crate::storage::Storage) -> Self {
+        storage
+            .load("loom", "stats.json")
+            .and_then(|s| serde_json::from_str(&s).ok())
+            .unwrap_or_default()
+    }
+
+    /// Save via an injected `Storage` backend.
+    pub fn save_from(&self, storage: &dyn crate::storage::Storage) {
+        if let Ok(json) = serde_json::to_string_pretty(self) {
+            storage.save("loom", "stats.json", &json);
+        }
+    }
 }

@@ -45,6 +45,23 @@ impl UserSettings {
             let _ = fs::write(&path, json);
         }
     }
+
+    /// Load settings via an injected `Storage` backend (e.g. for web/FFI
+    /// hosts that can't use `fs`/`dirs` directly). Returns defaults if
+    /// missing or corrupt.
+    pub fn load_from(storage: &dyn crate::storage::Storage, namespace: &str) -> Self {
+        storage
+            .load(namespace, SETTINGS_FILE)
+            .and_then(|s| serde_json::from_str(&s).ok())
+            .unwrap_or_default()
+    }
+
+    /// Save settings via an injected `Storage` backend.
+    pub fn save_from(&self, storage: &dyn crate::storage::Storage, namespace: &str) {
+        if let Ok(json) = serde_json::to_string_pretty(self) {
+            storage.save(namespace, SETTINGS_FILE, &json);
+        }
+    }
 }
 
 pub const COLOR_MODES: &[&str] = &[

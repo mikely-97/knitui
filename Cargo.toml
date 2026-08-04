@@ -1,6 +1,7 @@
 [workspace]
 members = [
     "crates/loom-engine",
+    "crates/loom-engine-term",
     "crates/loom-knit",
     "crates/loom-match3",
     "crates/loom-merge2",
@@ -15,6 +16,7 @@ clap = { version = "4", features = ["derive"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 dirs = "5"
+bitflags = "2"
 
 [package]
 name = "loom"

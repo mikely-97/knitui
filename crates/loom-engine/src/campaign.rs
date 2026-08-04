@@ -51,6 +51,21 @@ impl<E: CampaignEntry> CampaignSaves<E> {
         }
     }
 
+    /// Load via an injected `Storage` backend (e.g. for web/FFI hosts).
+    pub fn load_from(storage: &dyn crate::storage::Storage, namespace: &str) -> Self {
+        storage
+            .load(namespace, CAMPAIGN_FILE)
+            .and_then(|s| serde_json::from_str(&s).ok())
+            .unwrap_or_default()
+    }
+
+    /// Save via an injected `Storage` backend.
+    pub fn save_from(&self, storage: &dyn crate::storage::Storage, namespace: &str) {
+        if let Ok(json) = serde_json::to_string_pretty(self) {
+            storage.save(namespace, CAMPAIGN_FILE, &json);
+        }
+    }
+
     /// Get saved state for a track, if any.
     pub fn get(&self, track_idx: usize) -> Option<&E> {
         self.saves.iter().find(|s| s.track_idx() == track_idx)

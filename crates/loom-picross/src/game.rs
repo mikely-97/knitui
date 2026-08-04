@@ -1,4 +1,4 @@
-use crossterm::style::Color;
+use loom_engine::render::Color;
 use loom_engine::game::{Game, GameId, GameEngine};
 
 use crate::campaign::{TRACK_NAMES, TRACK_COUNT, levels_for_track, level_count};

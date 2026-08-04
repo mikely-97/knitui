@@ -24,9 +24,9 @@ enum TuiState {
 }
 
 pub fn run_from_menu() -> std::io::Result<()> {
-    loom_engine::terminal::init()?;
+    loom_engine_term::init()?;
     let result = run_loop();
-    loom_engine::terminal::restore()?;
+    loom_engine_term::restore()?;
     result
 }
 

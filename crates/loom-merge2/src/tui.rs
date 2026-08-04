@@ -87,11 +87,11 @@ pub fn run_from_menu() -> std::io::Result<()> {
     };
 
     let mut stdout = stdout();
-    loom_engine::terminal::init()?;
+    loom_engine_term::init()?;
 
     let result = run_loop(&mut stdout, &cli_config, &mut user_settings);
 
-    loom_engine::terminal::restore()?;
+    loom_engine_term::restore()?;
     result
 }
 

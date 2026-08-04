@@ -250,11 +250,19 @@ dependencies = [
 name = "loom-engine"
 version = "0.1.0"
 dependencies = [
+ "bitflags",
  "crossterm",
  "dirs",
  "rand",
  "serde",
  "serde_json",
+]
+
+[[package]]
+name = "loom-engine-term"
+version = "0.1.0"
+dependencies = [
+ "crossterm",
 ]
 
 [[package]]
@@ -265,6 +273,7 @@ dependencies = [
  "crossterm",
  "dirs",
  "loom-engine",
+ "loom-engine-term",
  "rand",
  "serde",
  "serde_json",
@@ -278,6 +287,7 @@ dependencies = [
  "crossterm",
  "dirs",
  "loom-engine",
+ "loom-engine-term",
  "rand",
  "serde",
  "serde_json",
@@ -291,6 +301,7 @@ dependencies = [
  "crossterm",
  "dirs",
  "loom-engine",
+ "loom-engine-term",
  "rand",
  "serde",
  "serde_json",
@@ -303,6 +314,7 @@ dependencies = [
  "crossterm",
  "dirs",
  "loom-engine",
+ "loom-engine-term",
  "serde",
  "serde_json",
 ]

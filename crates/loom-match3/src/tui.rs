@@ -105,7 +105,7 @@ fn objective_label_for(engine: &GameEngine, campaign_ctx: &Option<CampaignState>
 
 /// Run the m3 game from the standalone binary (parses CLI args).
 pub fn run_cli() -> std::io::Result<()> {
-    loom_engine::terminal::init()?;
+    loom_engine_term::init()?;
 
     let cli_config = Config::parse();
     let user_settings = UserSettings::load();
@@ -127,14 +127,14 @@ pub fn run_cli() -> std::io::Result<()> {
         endless_hs,
     );
 
-    loom_engine::terminal::restore()?;
+    loom_engine_term::restore()?;
 
     result
 }
 
 /// Run the m3 game from the game selector (default config, always shows menu).
 pub fn run_from_menu() -> std::io::Result<()> {
-    loom_engine::terminal::init()?;
+    loom_engine_term::init()?;
 
     let user_settings = UserSettings::load();
     let campaign_saves = CampaignSaves::<CampaignState>::load("m3tui");
@@ -157,7 +157,7 @@ pub fn run_from_menu() -> std::io::Result<()> {
         endless_hs,
     );
 
-    loom_engine::terminal::restore()?;
+    loom_engine_term::restore()?;
 
     result
 }

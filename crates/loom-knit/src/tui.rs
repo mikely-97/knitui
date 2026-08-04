@@ -185,7 +185,7 @@ fn run_event_loop(
     const AD_DURATION_SECS: u64 = 15;
 
     let mut stdout = stdout();
-    loom_engine::terminal::init()?;
+    loom_engine_term::init()?;
 
     let mut campaign_saves = CampaignSaves::<CampaignState>::load("knitui");
     let mut campaign_ctx: Option<CampaignState> = None;
@@ -866,6 +866,6 @@ fn run_event_loop(
         }
     }
 
-    loom_engine::terminal::restore()?;
+    loom_engine_term::restore()?;
     Ok(())
 }
