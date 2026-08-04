@@ -1,6 +1,6 @@
 use std::fmt;
 
-use crossterm::style::{Color, Stylize};
+use loom_engine::render::Color;
 
 use crate::color_counter::ColorCounter;
 use crate::spool::Spool;
@@ -15,7 +15,7 @@ pub struct Stitch {
 impl fmt::Display for Stitch {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let ch = if self.locked { '▣' } else { '▦' };
-        write!(f, "{}", ch.with(self.color))
+        write!(f, "{}", ch)
     }
 }
 

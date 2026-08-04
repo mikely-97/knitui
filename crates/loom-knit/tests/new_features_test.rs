@@ -5,7 +5,7 @@ use knitui::board_entity::BoardEntity;
 use knitui::game_board::GameBoard;
 use knitui::yarn::Yarn;
 use knitui::solvability::{find_solution, is_solvable};
-use crossterm::style::Color;
+use loom_engine::render::Color;
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 

@@ -4,7 +4,7 @@ use knitui::palette::{select_palette, ColorMode};
 use knitui::spool::Spool;
 use knitui::yarn::Yarn;
 use knitui::color_counter::ColorCounter;
-use crossterm::style::Color;
+use loom_engine::render::Color;
 use std::collections::HashMap;
 
 #[test]

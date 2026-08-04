@@ -159,19 +159,28 @@ fn render_board(
                 stdout.queue(SetAttribute(Attribute::Reset))?;
             } else if is_cursor {
                 stdout.queue(SetAttribute(Attribute::Reverse))?;
+                match cell {
+                    BoardEntity::Spool(c) | BoardEntity::KeySpool(c) => {
+                        stdout.queue(SetForegroundColor(loom_engine_term::color_to_crossterm(*c)))?;
+                    }
+                    BoardEntity::Conveyor(d) => {
+                        stdout.queue(SetForegroundColor(loom_engine_term::color_to_crossterm(d.color)))?;
+                    }
+                    _ => {}
+                }
                 stdout.queue(Print(format!("{cell}{cell}")))?;
                 stdout.queue(SetAttribute(Attribute::Reset))?;
             } else {
                 match cell {
                     BoardEntity::Spool(c) | BoardEntity::KeySpool(c) => {
-                        stdout.queue(Print("██".with(*c)))?;
+                        stdout.queue(Print("██".with(loom_engine_term::color_to_crossterm(*c))))?;
                     }
                     BoardEntity::Obstacle => { stdout.queue(Print("▓▓".dark_grey()))?; }
                     BoardEntity::Void | BoardEntity::EmptyConveyor => {
                         stdout.queue(Print("  "))?;
                     }
                     BoardEntity::Conveyor(d) => {
-                        stdout.queue(Print("◈◈".with(d.color)))?;
+                        stdout.queue(Print("◈◈".with(loom_engine_term::color_to_crossterm(d.color))))?;
                     }
                 }
             }

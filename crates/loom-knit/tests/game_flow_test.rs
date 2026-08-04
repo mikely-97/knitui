@@ -5,7 +5,7 @@ use knitui::config::Config;
 use knitui::board_entity::{BoardEntity, Direction};
 use knitui::game_board::GameBoard;
 use knitui::yarn::Yarn;
-use crossterm::style::Color;
+use loom_engine::render::Color;
 
 fn make_config(
     board_height: u16, board_width: u16, color_number: u16,

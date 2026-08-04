@@ -5,3 +5,4 @@ edition = "2024"
 
 [dependencies]
 crossterm = { workspace = true }
+loom-engine = { path = "../loom-engine" }

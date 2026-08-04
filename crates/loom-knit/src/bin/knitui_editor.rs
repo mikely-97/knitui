@@ -39,6 +39,34 @@ const EDITOR_PALETTE: [Color; 6] = [
 
 const COLOR_NAMES: [&str; 6] = ["Cyan", "Green", "Yellow", "Magenta", "Red", "Blue"];
 
+/// Convert the editor's crossterm-backed palette color to the portable
+/// `loom_engine::render::Color` that `BoardEntity` now stores, for the
+/// solvability-check `GameBoard` built in `validate()`.
+fn to_engine_color(c: Color) -> loom_engine::render::Color {
+    use loom_engine::render::Color as EC;
+    match c {
+        Color::Reset => EC::Reset,
+        Color::Black => EC::Black,
+        Color::DarkGrey => EC::DarkGrey,
+        Color::Red => EC::Red,
+        Color::DarkRed => EC::DarkRed,
+        Color::Green => EC::Green,
+        Color::DarkGreen => EC::DarkGreen,
+        Color::Yellow => EC::Yellow,
+        Color::DarkYellow => EC::DarkYellow,
+        Color::Blue => EC::Blue,
+        Color::DarkBlue => EC::DarkBlue,
+        Color::Magenta => EC::Magenta,
+        Color::DarkMagenta => EC::DarkMagenta,
+        Color::Cyan => EC::Cyan,
+        Color::DarkCyan => EC::DarkCyan,
+        Color::White => EC::White,
+        Color::Grey => EC::Grey,
+        Color::Rgb { r, g, b } => EC::Rgb { r, g, b },
+        Color::AnsiValue(v) => EC::AnsiValue(v),
+    }
+}
+
 // ── Cell type ────────────────────────────────────────────────────────────────
 
 #[derive(Clone, Debug)]
@@ -120,13 +148,13 @@ impl Editor {
         let board_cells: Vec<Vec<BoardEntity>> = self.cells.iter().map(|row| {
             row.iter().map(|cell| match cell {
                 EditorCell::Empty => BoardEntity::Void,
-                EditorCell::Spool(i) => BoardEntity::Spool(EDITOR_PALETTE[*i]),
-                EditorCell::KeySpool(i) => BoardEntity::KeySpool(EDITOR_PALETTE[*i]),
+                EditorCell::Spool(i) => BoardEntity::Spool(to_engine_color(EDITOR_PALETTE[*i])),
+                EditorCell::KeySpool(i) => BoardEntity::KeySpool(to_engine_color(EDITOR_PALETTE[*i])),
                 EditorCell::Obstacle => BoardEntity::Obstacle,
                 EditorCell::Conveyor => BoardEntity::Conveyor(ConveyorData {
-                    color: Color::White,
+                    color: to_engine_color(Color::White),
                     output_dir: Direction::Right,
-                    queue: vec![Color::White],
+                    queue: vec![to_engine_color(Color::White)],
                 }),
             }).collect()
         }).collect();

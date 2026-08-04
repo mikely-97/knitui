@@ -1,5 +1,5 @@
 use std::collections::{HashMap, HashSet, VecDeque};
-use crossterm::style::Color;
+use loom_engine::render::Color;
 use crate::board_entity::BoardEntity;
 use crate::game_board::GameBoard;
 use crate::yarn::{Yarn, Stitch};
@@ -654,7 +654,7 @@ mod tests {
     fn count_solutions_early_exit() {
         // 1×3 board: three independent top-row spools, distinct colors → 3! = 6 orderings.
         // With limit=2 the DFS stops after finding the 3rd path.
-        use crossterm::style::Color::*;
+        use loom_engine::render::Color::*;
         let board = GameBoard {
             board: vec![vec![
                 BoardEntity::Spool(Red),

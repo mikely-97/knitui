@@ -1,5 +1,5 @@
 use rand::prelude::IndexedRandom;
-use crossterm::style::Color;
+use crate::render::Color;
 
 // dark terminal palette (ANSI — terminal theme can remap these)
 const DARK_PALETTE: [Color; 8] = [

@@ -1,4 +1,4 @@
-use crossterm::style::Color;
+use crate::render::Color;
 use serde::{Deserialize, Deserializer, Serializer};
 use serde::de::Error as DeError;
 

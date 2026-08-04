@@ -1,5 +1,5 @@
 // ./src/lib/game_board.rs
-use crossterm::style::Color;
+use loom_engine::render::Color;
 use crate::board_entity::{BoardEntity, Direction, ConveyorData};
 use crate::color_counter::ColorCounter;
 use rand::prelude::*;

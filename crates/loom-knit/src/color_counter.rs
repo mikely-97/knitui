@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use crossterm::style::Color;
+use loom_engine::render::Color;
 
 use rand::seq::SliceRandom;
 

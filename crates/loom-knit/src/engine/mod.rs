@@ -3,7 +3,7 @@ mod bonuses;
 pub use types::*;
 pub use bonuses::*;
 
-use crossterm::style::Color;
+use loom_engine::render::Color;
 use serde::{Serialize, Deserialize};
 use rand::Rng;
 

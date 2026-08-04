@@ -1,9 +1,6 @@
 // ./src/lib/board_entity.rs
 
-use crossterm::style::{
-    Color,
-    Stylize
-};
+use loom_engine::render::Color;
 
 use std::fmt;
 
@@ -34,7 +31,7 @@ impl fmt::Display for Spool {
                 _ => '?',
             }
         };
-        write!(f, "{}", ch.with(self.color))
+        write!(f, "{}", ch)
     }
 }
 

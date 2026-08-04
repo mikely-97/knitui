@@ -1,7 +1,4 @@
-use crossterm::style::{
-    Color,
-    Stylize
-};
+use loom_engine::render::Color;
 
 use std::fmt;
 
@@ -31,25 +28,33 @@ pub enum BoardEntity {
     EmptyConveyor,
 }
 
+impl BoardEntity {
+    /// Foreground color this entity should be rendered with, if any.
+    pub fn color(&self) -> Option<Color> {
+        match self {
+            BoardEntity::Spool(c) | BoardEntity::KeySpool(c) => Some(*c),
+            BoardEntity::Conveyor(data) => Some(data.color),
+            BoardEntity::Obstacle | BoardEntity::Void | BoardEntity::EmptyConveyor => None,
+        }
+    }
+}
+
 impl fmt::Display for BoardEntity {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "{}",
-            match self {
-                BoardEntity::Spool(color)     => 'T'.with(*color),
-                BoardEntity::KeySpool(color)  => 'K'.with(*color),
-                BoardEntity::Obstacle         => 'X'.stylize(),
-                BoardEntity::Void             => ' '.stylize(),
-                BoardEntity::Conveyor(data)   => match data.output_dir {
-                    Direction::Up    => '^',
-                    Direction::Down  => 'V',
-                    Direction::Left  => '<',
-                    Direction::Right => '>',
-                }.with(data.color),
-                BoardEntity::EmptyConveyor    => '#'.stylize(),
-            }
-        )
+        let ch = match self {
+            BoardEntity::Spool(_)        => 'T',
+            BoardEntity::KeySpool(_)     => 'K',
+            BoardEntity::Obstacle        => 'X',
+            BoardEntity::Void            => ' ',
+            BoardEntity::Conveyor(data)  => match data.output_dir {
+                Direction::Up    => '^',
+                Direction::Down  => 'V',
+                Direction::Left  => '<',
+                Direction::Right => '>',
+            },
+            BoardEntity::EmptyConveyor   => '#',
+        };
+        write!(f, "{}", ch)
     }
 }
 
