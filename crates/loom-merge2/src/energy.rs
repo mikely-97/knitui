@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+#[cfg(not(target_arch = "wasm32"))]
 use std::time::{SystemTime, UNIX_EPOCH};
 
 /// Energy system: generators cost energy to activate; energy regens over wall-clock time.
@@ -89,11 +90,22 @@ impl Energy {
     }
 }
 
+/// Wall-clock seconds since the Unix epoch. `SystemTime` isn't implemented
+/// on `wasm32-unknown-unknown` (panics at runtime, not a compile error --
+/// caught by web/smoke_test.mjs actually exercising energy regen), so the
+/// wasm32 build goes through `js_sys::Date::now()` (browser epoch millis)
+/// instead.
+#[cfg(not(target_arch = "wasm32"))]
 fn now_epoch() -> u64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map(|d| d.as_secs())
         .unwrap_or(0)
+}
+
+#[cfg(target_arch = "wasm32")]
+fn now_epoch() -> u64 {
+    (js_sys::Date::now() / 1000.0) as u64
 }
 
 #[cfg(test)]

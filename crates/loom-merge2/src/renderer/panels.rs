@@ -1,10 +1,14 @@
+#[cfg(not(target_arch = "wasm32"))]
 use std::io::{self, Stdout};
 
 use loom_engine::render::{Attrs, Color, Style, Surface};
+#[cfg(not(target_arch = "wasm32"))]
 use loom_engine_term::TermSurface;
 
 use crate::board::Cell;
-use crate::engine::{GameEngine, GameStatus};
+use crate::engine::GameEngine;
+#[cfg(not(target_arch = "wasm32"))]
+use crate::engine::GameStatus;
 use crate::glyphs;
 use crate::order::OrderType;
 use super::LayoutGeometry;
@@ -21,13 +25,14 @@ fn bold(color: Color) -> Style {
 
 /// Only ever called from inside tui.rs's centralized Clear/flush dispatcher,
 /// so this draws into a mid-frame `TermSurface` (no clear/flush of its own).
+#[cfg(not(target_arch = "wasm32"))]
 pub fn render_hud(stdout: &mut Stdout, engine: &GameEngine, label: &str) -> io::Result<()> {
     let mut surface = TermSurface::new(stdout);
     render_hud_inner(&mut surface, engine, label);
     surface.done()
 }
 
-fn render_hud_inner(
+pub fn render_hud_inner(
     surface: &mut dyn Surface,
     engine: &GameEngine,
     label: &str,
@@ -85,13 +90,14 @@ fn render_hud_inner(
 
 // ── Orders panel ─────────────────────────────────────────────────────────
 
+#[cfg(not(target_arch = "wasm32"))]
 pub fn render_orders(stdout: &mut Stdout, engine: &GameEngine, geo: &LayoutGeometry) -> io::Result<()> {
     let mut surface = TermSurface::new(stdout);
     render_orders_inner(&mut surface, engine, geo);
     surface.done()
 }
 
-fn render_orders_inner(
+pub fn render_orders_inner(
     surface: &mut dyn Surface,
     engine: &GameEngine,
     geo: &LayoutGeometry,
@@ -203,13 +209,14 @@ fn render_orders_inner(
 
 // ── Inventory strip ───────────────────────────────────────────────────────
 
+#[cfg(not(target_arch = "wasm32"))]
 pub fn render_inventory(stdout: &mut Stdout, engine: &GameEngine, geo: &LayoutGeometry, selected_slot: Option<usize>) -> io::Result<()> {
     let mut surface = TermSurface::new(stdout);
     render_inventory_inner(&mut surface, engine, geo, selected_slot);
     surface.done()
 }
 
-fn render_inventory_inner(
+pub fn render_inventory_inner(
     surface: &mut dyn Surface,
     engine: &GameEngine,
     geo: &LayoutGeometry,
@@ -246,13 +253,14 @@ fn render_inventory_inner(
 
 // ── Key bar ───────────────────────────────────────────────────────────────
 
+#[cfg(not(target_arch = "wasm32"))]
 pub fn render_key_bar(stdout: &mut Stdout, engine: &GameEngine, geo: &LayoutGeometry) -> io::Result<()> {
     let mut surface = TermSurface::new(stdout);
     render_key_bar_inner(&mut surface, engine, geo);
     surface.done()
 }
 
-fn render_key_bar_inner(
+pub fn render_key_bar_inner(
     surface: &mut dyn Surface,
     engine: &GameEngine,
     geo: &LayoutGeometry,
@@ -278,12 +286,14 @@ fn render_key_bar_inner(
 
 // ── Game over overlay ─────────────────────────────────────────────────────
 
+#[cfg(not(target_arch = "wasm32"))]
 pub fn render_game_over(stdout: &mut Stdout, status: &GameStatus, score: u32) -> io::Result<()> {
     let mut surface = TermSurface::new(stdout);
     render_game_over_inner(&mut surface, status, score);
     surface.done()
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 fn render_game_over_inner(
     surface: &mut dyn Surface,
     status: &GameStatus,

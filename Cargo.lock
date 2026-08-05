@@ -373,11 +373,16 @@ dependencies = [
  "clap",
  "crossterm",
  "dirs",
+ "getrandom 0.3.3",
+ "js-sys",
  "loom-engine",
  "loom-engine-term",
+ "loom-engine-web",
  "rand",
  "serde",
  "serde_json",
+ "wasm-bindgen",
+ "web-sys",
 ]
 
 [[package]]

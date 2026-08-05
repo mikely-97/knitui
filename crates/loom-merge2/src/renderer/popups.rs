@@ -1,3 +1,8 @@
+// Every function here is a Stdout-wrapping mid-frame TermSurface screen
+// (none has a Surface-only entry point web.rs needs), so the whole module
+// is native-only rather than gating each function individually.
+#![cfg(not(target_arch = "wasm32"))]
+
 use std::io::{self, Stdout};
 
 use loom_engine::render::{Attrs, Color, Style, Surface};
