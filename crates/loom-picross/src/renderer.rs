@@ -1,10 +1,7 @@
-use std::io::{self, Write, Stdout};
+use std::io::{self, Stdout};
 
-use crossterm::{
-    QueueableCommand,
-    cursor::MoveTo,
-    style::{Color, Print, ResetColor, SetBackgroundColor, SetForegroundColor},
-};
+use loom_engine::render::{Color, Style, Surface};
+use loom_engine_term::TermSurface;
 
 use crate::engine::{CellState, GameEngine, GameStatus};
 
@@ -13,8 +10,22 @@ const CELL_W: u16 = 2;
 /// How many columns the clue area is (right-aligned inside MAX_CLUE_W).
 const MAX_CLUE_W: u16 = 6; // up to 3 digits + space each
 
+fn fg(color: Color) -> Style {
+    Style { fg: color, ..Default::default() }
+}
+
 /// Render the full picross board with clues, cursor, and status line.
+///
+/// The caller (`tui.rs`'s `render_state`) owns the frame's Clear/flush, so
+/// this only draws into a mid-frame `TermSurface` and does not clear/flush
+/// itself.
 pub fn render(stdout: &mut Stdout, engine: &GameEngine, origin_x: u16, origin_y: u16) -> io::Result<()> {
+    let mut surface = TermSurface::new(stdout);
+    render_inner(&mut surface, engine, origin_x, origin_y);
+    surface.done()
+}
+
+fn render_inner(surface: &mut dyn Surface, engine: &GameEngine, origin_x: u16, origin_y: u16) {
     let rows = engine.puzzle.rows;
     let _cols = engine.puzzle.cols;
 
@@ -43,8 +54,7 @@ pub fn render(stdout: &mut Stdout, engine: &GameEngine, origin_x: u16, origin_y:
             } else {
                 format!("{:2}", clue)
             };
-            stdout.queue(MoveTo(cx, cy))?;
-            stdout.queue(Print(s))?;
+            surface.print(cx, cy, &s, Style::default());
         }
     }
 
@@ -58,18 +68,12 @@ pub fn render(stdout: &mut Stdout, engine: &GameEngine, origin_x: u16, origin_y:
             .collect::<Vec<_>>()
             .join(" ");
         let padded = format!("{:>width$}", clue_str, width = row_clue_w as usize);
-        stdout.queue(MoveTo(origin_x, ry))?;
-        stdout.queue(Print(&padded))?;
+        surface.print(origin_x, ry, &padded, Style::default());
 
         // Grid cells
         for (c, &cell) in engine.grid[r].iter().enumerate() {
             let cx = grid_x + c as u16 * CELL_W;
             let is_cursor = engine.cursor == (r, c);
-
-            if is_cursor {
-                stdout.queue(SetBackgroundColor(Color::Yellow))?;
-                stdout.queue(SetForegroundColor(Color::Black))?;
-            }
 
             let glyph = match cell {
                 CellState::Unknown => "  ",
@@ -77,23 +81,19 @@ pub fn render(stdout: &mut Stdout, engine: &GameEngine, origin_x: u16, origin_y:
                 CellState::Crossed => "╳╳",
             };
 
-            // Border around unknown cells
-            if cell == CellState::Unknown && !is_cursor {
-                stdout.queue(SetForegroundColor(Color::DarkGrey))?;
-                stdout.queue(MoveTo(cx, ry))?;
-                stdout.queue(Print("▒▒"))?;
-                stdout.queue(ResetColor)?;
+            if is_cursor {
+                let style = Style { fg: Color::Black, bg: Color::Yellow, ..Default::default() };
+                surface.print(cx, ry, glyph, style);
+            } else if cell == CellState::Unknown {
+                surface.print(cx, ry, "▒▒", fg(Color::DarkGrey));
             } else {
-                stdout.queue(MoveTo(cx, ry))?;
-                stdout.queue(Print(glyph))?;
-                stdout.queue(ResetColor)?;
+                surface.print(cx, ry, glyph, Style::default());
             }
         }
     }
 
     // ── Status line ────────────────────────────────────────────────────────
     let status_y = grid_y + rows as u16 + 1;
-    stdout.queue(MoveTo(origin_x, status_y))?;
 
     match engine.status {
         GameStatus::Playing => {
@@ -104,26 +104,29 @@ pub fn render(stdout: &mut Stdout, engine: &GameEngine, origin_x: u16, origin_y:
                 crate::engine::MAX_MISTAKES,
                 pct
             );
-            stdout.queue(Print(status))?;
+            surface.print(origin_x, status_y, &status, Style::default());
         }
         GameStatus::Won => {
-            stdout.queue(SetForegroundColor(Color::Green))?;
-            stdout.queue(Print("  *** PUZZLE SOLVED! *** Press Q to return to menu  "))?;
-            stdout.queue(ResetColor)?;
+            surface.print(
+                origin_x, status_y,
+                "  *** PUZZLE SOLVED! *** Press Q to return to menu  ",
+                fg(Color::Green),
+            );
         }
         GameStatus::TooManyMistakes => {
-            stdout.queue(SetForegroundColor(Color::Red))?;
-            stdout.queue(Print("  Too many mistakes! Press Q to try again  "))?;
-            stdout.queue(ResetColor)?;
+            surface.print(
+                origin_x, status_y,
+                "  Too many mistakes! Press Q to try again  ",
+                fg(Color::Red),
+            );
         }
     }
 
     // ── Key bar ────────────────────────────────────────────────────────────
     let keybar_y = status_y + 1;
-    stdout.queue(MoveTo(origin_x, keybar_y))?;
-    stdout.queue(SetForegroundColor(Color::DarkGrey))?;
-    stdout.queue(Print("Arrows:move  Space/Enter:fill  X:cross  Q/Esc:quit"))?;
-    stdout.queue(ResetColor)?;
-
-    stdout.flush()
+    surface.print(
+        origin_x, keybar_y,
+        "Arrows:move  Space/Enter:fill  X:cross  Q/Esc:quit",
+        fg(Color::DarkGrey),
+    );
 }
