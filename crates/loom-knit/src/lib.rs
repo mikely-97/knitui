@@ -14,7 +14,10 @@ pub mod campaign_levels;
 pub mod endless;
 pub mod blessings;
 pub mod game;
+#[cfg(not(target_arch = "wasm32"))]
 pub mod tui;
+#[cfg(target_arch = "wasm32")]
+pub mod web;
 
 // Re-export shared modules from loom-engine so existing `crate::` paths keep working.
 pub use loom_engine::palette;

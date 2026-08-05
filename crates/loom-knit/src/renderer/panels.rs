@@ -1,6 +1,8 @@
+#[cfg(not(target_arch = "wasm32"))]
 use std::io::{self, Stdout};
 use std::time::Instant;
 use loom_engine::render::{Attrs, Color, Style, Surface};
+#[cfg(not(target_arch = "wasm32"))]
 use loom_engine_term::TermSurface;
 use crate::blessings::{self, ALL_BLESSINGS};
 use crate::engine::GameEngine;
@@ -14,6 +16,7 @@ fn bold() -> Style {
     Style { attrs: Attrs::BOLD, ..Default::default() }
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 pub fn render_help(stdout: &mut Stdout, engine: &GameEngine) -> io::Result<()> {
     let mut surface = TermSurface::begin(stdout)?;
     render_help_inner(&mut surface, engine);
@@ -140,6 +143,7 @@ fn render_help_inner(surface: &mut dyn Surface, engine: &GameEngine) {
 
 /// Render a celebration sweep overlay on the board.
 /// `tick` ranges 0..20; column = (tick/2) % cols lights up with ✦.
+#[cfg(not(target_arch = "wasm32"))]
 pub fn render_celebration(
     stdout: &mut Stdout,
     engine: &GameEngine,
@@ -226,6 +230,7 @@ pub fn render_keybar(surface: &mut dyn Surface, engine: &GameEngine, y: u16) {
 }
 
 /// Render the main menu screen.
+#[cfg(not(target_arch = "wasm32"))]
 pub fn render_main_menu(stdout: &mut Stdout, selected: usize, flash: Option<&str>) -> io::Result<()> {
     let mut surface = TermSurface::begin(stdout)?;
     render_main_menu_inner(&mut surface, selected, flash);
@@ -261,6 +266,7 @@ fn render_main_menu_inner(surface: &mut dyn Surface, selected: usize, flash: Opt
 }
 
 /// Render the custom game configuration screen.
+#[cfg(not(target_arch = "wasm32"))]
 pub fn render_custom_game(
     stdout: &mut Stdout,
     preset_name: &str,
@@ -311,6 +317,7 @@ fn render_custom_game_inner(
 }
 
 /// Render the options screen (scale, color mode).
+#[cfg(not(target_arch = "wasm32"))]
 pub fn render_options(
     stdout: &mut Stdout,
     selected: usize,
@@ -353,6 +360,7 @@ fn render_options_inner(surface: &mut dyn Surface, selected: usize, scale: u16, 
 }
 
 /// Render the campaign track selection screen.
+#[cfg(not(target_arch = "wasm32"))]
 pub fn render_campaign_select(
     stdout: &mut Stdout,
     selected: usize,
@@ -402,6 +410,7 @@ fn render_campaign_select_inner(
 }
 
 /// Render a brief level intro card before starting a campaign level.
+#[cfg(not(target_arch = "wasm32"))]
 pub fn render_level_intro(
     stdout: &mut Stdout,
     track_name: &str,
@@ -446,6 +455,7 @@ fn render_level_intro_inner(
 }
 
 /// Render the endless mode game-over screen (shown when stuck).
+#[cfg(not(target_arch = "wasm32"))]
 pub fn render_endless_gameover(
     stdout: &mut Stdout,
     wave: usize,
@@ -582,6 +592,7 @@ fn render_color_counts(surface: &mut dyn Surface, engine: &GameEngine, x: u16, y
 }
 
 /// Render the pseudo-ad full-screen overlay.
+#[cfg(not(target_arch = "wasm32"))]
 pub fn render_ad_overlay(
     stdout: &mut Stdout,
     quote: &str,
@@ -733,6 +744,7 @@ const CARD_W: usize = 17;  // inner width of card
 const CARD_H: usize = 11;  // total rows per card (border + 5 art + name + tier + desc + border)
 const CARD_COLS: usize = 3;
 
+#[cfg(not(target_arch = "wasm32"))]
 pub fn render_blessing_selection(
     stdout: &mut Stdout,
     cursor: usize,

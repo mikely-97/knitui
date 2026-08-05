@@ -5,10 +5,13 @@ mod panels;
 pub use board::*;
 pub use panels::*;
 
+#[cfg(not(target_arch = "wasm32"))]
 use std::io::{self, Stdout, Write};
+#[cfg(not(target_arch = "wasm32"))]
 use crossterm::terminal;
-use loom_engine::render::{Color, Style, Surface};
+#[cfg(not(target_arch = "wasm32"))]
 use loom_engine_term::TermSurface;
+use loom_engine::render::{Color, Style, Surface};
 use crate::engine::{GameEngine, GameStatus};
 
 // ── Spacing constants ────────────────────────────────────────────────────────
@@ -31,8 +34,12 @@ pub fn detect_layout(config_layout: &str, visible_stitches: u16, board_height: u
         "horizontal" => Layout::Horizontal,
         "vertical" => Layout::Vertical,
         _ => {
+            #[cfg(not(target_arch = "wasm32"))]
+            let term_height = terminal::size().unwrap_or((80, 24)).1;
+            #[cfg(target_arch = "wasm32")]
+            let term_height = 24u16;
+
             let sh = scale;
-            let (_, term_height) = terminal::size().unwrap_or((80, 24));
             let yarn_h = visible_stitches * sh + visible_stitches.saturating_sub(1) * YARN_VGAP;
             let board_h = 1 + board_height * (sh + 1);
             let vertical_height = yarn_h + COMP_GAP + sh + COMP_GAP + board_h;
@@ -45,8 +52,39 @@ pub fn detect_layout(config_layout: &str, visible_stitches: u16, board_height: u
     }
 }
 
-// ── Rendering ─────────────────────────────────────────────────────────────────
+/// Render the vertical layout directly into a caller-owned `Surface` (no
+/// frame lifecycle of its own -- the caller clears/blits). This is the
+/// entry point non-terminal frontends (web, tests) should use instead of
+/// [`render_vertical`], which additionally owns a `TermSurface` frame.
+pub fn render_vertical_to_surface(
+    surface: &mut dyn Surface,
+    engine: &GameEngine,
+    board_y: u16,
+    scale: u16,
+) {
+    let sh = scale;
+    let yarn_h = engine.yarn.visible_stitches * sh
+        + engine.yarn.visible_stitches.saturating_sub(1) * YARN_VGAP;
+    let active_y = yarn_h + COMP_GAP;
 
+    render_yarn(surface, engine, 0, 0, scale, true);
+    render_active_h(surface, engine, 0, active_y, scale);
+    render_board(surface, engine, 0, board_y, scale);
+
+    let board_h = 1 + engine.board.height * (sh + 1);
+    let bonus_y = board_y + board_h + 1;
+    render_bonus_display_h(surface, engine, 0, bonus_y);
+
+    let (_, term_h) = surface.size();
+    render_keybar(surface, engine, term_h.saturating_sub(1));
+}
+
+// ── Rendering ─────────────────────────────────────────────────────────────────
+// The functions below own a terminal frame (TermSurface::begin/finish) and
+// are native-only; non-terminal frontends should call
+// `render_vertical_to_surface` (above) directly instead.
+
+#[cfg(not(target_arch = "wasm32"))]
 pub fn render_vertical(
     stdout: &mut Stdout,
     engine: &GameEngine,
@@ -74,6 +112,7 @@ pub fn render_vertical(
     surface.finish()
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 fn draw_stuck_overlay(
     stdout: &mut Stdout,
     engine: &GameEngine,
@@ -126,6 +165,7 @@ fn draw_stuck_overlay_inner(
     }
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 pub fn render_vertical_overlay(
     stdout: &mut Stdout,
     engine: &GameEngine,
@@ -139,6 +179,7 @@ pub fn render_vertical_overlay(
     stdout.flush()
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 pub fn render_horizontal(
     stdout: &mut Stdout,
     engine: &GameEngine,
@@ -181,6 +222,7 @@ pub fn render_horizontal(
     surface.finish()
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 pub fn render_horizontal_overlay(
     stdout: &mut Stdout,
     engine: &GameEngine,
@@ -195,6 +237,7 @@ pub fn render_horizontal_overlay(
     stdout.flush()
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 pub fn do_render(
     stdout: &mut Stdout,
     engine: &GameEngine,
@@ -210,6 +253,7 @@ pub fn do_render(
     }
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 pub fn do_render_overlay(
     stdout: &mut Stdout,
     engine: &GameEngine,
