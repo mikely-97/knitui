@@ -10,7 +10,7 @@ use m3tui::bonuses::BonusState;
 use m3tui::config::Config;
 use m3tui::engine::{GameEngine, GamePhase, GameStatus};
 
-use crossterm::style::Color;
+use loom_engine::render::Color;
 
 // ── Helpers ───────────────────────────────────────────────────────────────
 

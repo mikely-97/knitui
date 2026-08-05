@@ -1,4 +1,4 @@
-use crossterm::style::Color;
+use loom_engine::render::Color;
 use rand::prelude::*;
 
 // ── Types ─────────────────────────────────────────────────────────────────
@@ -245,7 +245,7 @@ impl Board {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crossterm::style::Color;
+    use loom_engine::render::Color;
 
     fn four_color_palette() -> Vec<Color> {
         vec![Color::Red, Color::Blue, Color::Green, Color::Yellow]

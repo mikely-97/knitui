@@ -1,4 +1,4 @@
-use crossterm::style::Color;
+use loom_engine::render::Color;
 use rand::prelude::*;
 
 use crate::board::{CellContent, TileModifier};

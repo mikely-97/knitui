@@ -1,4 +1,4 @@
-use crossterm::style::Color;
+use loom_engine::render::Color;
 
 /// Return the first `count` colors from the pool for the given mode.
 pub fn select_palette(color_mode: &str, count: u8) -> Vec<Color> {

@@ -1,10 +1,4 @@
-use std::io::{self, Stdout};
-
-use crossterm::{
-    QueueableCommand,
-    style::{Print, Stylize, Color, SetForegroundColor, ResetColor, SetBackgroundColor},
-    cursor::MoveTo,
-};
+use loom_engine::render::{Attrs, Color, Style, Surface};
 
 use crate::board::{CellContent, SpecialPiece, TileModifier};
 use crate::engine::{GameEngine, GamePhase};
@@ -15,12 +9,12 @@ use super::CELL_GAP;
 
 // ── render_board ──────────────────────────────────────────────────────────
 
-/// Render the game board to stdout.
+/// Render the game board.
 pub fn render_board(
-    stdout: &mut Stdout,
+    surface: &mut dyn Surface,
     engine: &GameEngine,
     geo: &LayoutGeometry,
-) -> io::Result<()> {
+) {
     let scale = geo.scale;
     let sh = scale;
     let sw = scale * 2;
@@ -45,7 +39,6 @@ pub fn render_board(
             for c in 0..engine.board.width {
                 let cell = &engine.board.cells[r][c];
                 let x = geo.board_x + c as u16 * (sw + gap);
-                stdout.queue(MoveTo(x, y))?;
 
                 let row_offset_u = row_offset as usize;
                 let is_cursor = engine.cursor_row == r && engine.cursor_col == c;
@@ -97,9 +90,7 @@ pub fn render_board(
                         1 => ("· ", Color::DarkGrey),
                         _ => ("  ", Color::Black),
                     };
-                    stdout.queue(SetForegroundColor(anim_color))?;
-                    stdout.queue(Print(anim_glyph))?;
-                    stdout.queue(ResetColor)?;
+                    surface.print(x, y, anim_glyph, Style { fg: anim_color, ..Default::default() });
                 } else {
                     let row_str = final_rows
                         .get(row_offset_u)
@@ -113,27 +104,24 @@ pub fn render_board(
                         cell_color
                     };
 
-                    if let Some(color) = effective_color {
-                        stdout.queue(SetForegroundColor(color))?;
-                    }
-                    if is_selected {
-                        stdout.queue(Print(row_str.negative()))?;
+                    let attrs = if is_selected {
+                        Attrs::REVERSE
                     } else if in_match {
-                        stdout.queue(Print(row_str.bold()))?;
-                    } else if is_ice {
-                        // Wrap ice cell content in brackets for visual indicator
-                        stdout.queue(Print(format!("{}", row_str)))?;
+                        Attrs::BOLD
                     } else {
-                        stdout.queue(Print(row_str))?;
-                    }
-                    if effective_color.is_some() {
-                        stdout.queue(ResetColor)?;
-                    }
+                        Attrs::empty()
+                    };
+                    let style = Style {
+                        fg: effective_color.unwrap_or_default(),
+                        attrs,
+                        ..Default::default()
+                    };
+                    surface.print(x, y, row_str, style);
                 }
 
                 // Gap between cells
                 if c < engine.board.width - 1 {
-                    stdout.queue(Print(" ".repeat(gap as usize)))?;
+                    surface.print(x + sw, y, &" ".repeat(gap as usize), Style::default());
                 }
             }
 
@@ -141,19 +129,16 @@ pub fn render_board(
             if engine.cursor_row == r {
                 let c = engine.cursor_col;
                 let cx = geo.board_x + c as u16 * (sw + gap);
+                let bracket_style = Style { fg: Color::White, attrs: Attrs::BOLD, ..Default::default() };
                 // Left bracket — use the gap column before the cursor cell
                 if cx > 0 {
-                    stdout.queue(MoveTo(cx - 1, y))?;
-                    stdout.queue(Print("[".white().bold()))?;
+                    surface.print(cx - 1, y, "[", bracket_style);
                 }
                 // Right bracket — use the gap column after the cursor cell
-                stdout.queue(MoveTo(cx + sw, y))?;
-                stdout.queue(Print("]".white().bold()))?;
+                surface.print(cx + sw, y, "]", bracket_style);
             }
         }
     }
-
-    Ok(())
 }
 
 pub fn is_in_active_match(engine: &GameEngine, r: usize, c: usize) -> bool {

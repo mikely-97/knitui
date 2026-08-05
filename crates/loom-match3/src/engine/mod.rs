@@ -1,4 +1,4 @@
-use crossterm::style::Color;
+use loom_engine::render::Color;
 use rand::prelude::*;
 
 #[allow(unused_imports)]
@@ -506,7 +506,7 @@ mod tests {
     #[test]
     fn resolving_clears_matched_cells_and_transitions_to_falling() {
         use crate::board::Cell;
-        use crossterm::style::Color;
+        use loom_engine::render::Color;
         // Build a board with a guaranteed 3-match in row 0
         let mut e = engine();
         // Force a 3-Red row at top
@@ -542,7 +542,7 @@ mod tests {
     #[test]
     fn falling_applies_gravity_and_transitions_to_refilling() {
         use crate::board::Cell;
-        use crossterm::style::Color;
+        use loom_engine::render::Color;
         let mut e = engine();
         e.board.cells[0][0] = Cell::gem(Color::Red);
         e.board.cells[1][0] = Cell::empty();
@@ -571,7 +571,7 @@ mod tests {
     #[test]
     fn score_increases_on_resolution() {
         use crate::board::Cell;
-        use crossterm::style::Color;
+        use loom_engine::render::Color;
         let mut e = engine();
         e.board.cells[0][0] = Cell::gem(Color::Red);
         e.board.cells[0][1] = Cell::gem(Color::Red);

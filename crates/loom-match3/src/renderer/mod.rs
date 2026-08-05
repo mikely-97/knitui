@@ -1,13 +1,9 @@
 #![allow(warnings)]
 
-use std::io::{self, Write, Stdout};
+use std::io::{self, Stdout};
 
-use crossterm::{
-    QueueableCommand,
-    style::{Print, Stylize, Color, SetForegroundColor, ResetColor, SetBackgroundColor, Attribute, SetAttribute},
-    terminal::{self, Clear, ClearType},
-    cursor::{MoveTo, Hide},
-};
+use crossterm::terminal;
+use loom_engine_term::TermSurface;
 
 use crate::engine::GameEngine;
 use crate::bonuses::BonusState;
@@ -98,14 +94,11 @@ pub fn do_render(
     geo: &LayoutGeometry,
     objective_label: &str,
 ) -> io::Result<()> {
-    // BeginSynchronizedUpdate / EndSynchronizedUpdate not available in crossterm 0.27
-    stdout.queue(Hide)?;
-    stdout.queue(Clear(ClearType::All))?;
+    let mut surface = TermSurface::begin(stdout)?;
 
-    render_hud(stdout, engine, geo, objective_label)?;
-    render_board(stdout, engine, geo)?;
-    render_key_bar(stdout, &engine.bonus_state)?;
+    render_hud(&mut surface, engine, geo, objective_label);
+    render_board(&mut surface, engine, geo);
+    render_key_bar(&mut surface, &engine.bonus_state);
 
-    stdout.flush()?;
-    Ok(())
+    surface.finish()
 }
