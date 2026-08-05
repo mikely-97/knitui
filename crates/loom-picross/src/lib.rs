@@ -5,4 +5,7 @@ pub mod game;
 pub mod puzzle;
 pub mod puzzles;
 pub mod renderer;
+#[cfg(not(target_arch = "wasm32"))]
 pub mod tui;
+#[cfg(target_arch = "wasm32")]
+pub mod web;

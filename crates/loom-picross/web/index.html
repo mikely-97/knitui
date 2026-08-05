@@ -1,0 +1,48 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>picross (web)</title>
+<style>
+  body { background: #111; color: #ccc; font-family: monospace; }
+  canvas { background: black; display: block; margin: 1rem auto; }
+</style>
+</head>
+<body>
+<canvas id="game"></canvas>
+<p style="text-align:center">Arrows move, Enter/Space fills, X crosses. First built-in puzzle only.</p>
+<script type="module">
+  import init, { WebGame } from './pkg/pictui.js';
+
+  async function main() {
+    await init();
+
+    const canvas = document.getElementById('game');
+    const fontPx = 16;
+    const cols = 60;
+    const rows = 30;
+    canvas.width = Math.ceil(cols * fontPx * 0.6);
+    canvas.height = Math.ceil(rows * fontPx * 1.2);
+
+    const ctx = canvas.getContext('2d');
+    ctx.fillStyle = 'black';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    const game = new WebGame(ctx, cols, rows, fontPx);
+
+    window.addEventListener('keydown', (e) => {
+      game.handle_key(e);
+      e.preventDefault();
+    });
+
+    function frame() {
+      game.render();
+      requestAnimationFrame(frame);
+    }
+    requestAnimationFrame(frame);
+  }
+
+  main();
+</script>
+</body>
+</html>

@@ -6,11 +6,22 @@ edition = "2024"
 [lib]
 name = "pictui"
 path = "src/lib.rs"
+crate-type = ["cdylib", "rlib"]
 
 [dependencies]
 loom-engine = { path = "../loom-engine" }
-loom-engine-term = { path = "../loom-engine-term" }
-crossterm = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 dirs = { workspace = true }
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+loom-engine-term = { path = "../loom-engine-term" }
+crossterm = { workspace = true }
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+loom-engine-web = { path = "../loom-engine-web" }
+wasm-bindgen = "0.2"
+
+[target.'cfg(target_arch = "wasm32")'.dependencies.web-sys]
+version = "0.3"
+features = ["CanvasRenderingContext2d", "KeyboardEvent"]

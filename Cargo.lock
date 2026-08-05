@@ -384,8 +384,11 @@ dependencies = [
  "dirs",
  "loom-engine",
  "loom-engine-term",
+ "loom-engine-web",
  "serde",
  "serde_json",
+ "wasm-bindgen",
+ "web-sys",
 ]
 
 [[package]]
