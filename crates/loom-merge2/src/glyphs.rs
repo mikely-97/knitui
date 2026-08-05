@@ -1,4 +1,4 @@
-use crossterm::style::Color;
+use loom_engine::render::Color;
 
 use crate::board::Cell;
 use crate::item::{Family, Piece};

@@ -1,13 +1,17 @@
 use std::io::{self, Stdout};
 
-use crossterm::{
-    cursor::MoveTo,
-    style::{Attribute, Color, Print, SetAttribute, SetBackgroundColor, SetForegroundColor, ResetColor},
-    terminal::size as term_size,
-    QueueableCommand,
-};
+use loom_engine::render::{Attrs, Color, Style, Surface};
+use loom_engine_term::TermSurface;
 
 use crate::blessings::{self, ALL_BLESSINGS};
+
+fn fg(color: Color) -> Style {
+    Style { fg: color, ..Default::default() }
+}
+
+fn bold(color: Color) -> Style {
+    Style { fg: color, attrs: Attrs::BOLD, ..Default::default() }
+}
 
 // ── Help overlay ──────────────────────────────────────────────────────────
 
@@ -16,7 +20,17 @@ pub fn render_help(
     help_lines: &[(&str, &str)],
     engine: Option<&crate::engine::GameEngine>,
 ) -> io::Result<()> {
-    let (term_w, term_h) = term_size().unwrap_or((80, 24));
+    let mut surface = TermSurface::new(stdout);
+    render_help_inner(&mut surface, help_lines, engine);
+    surface.done()
+}
+
+fn render_help_inner(
+    surface: &mut dyn Surface,
+    help_lines: &[(&str, &str)],
+    engine: Option<&crate::engine::GameEngine>,
+) {
+    let (term_w, term_h) = surface.size();
     let box_w = 46u16;
     let col1_w = 14usize;
     let inner = box_w as usize - 2;
@@ -51,117 +65,78 @@ pub fn render_help(
     let bx = (term_w / 2).saturating_sub(box_w / 2);
     let by = (term_h / 2).saturating_sub(box_h / 2);
 
-    stdout.queue(MoveTo(bx, by))?;
-    stdout.queue(SetForegroundColor(Color::Cyan))?;
-    stdout.queue(Print(format!("╔{}╗", "═".repeat(box_w as usize - 2))))?;
-
-    stdout.queue(MoveTo(bx, by + 1))?;
-    stdout.queue(SetAttribute(Attribute::Bold))?;
-    stdout.queue(Print(format!("║{:^w$}║", "MERGE-2 HELP", w = inner)))?;
-    stdout.queue(SetAttribute(Attribute::Reset))?;
-
-    stdout.queue(MoveTo(bx, by + 2))?;
-    stdout.queue(SetForegroundColor(Color::DarkGrey))?;
-    stdout.queue(Print(format!("╠{}╣", "═".repeat(box_w as usize - 2))))?;
+    surface.print(bx, by, &format!("╔{}╗", "═".repeat(box_w as usize - 2)), fg(Color::Cyan));
+    surface.print(bx, by + 1, &format!("║{:^w$}║", "MERGE-2 HELP", w = inner), bold(Color::Reset));
+    surface.print(bx, by + 2, &format!("╠{}╣", "═".repeat(box_w as usize - 2)), fg(Color::DarkGrey));
 
     for (i, (key, desc)) in help_lines.iter().enumerate() {
         let y = by + 3 + i as u16;
-        stdout.queue(MoveTo(bx, y))?;
-        stdout.queue(SetForegroundColor(Color::DarkGrey))?;
-        stdout.queue(Print("║"))?;
-        stdout.queue(SetForegroundColor(Color::Yellow))?;
-        stdout.queue(Print(format!(" {:<w$}", key, w = col1_w)))?;
-        stdout.queue(SetForegroundColor(Color::White))?;
         let remaining = inner.saturating_sub(1 + col1_w + 1);
-        stdout.queue(Print(format!("{:<w$}", desc, w = remaining)))?;
-        stdout.queue(SetForegroundColor(Color::DarkGrey))?;
-        stdout.queue(Print("║"))?;
+        let mut cx = bx;
+        surface.print(cx, y, "║", fg(Color::DarkGrey));
+        cx += 1;
+        surface.print(cx, y, &format!(" {:<w$}", key, w = col1_w), fg(Color::Yellow));
+        cx += 1 + col1_w as u16;
+        surface.print(cx, y, &format!("{:<w$}", desc, w = remaining), fg(Color::White));
+        cx += remaining as u16;
+        surface.print(cx, y, "║", fg(Color::DarkGrey));
     }
 
     let sep_y = by + 3 + help_lines.len() as u16;
-    stdout.queue(MoveTo(bx, sep_y))?;
-    stdout.queue(SetForegroundColor(Color::DarkGrey))?;
-    stdout.queue(Print(format!("╠{}╣", "═".repeat(box_w as usize - 2))))?;
+    surface.print(bx, sep_y, &format!("╠{}╣", "═".repeat(box_w as usize - 2)), fg(Color::DarkGrey));
 
     // Active blessings
-    stdout.queue(MoveTo(bx, sep_y + 1))?;
-    stdout.queue(SetForegroundColor(Color::DarkGrey))?;
-    stdout.queue(Print("║"))?;
-    stdout.queue(SetForegroundColor(Color::Cyan))?;
-    stdout.queue(Print(format!("{:^w$}", "Active Blessings", w = inner)))?;
-    stdout.queue(SetForegroundColor(Color::DarkGrey))?;
-    stdout.queue(Print("║"))?;
+    surface.print(bx, sep_y + 1, "║", fg(Color::DarkGrey));
+    surface.print(bx + 1, sep_y + 1, &format!("{:^w$}", "Active Blessings", w = inner), fg(Color::Cyan));
+    surface.print(bx + 1 + inner as u16, sep_y + 1, "║", fg(Color::DarkGrey));
 
     if bless_active.is_empty() {
-        stdout.queue(MoveTo(bx, sep_y + 2))?;
-        stdout.queue(SetForegroundColor(Color::DarkGrey))?;
-        stdout.queue(Print(format!("║{:^w$}║", "none", w = inner)))?;
+        surface.print(bx, sep_y + 2, &format!("║{:^w$}║", "none", w = inner), fg(Color::DarkGrey));
     }
     for (i, (name, desc)) in bless_active.iter().enumerate() {
         let y = sep_y + 2 + i as u16;
-        stdout.queue(MoveTo(bx, y))?;
-        stdout.queue(SetForegroundColor(Color::DarkGrey))?;
-        stdout.queue(Print("║"))?;
-        stdout.queue(SetForegroundColor(Color::Green))?;
-        stdout.queue(Print(format!(" {:<w$}", name, w = col1_w)))?;
-        stdout.queue(SetForegroundColor(Color::White))?;
         let remaining = inner.saturating_sub(1 + col1_w + 1);
-        stdout.queue(Print(format!("{:<w$}", desc, w = remaining)))?;
-        stdout.queue(SetForegroundColor(Color::DarkGrey))?;
-        stdout.queue(Print("║"))?;
+        let mut cx = bx;
+        surface.print(cx, y, "║", fg(Color::DarkGrey));
+        cx += 1;
+        surface.print(cx, y, &format!(" {:<w$}", name, w = col1_w), fg(Color::Green));
+        cx += 1 + col1_w as u16;
+        surface.print(cx, y, &format!("{:<w$}", desc, w = remaining), fg(Color::White));
+        cx += remaining as u16;
+        surface.print(cx, y, "║", fg(Color::DarkGrey));
     }
 
     let sep2_y = sep_y + 2 + bless_rows;
-    stdout.queue(MoveTo(bx, sep2_y))?;
-    stdout.queue(SetForegroundColor(Color::DarkGrey))?;
-    stdout.queue(Print(format!("╠{}╣", "═".repeat(box_w as usize - 2))))?;
+    surface.print(bx, sep2_y, &format!("╠{}╣", "═".repeat(box_w as usize - 2)), fg(Color::DarkGrey));
 
     // Bonus inventory
-    stdout.queue(MoveTo(bx, sep2_y + 1))?;
-    stdout.queue(SetForegroundColor(Color::DarkGrey))?;
-    stdout.queue(Print("║"))?;
-    stdout.queue(SetForegroundColor(Color::Cyan))?;
-    stdout.queue(Print(format!("{:^w$}", "Inventory", w = inner)))?;
-    stdout.queue(SetForegroundColor(Color::DarkGrey))?;
-    stdout.queue(Print("║"))?;
+    surface.print(bx, sep2_y + 1, "║", fg(Color::DarkGrey));
+    surface.print(bx + 1, sep2_y + 1, &format!("{:^w$}", "Inventory", w = inner), fg(Color::Cyan));
+    surface.print(bx + 1 + inner as u16, sep2_y + 1, "║", fg(Color::DarkGrey));
 
     let slots = engine.map(|e| e.inventory.slot_count()).unwrap_or(0);
     if slots == 0 {
-        stdout.queue(MoveTo(bx, sep2_y + 2))?;
-        stdout.queue(SetForegroundColor(Color::DarkGrey))?;
-        stdout.queue(Print(format!("║{:^w$}║", "empty", w = inner)))?;
+        surface.print(bx, sep2_y + 2, &format!("║{:^w$}║", "empty", w = inner), fg(Color::DarkGrey));
     }
     for i in 0..slots {
         let y = sep2_y + 2 + i as u16;
-        stdout.queue(MoveTo(bx, y))?;
-        stdout.queue(SetForegroundColor(Color::DarkGrey))?;
-        stdout.queue(Print("║"))?;
-        if let Some(piece) = engine.and_then(|e| e.inventory.peek(i)) {
-            stdout.queue(SetForegroundColor(Color::White))?;
+        let (content_style, label) = if let Some(piece) = engine.and_then(|e| e.inventory.peek(i)) {
             let piece_name = match piece {
                 crate::item::Piece::Regular(item) => format!("{} T{}", item.family.name(), item.tier),
                 crate::item::Piece::Blueprint(fam) => format!("Blueprint({})", fam.name()),
             };
-            let label = format!("  Slot {}: {}", i + 1, piece_name);
-            stdout.queue(Print(format!("{:<w$}", label, w = inner)))?;
+            (fg(Color::White), format!("  Slot {}: {}", i + 1, piece_name))
         } else {
-            stdout.queue(SetForegroundColor(Color::DarkGrey))?;
-            stdout.queue(Print(format!("{:<w$}", format!("  Slot {}: (empty)", i + 1), w = inner)))?;
-        }
-        stdout.queue(SetForegroundColor(Color::DarkGrey))?;
-        stdout.queue(Print("║"))?;
+            (fg(Color::DarkGrey), format!("  Slot {}: (empty)", i + 1))
+        };
+        surface.print(bx, y, "║", fg(Color::DarkGrey));
+        surface.print(bx + 1, y, &format!("{:<w$}", label, w = inner), content_style);
+        surface.print(bx + 1 + inner as u16, y, "║", fg(Color::DarkGrey));
     }
 
     let end_y = sep2_y + 2 + slots.max(1) as u16;
-    stdout.queue(MoveTo(bx, end_y))?;
-    stdout.queue(SetForegroundColor(Color::Cyan))?;
-    stdout.queue(Print(format!("╚{}╝", "═".repeat(box_w as usize - 2))))?;
-    stdout.queue(MoveTo(bx, end_y + 1))?;
-    stdout.queue(SetForegroundColor(Color::DarkGrey))?;
-    stdout.queue(Print(format!("{:^w$}", "Press any key to close", w = box_w as usize)))?;
-
-    stdout.queue(ResetColor)?;
-    Ok(())
+    surface.print(bx, end_y, &format!("╚{}╝", "═".repeat(box_w as usize - 2)), fg(Color::Cyan));
+    surface.print(bx, end_y + 1, &format!("{:^w$}", "Press any key to close", w = box_w as usize), fg(Color::DarkGrey));
 }
 
 /// Render a celebration sweep overlay on the merge board.
@@ -171,27 +146,31 @@ pub fn render_celebration(
     geo: &super::LayoutGeometry,
     tick: u8,
 ) -> io::Result<()> {
+    let mut surface = TermSurface::new(stdout);
+    render_celebration_inner(&mut surface, engine, geo, tick);
+    surface.done()
+}
+
+fn render_celebration_inner(
+    surface: &mut dyn Surface,
+    engine: &crate::engine::GameEngine,
+    geo: &super::LayoutGeometry,
+    tick: u8,
+) {
     let (cw, ch) = crate::glyphs::cell_dims(geo.scale);
     let cols = engine.board.cols;
     let rows = engine.board.rows;
     let lit_col = (tick / 2) as usize % cols.max(1);
     let color = if (tick / 2) % 2 == 0 { Color::Yellow } else { Color::Green };
+    let style = Style { fg: color, attrs: Attrs::BOLD, ..Default::default() };
 
-    stdout.queue(SetForegroundColor(color))?;
-    stdout.queue(SetAttribute(Attribute::Bold))?;
     for row in 0..rows {
         for sy in 0..ch {
             let y = geo.board_y + (row as u16) * (ch as u16 + 1) + 1 + sy as u16;
             let x = geo.board_x + 1 + (lit_col as u16) * (cw as u16 + 1);
-            stdout.queue(MoveTo(x, y))?;
-            for _ in 0..cw {
-                stdout.queue(Print('✦'))?;
-            }
+            surface.print(x, y, &"✦".repeat(cw), style);
         }
     }
-    stdout.queue(SetAttribute(Attribute::Reset))?;
-    stdout.queue(ResetColor)?;
-    Ok(())
 }
 
 /// Render the mission-complete score summary screen.
@@ -199,80 +178,60 @@ pub fn render_mission_summary(
     stdout: &mut Stdout,
     ctx: &crate::campaign::CampaignState,
 ) -> io::Result<()> {
-    let (term_w, term_h) = term_size().unwrap_or((80, 24));
+    let mut surface = TermSurface::new(stdout);
+    render_mission_summary_inner(&mut surface, ctx);
+    surface.done()
+}
+
+fn render_mission_summary_inner(surface: &mut dyn Surface, ctx: &crate::campaign::CampaignState) {
+    let (term_w, term_h) = surface.size();
     let box_w = 44u16;
     let bx = (term_w / 2).saturating_sub(box_w / 2);
     let by = term_h / 4;
     let inner = box_w as usize - 2;
 
-    stdout.queue(MoveTo(bx, by))?;
-    stdout.queue(SetForegroundColor(Color::Yellow))?;
-    stdout.queue(SetAttribute(Attribute::Bold))?;
-    stdout.queue(Print(format!("╔{}╗", "═".repeat(box_w as usize - 2))))?;
-    stdout.queue(MoveTo(bx, by + 1))?;
-    stdout.queue(Print(format!("║{:^w$}║", "MISSION COMPLETE!", w = inner)))?;
-    stdout.queue(SetAttribute(Attribute::Reset))?;
-    stdout.queue(MoveTo(bx, by + 2))?;
-    stdout.queue(SetForegroundColor(Color::DarkGrey))?;
-    stdout.queue(Print(format!("╠{}╣", "═".repeat(box_w as usize - 2))))?;
+    surface.print(bx, by, &format!("╔{}╗", "═".repeat(box_w as usize - 2)), bold(Color::Yellow));
+    surface.print(bx, by + 1, &format!("║{:^w$}║", "MISSION COMPLETE!", w = inner), Style::default());
+    surface.print(bx, by + 2, &format!("╠{}╣", "═".repeat(box_w as usize - 2)), fg(Color::DarkGrey));
 
     let track = crate::campaign_levels::TRACK_NAMES.get(ctx.track_idx).copied().unwrap_or("Unknown");
-    stdout.queue(MoveTo(bx, by + 3))?;
-    stdout.queue(SetForegroundColor(Color::White))?;
-    stdout.queue(Print(format!("║ {:<w$}║",
+    surface.print(bx, by + 3, &format!("║ {:<w$}║",
         format!("{} — Mission {}/{}", track, ctx.current_mission + 1, ctx.total_missions()),
-        w = inner - 1)))?;
+        w = inner - 1), fg(Color::White));
 
-    stdout.queue(MoveTo(bx, by + 4))?;
-    stdout.queue(Print(format!("║ {:<w$}║",
+    surface.print(bx, by + 4, &format!("║ {:<w$}║",
         format!("Score: {}  Stars: ★{}", ctx.score, ctx.stars),
-        w = inner - 1)))?;
+        w = inner - 1), Style::default());
 
-    stdout.queue(MoveTo(bx, by + 5))?;
-    stdout.queue(Print(format!("║ {:<w$}║",
+    surface.print(bx, by + 5, &format!("║ {:<w$}║",
         format!("Total merges: {}  Thawed: {}", ctx.total_merges, ctx.cells_thawed),
-        w = inner - 1)))?;
+        w = inner - 1), Style::default());
 
-    stdout.queue(MoveTo(bx, by + 6))?;
-    stdout.queue(SetForegroundColor(Color::DarkGrey))?;
-    stdout.queue(Print(format!("╠{}╣", "═".repeat(box_w as usize - 2))))?;
-
-    stdout.queue(MoveTo(bx, by + 7))?;
-    stdout.queue(SetForegroundColor(Color::Cyan))?;
-    stdout.queue(Print(format!("║{:^w$}║", "Inventory Carried Over", w = inner)))?;
+    surface.print(bx, by + 6, &format!("╠{}╣", "═".repeat(box_w as usize - 2)), fg(Color::DarkGrey));
+    surface.print(bx, by + 7, &format!("║{:^w$}║", "Inventory Carried Over", w = inner), fg(Color::Cyan));
 
     let slots = ctx.inventory.slot_count();
     let mut row_off = 8u16;
     let mut any = false;
     for i in 0..slots {
         if let Some(piece) = ctx.inventory.peek(i) {
-            stdout.queue(MoveTo(bx, by + row_off))?;
-            stdout.queue(SetForegroundColor(Color::White))?;
             let piece_name = match piece {
                 crate::item::Piece::Regular(item) => format!("{} T{}", item.family.name(), item.tier),
                 crate::item::Piece::Blueprint(fam) => format!("Blueprint({})", fam.name()),
             };
             let s = format!("  {}", piece_name);
-            stdout.queue(Print(format!("║{:<w$}║", s, w = inner)))?;
+            surface.print(bx, by + row_off, &format!("║{:<w$}║", s, w = inner), fg(Color::White));
             row_off += 1;
             any = true;
         }
     }
     if !any {
-        stdout.queue(MoveTo(bx, by + row_off))?;
-        stdout.queue(SetForegroundColor(Color::DarkGrey))?;
-        stdout.queue(Print(format!("║{:^w$}║", "none", w = inner)))?;
+        surface.print(bx, by + row_off, &format!("║{:^w$}║", "none", w = inner), fg(Color::DarkGrey));
         row_off += 1;
     }
 
-    stdout.queue(MoveTo(bx, by + row_off))?;
-    stdout.queue(SetForegroundColor(Color::Yellow))?;
-    stdout.queue(Print(format!("╚{}╝", "═".repeat(box_w as usize - 2))))?;
-    stdout.queue(MoveTo(bx, by + row_off + 1))?;
-    stdout.queue(SetForegroundColor(Color::DarkGrey))?;
-    stdout.queue(Print(format!("{:^w$}", "Press Enter to continue", w = box_w as usize)))?;
-    stdout.queue(ResetColor)?;
-    Ok(())
+    surface.print(bx, by + row_off, &format!("╚{}╝", "═".repeat(box_w as usize - 2)), fg(Color::Yellow));
+    surface.print(bx, by + row_off + 1, &format!("{:^w$}", "Press Enter to continue", w = box_w as usize), fg(Color::DarkGrey));
 }
 
 // ── Main menu ─────────────────────────────────────────────────────────────
@@ -283,54 +242,40 @@ pub fn render_main_menu(
     selected: usize,
     flash: Option<&str>,
 ) -> io::Result<()> {
-    let (term_w, term_h) = term_size().unwrap_or((80, 24));
+    let mut surface = TermSurface::new(stdout);
+    render_main_menu_inner(&mut surface, items, selected, flash);
+    surface.done()
+}
+
+fn render_main_menu_inner(surface: &mut dyn Surface, items: &[&str], selected: usize, flash: Option<&str>) {
+    let (term_w, term_h) = surface.size();
     let cx = term_w / 2;
     let cy = term_h / 2;
     let box_w = 28u16;
     let bx = cx.saturating_sub(box_w / 2);
     let by = cy.saturating_sub((items.len() as u16 + 4) / 2);
 
-    stdout.queue(MoveTo(bx, by))?;
-    stdout.queue(SetForegroundColor(Color::Cyan))?;
-    stdout.queue(SetAttribute(Attribute::Bold))?;
-    stdout.queue(Print(format!("╔{}╗", "═".repeat(box_w as usize - 2))))?;
-
-    stdout.queue(MoveTo(bx, by + 1))?;
-    stdout.queue(Print(format!("║{:^w$}║", "MERGE-2", w = box_w as usize - 2)))?;
-    stdout.queue(SetAttribute(Attribute::Reset))?;
-
-    stdout.queue(MoveTo(bx, by + 2))?;
-    stdout.queue(SetForegroundColor(Color::DarkGrey))?;
-    stdout.queue(Print(format!("╠{}╣", "═".repeat(box_w as usize - 2))))?;
+    surface.print(bx, by, &format!("╔{}╗", "═".repeat(box_w as usize - 2)), bold(Color::Cyan));
+    surface.print(bx, by + 1, &format!("║{:^w$}║", "MERGE-2", w = box_w as usize - 2), Style::default());
+    surface.print(bx, by + 2, &format!("╠{}╣", "═".repeat(box_w as usize - 2)), fg(Color::DarkGrey));
 
     for (i, item) in items.iter().enumerate() {
         let y = by + 3 + i as u16;
-        stdout.queue(MoveTo(bx, y))?;
-        if i == selected {
-            stdout.queue(SetForegroundColor(Color::Black))?;
-            stdout.queue(SetBackgroundColor(Color::Cyan))?;
-            stdout.queue(Print(format!("║ ▶ {:<w$}║", item, w = box_w as usize - 5)))?;
+        let style = if i == selected {
+            Style { fg: Color::Black, bg: Color::Cyan, ..Default::default() }
         } else {
-            stdout.queue(SetForegroundColor(Color::White))?;
-            stdout.queue(SetBackgroundColor(Color::Reset))?;
-            stdout.queue(Print(format!("║   {:<w$}║", item, w = box_w as usize - 5)))?;
-        }
-        stdout.queue(ResetColor)?;
+            Style { fg: Color::White, ..Default::default() }
+        };
+        let marker = if i == selected { "▶" } else { " " };
+        surface.print(bx, y, &format!("║ {} {:<w$}║", marker, item, w = box_w as usize - 5), style);
     }
 
     let ey = by + 3 + items.len() as u16;
-    stdout.queue(MoveTo(bx, ey))?;
-    stdout.queue(SetForegroundColor(Color::Cyan))?;
-    stdout.queue(Print(format!("╚{}╝", "═".repeat(box_w as usize - 2))))?;
+    surface.print(bx, ey, &format!("╚{}╝", "═".repeat(box_w as usize - 2)), fg(Color::Cyan));
 
     if let Some(msg) = flash {
-        stdout.queue(MoveTo(bx, ey + 1))?;
-        stdout.queue(SetForegroundColor(Color::Red))?;
-        stdout.queue(Print(format!(" {}", msg)))?;
+        surface.print(bx, ey + 1, &format!(" {}", msg), fg(Color::Red));
     }
-
-    stdout.queue(ResetColor)?;
-    Ok(())
 }
 
 // ── Campaign track select ─────────────────────────────────────────────────
@@ -341,43 +286,34 @@ pub fn render_campaign_select(
     progress: &[String],
     selected: usize,
 ) -> io::Result<()> {
-    let (term_w, term_h) = term_size().unwrap_or((80, 24));
+    let mut surface = TermSurface::new(stdout);
+    render_campaign_select_inner(&mut surface, tracks, progress, selected);
+    surface.done()
+}
+
+fn render_campaign_select_inner(surface: &mut dyn Surface, tracks: &[&str], progress: &[String], selected: usize) {
+    let (term_w, term_h) = surface.size();
     let box_w = 34u16;
     let bx = (term_w / 2).saturating_sub(box_w / 2);
     let by = (term_h / 2).saturating_sub((tracks.len() as u16 + 4) / 2);
 
-    stdout.queue(MoveTo(bx, by))?;
-    stdout.queue(SetForegroundColor(Color::Green))?;
-    stdout.queue(SetAttribute(Attribute::Bold))?;
-    stdout.queue(Print(format!("╔{}╗", "═".repeat(box_w as usize - 2))))?;
-    stdout.queue(MoveTo(bx, by + 1))?;
-    stdout.queue(Print(format!("║{:^w$}║", "SELECT TRACK", w = box_w as usize - 2)))?;
-    stdout.queue(SetAttribute(Attribute::Reset))?;
-    stdout.queue(MoveTo(bx, by + 2))?;
-    stdout.queue(SetForegroundColor(Color::DarkGrey))?;
-    stdout.queue(Print(format!("╠{}╣", "═".repeat(box_w as usize - 2))))?;
+    surface.print(bx, by, &format!("╔{}╗", "═".repeat(box_w as usize - 2)), bold(Color::Green));
+    surface.print(bx, by + 1, &format!("║{:^w$}║", "SELECT TRACK", w = box_w as usize - 2), Style::default());
+    surface.print(bx, by + 2, &format!("╠{}╣", "═".repeat(box_w as usize - 2)), fg(Color::DarkGrey));
 
     for (i, (name, prog)) in tracks.iter().zip(progress.iter()).enumerate() {
         let y = by + 3 + i as u16;
-        stdout.queue(MoveTo(bx, y))?;
-        if i == selected {
-            stdout.queue(SetForegroundColor(Color::Black))?;
-            stdout.queue(SetBackgroundColor(Color::Green))?;
-            stdout.queue(Print(format!("║ ▶ {:<18}{:>8}║", name, prog)))?;
+        let style = if i == selected {
+            Style { fg: Color::Black, bg: Color::Green, ..Default::default() }
         } else {
-            stdout.queue(SetForegroundColor(Color::White))?;
-            stdout.queue(SetBackgroundColor(Color::Reset))?;
-            stdout.queue(Print(format!("║   {:<18}{:>8}║", name, prog)))?;
-        }
-        stdout.queue(ResetColor)?;
+            Style { fg: Color::White, ..Default::default() }
+        };
+        let marker = if i == selected { "▶" } else { " " };
+        surface.print(bx, y, &format!("║ {} {:<18}{:>8}║", marker, name, prog), style);
     }
 
     let ey = by + 3 + tracks.len() as u16;
-    stdout.queue(MoveTo(bx, ey))?;
-    stdout.queue(SetForegroundColor(Color::Green))?;
-    stdout.queue(Print(format!("╚{}╝", "═".repeat(box_w as usize - 2))))?;
-    stdout.queue(ResetColor)?;
-    Ok(())
+    surface.print(bx, ey, &format!("╚{}╝", "═".repeat(box_w as usize - 2)), fg(Color::Green));
 }
 
 // ── Campaign level intro ──────────────────────────────────────────────────
@@ -386,39 +322,29 @@ pub fn render_level_intro(
     stdout: &mut Stdout,
     lines: &[String],
 ) -> io::Result<()> {
-    let (term_w, term_h) = term_size().unwrap_or((80, 24));
+    let mut surface = TermSurface::new(stdout);
+    render_level_intro_inner(&mut surface, lines);
+    surface.done()
+}
+
+fn render_level_intro_inner(surface: &mut dyn Surface, lines: &[String]) {
+    let (term_w, term_h) = surface.size();
     let box_w = 44u16;
     let box_h = lines.len() as u16 + 4;
     let bx = (term_w / 2).saturating_sub(box_w / 2);
     let by = (term_h / 2).saturating_sub(box_h / 2);
 
-    stdout.queue(MoveTo(bx, by))?;
-    stdout.queue(SetForegroundColor(Color::Yellow))?;
-    stdout.queue(SetAttribute(Attribute::Bold))?;
-    stdout.queue(Print(format!("╔{}╗", "═".repeat(box_w as usize - 2))))?;
-    stdout.queue(MoveTo(bx, by + 1))?;
-    stdout.queue(Print(format!("║{:^w$}║", "MISSION START", w = box_w as usize - 2)))?;
-    stdout.queue(SetAttribute(Attribute::Reset))?;
-    stdout.queue(MoveTo(bx, by + 2))?;
-    stdout.queue(SetForegroundColor(Color::DarkGrey))?;
-    stdout.queue(Print(format!("╠{}╣", "═".repeat(box_w as usize - 2))))?;
+    surface.print(bx, by, &format!("╔{}╗", "═".repeat(box_w as usize - 2)), bold(Color::Yellow));
+    surface.print(bx, by + 1, &format!("║{:^w$}║", "MISSION START", w = box_w as usize - 2), Style::default());
+    surface.print(bx, by + 2, &format!("╠{}╣", "═".repeat(box_w as usize - 2)), fg(Color::DarkGrey));
 
     for (i, line) in lines.iter().enumerate() {
-        stdout.queue(MoveTo(bx, by + 3 + i as u16))?;
-        stdout.queue(SetForegroundColor(Color::White))?;
-        stdout.queue(Print(format!("║ {:<w$}║", line, w = box_w as usize - 3)))?;
+        surface.print(bx, by + 3 + i as u16, &format!("║ {:<w$}║", line, w = box_w as usize - 3), fg(Color::White));
     }
 
     let ey = by + 3 + lines.len() as u16;
-    stdout.queue(MoveTo(bx, ey))?;
-    stdout.queue(SetForegroundColor(Color::Yellow))?;
-    stdout.queue(Print(format!("╚{}╝", "═".repeat(box_w as usize - 2))))?;
-    stdout.queue(MoveTo(bx, ey + 1))?;
-    stdout.queue(SetForegroundColor(Color::DarkGrey))?;
-    stdout.queue(Print("  Press Enter to begin"))?;
-
-    stdout.queue(ResetColor)?;
-    Ok(())
+    surface.print(bx, ey, &format!("╚{}╝", "═".repeat(box_w as usize - 2)), fg(Color::Yellow));
+    surface.print(bx, ey + 1, "  Press Enter to begin", fg(Color::DarkGrey));
 }
 
 // ── Ad watching overlay ───────────────────────────────────────────────────
@@ -428,23 +354,22 @@ pub fn render_ad_overlay(
     quote: &str,
     elapsed_secs: u64,
 ) -> io::Result<()> {
-    let (term_w, term_h) = term_size().unwrap_or((80, 24));
+    let mut surface = TermSurface::new(stdout);
+    render_ad_overlay_inner(&mut surface, quote, elapsed_secs);
+    surface.done()
+}
+
+fn render_ad_overlay_inner(surface: &mut dyn Surface, quote: &str, elapsed_secs: u64) {
+    let (term_w, term_h) = surface.size();
     let box_w = 44u16;
     let bx = (term_w / 2).saturating_sub(box_w / 2);
     let by = term_h / 4;
     let ad_dur = 10u64;
     let remaining = ad_dur.saturating_sub(elapsed_secs);
 
-    stdout.queue(MoveTo(bx, by))?;
-    stdout.queue(SetForegroundColor(Color::Magenta))?;
-    stdout.queue(SetAttribute(Attribute::Bold))?;
-    stdout.queue(Print(format!("╔{}╗", "═".repeat(box_w as usize - 2))))?;
-    stdout.queue(MoveTo(bx, by + 1))?;
-    stdout.queue(Print(format!("║{:^w$}║", "★  SPONSORED MESSAGE  ★", w = box_w as usize - 2)))?;
-    stdout.queue(SetAttribute(Attribute::Reset))?;
-    stdout.queue(MoveTo(bx, by + 2))?;
-    stdout.queue(SetForegroundColor(Color::DarkGrey))?;
-    stdout.queue(Print(format!("╠{}╣", "═".repeat(box_w as usize - 2))))?;
+    surface.print(bx, by, &format!("╔{}╗", "═".repeat(box_w as usize - 2)), bold(Color::Magenta));
+    surface.print(bx, by + 1, &format!("║{:^w$}║", "★  SPONSORED MESSAGE  ★", w = box_w as usize - 2), Style::default());
+    surface.print(bx, by + 2, &format!("╠{}╣", "═".repeat(box_w as usize - 2)), fg(Color::DarkGrey));
 
     // Word-wrap the quote into the box
     let inner = box_w as usize - 4;
@@ -463,21 +388,12 @@ pub fn render_ad_overlay(
     rows.push(line);
 
     for (i, row) in rows.iter().enumerate() {
-        stdout.queue(MoveTo(bx, by + 3 + i as u16))?;
-        stdout.queue(SetForegroundColor(Color::White))?;
-        stdout.queue(Print(format!("║  {:<w$}  ║", row, w = inner)))?;
+        surface.print(bx, by + 3 + i as u16, &format!("║  {:<w$}  ║", row, w = inner), fg(Color::White));
     }
 
     let ey = by + 3 + rows.len() as u16;
-    stdout.queue(MoveTo(bx, ey))?;
-    stdout.queue(SetForegroundColor(Color::DarkGrey))?;
-    stdout.queue(Print(format!("║{:^w$}║", format!("{}s remaining…", remaining), w = box_w as usize - 2)))?;
-    stdout.queue(MoveTo(bx, ey + 1))?;
-    stdout.queue(SetForegroundColor(Color::Magenta))?;
-    stdout.queue(Print(format!("╚{}╝", "═".repeat(box_w as usize - 2))))?;
-
-    stdout.queue(ResetColor)?;
-    Ok(())
+    surface.print(bx, ey, &format!("║{:^w$}║", format!("{}s remaining…", remaining), w = box_w as usize - 2), fg(Color::DarkGrey));
+    surface.print(bx, ey + 1, &format!("╚{}╝", "═".repeat(box_w as usize - 2)), fg(Color::Magenta));
 }
 
 // ── Options screen ────────────────────────────────────────────────────────
@@ -487,21 +403,20 @@ pub fn render_options(
     settings: &loom_engine::settings::UserSettings,
     selected: usize,
 ) -> io::Result<()> {
-    let (term_w, _) = term_size().unwrap_or((80, 24));
+    let mut surface = TermSurface::new(stdout);
+    render_options_inner(&mut surface, settings, selected);
+    surface.done()
+}
+
+fn render_options_inner(surface: &mut dyn Surface, settings: &loom_engine::settings::UserSettings, selected: usize) {
+    let (term_w, _) = surface.size();
     let cx = term_w / 2;
     let box_w = 32u16;
     let bx = cx.saturating_sub(box_w / 2);
 
-    stdout.queue(MoveTo(bx, 3))?;
-    stdout.queue(SetForegroundColor(Color::Cyan))?;
-    stdout.queue(SetAttribute(Attribute::Bold))?;
-    stdout.queue(Print(format!("╔{}╗", "═".repeat(box_w as usize - 2))))?;
-    stdout.queue(MoveTo(bx, 4))?;
-    stdout.queue(Print(format!("║{:^w$}║", "OPTIONS", w = box_w as usize - 2)))?;
-    stdout.queue(SetAttribute(Attribute::Reset))?;
-    stdout.queue(MoveTo(bx, 5))?;
-    stdout.queue(SetForegroundColor(Color::DarkGrey))?;
-    stdout.queue(Print(format!("╠{}╣", "═".repeat(box_w as usize - 2))))?;
+    surface.print(bx, 3, &format!("╔{}╗", "═".repeat(box_w as usize - 2)), bold(Color::Cyan));
+    surface.print(bx, 4, &format!("║{:^w$}║", "OPTIONS", w = box_w as usize - 2), Style::default());
+    surface.print(bx, 5, &format!("╠{}╣", "═".repeat(box_w as usize - 2)), fg(Color::DarkGrey));
 
     let rows: &[(&str, String)] = &[
         ("Color mode", settings.color_mode.clone()),
@@ -509,27 +424,17 @@ pub fn render_options(
     ];
     for (i, (name, val)) in rows.iter().enumerate() {
         let y = 6 + i as u16;
-        stdout.queue(MoveTo(bx, y))?;
-        if i == selected {
-            stdout.queue(SetForegroundColor(Color::Black))?;
-            stdout.queue(SetBackgroundColor(Color::Cyan))?;
-            stdout.queue(Print(format!("║ ▶ {:<14} {:>9}║", name, val)))?;
+        let style = if i == selected {
+            Style { fg: Color::Black, bg: Color::Cyan, ..Default::default() }
         } else {
-            stdout.queue(SetForegroundColor(Color::White))?;
-            stdout.queue(SetBackgroundColor(Color::Reset))?;
-            stdout.queue(Print(format!("║   {:<14} {:>9}║", name, val)))?;
-        }
-        stdout.queue(ResetColor)?;
+            Style { fg: Color::White, ..Default::default() }
+        };
+        let marker = if i == selected { "▶" } else { " " };
+        surface.print(bx, y, &format!("║ {} {:<14} {:>9}║", marker, name, val), style);
     }
 
-    stdout.queue(MoveTo(bx, 6 + rows.len() as u16))?;
-    stdout.queue(SetForegroundColor(Color::Cyan))?;
-    stdout.queue(Print(format!("╚{}╝", "═".repeat(box_w as usize - 2))))?;
-    stdout.queue(MoveTo(bx, 7 + rows.len() as u16))?;
-    stdout.queue(SetForegroundColor(Color::DarkGrey))?;
-    stdout.queue(Print("  ←→ Adjust  Esc: Back"))?;
-    stdout.queue(ResetColor)?;
-    Ok(())
+    surface.print(bx, 6 + rows.len() as u16, &format!("╚{}╝", "═".repeat(box_w as usize - 2)), fg(Color::Cyan));
+    surface.print(bx, 7 + rows.len() as u16, "  ←→ Adjust  Esc: Back", fg(Color::DarkGrey));
 }
 
 // ── Custom game ───────────────────────────────────────────────────────────
@@ -540,20 +445,19 @@ pub fn render_custom_game(
     preset_name: &str,
     selected: usize,
 ) -> io::Result<()> {
-    let (term_w, _) = term_size().unwrap_or((80, 24));
+    let mut surface = TermSurface::new(stdout);
+    render_custom_game_inner(&mut surface, config, preset_name, selected);
+    surface.done()
+}
+
+fn render_custom_game_inner(surface: &mut dyn Surface, config: &crate::config::Config, preset_name: &str, selected: usize) {
+    let (term_w, _) = surface.size();
     let box_w = 36u16;
     let bx = (term_w / 2).saturating_sub(box_w / 2);
 
-    stdout.queue(MoveTo(bx, 2))?;
-    stdout.queue(SetForegroundColor(Color::Cyan))?;
-    stdout.queue(SetAttribute(Attribute::Bold))?;
-    stdout.queue(Print(format!("╔{}╗", "═".repeat(box_w as usize - 2))))?;
-    stdout.queue(MoveTo(bx, 3))?;
-    stdout.queue(Print(format!("║{:^w$}║", "CUSTOM GAME", w = box_w as usize - 2)))?;
-    stdout.queue(SetAttribute(Attribute::Reset))?;
-    stdout.queue(MoveTo(bx, 4))?;
-    stdout.queue(SetForegroundColor(Color::DarkGrey))?;
-    stdout.queue(Print(format!("╠{}╣", "═".repeat(box_w as usize - 2))))?;
+    surface.print(bx, 2, &format!("╔{}╗", "═".repeat(box_w as usize - 2)), bold(Color::Cyan));
+    surface.print(bx, 3, &format!("║{:^w$}║", "CUSTOM GAME", w = box_w as usize - 2), Style::default());
+    surface.print(bx, 4, &format!("╠{}╣", "═".repeat(box_w as usize - 2)), fg(Color::DarkGrey));
 
     let fields: &[(&str, String)] = &[
         ("Preset",          preset_name.to_string()),
@@ -571,28 +475,18 @@ pub fn render_custom_game(
 
     for (i, (name, val)) in fields.iter().enumerate() {
         let y = 5 + i as u16;
-        stdout.queue(MoveTo(bx, y))?;
-        if i == selected {
-            stdout.queue(SetForegroundColor(Color::Black))?;
-            stdout.queue(SetBackgroundColor(Color::Cyan))?;
-            stdout.queue(Print(format!("║ ▶ {:<18} {:>11}║", name, val)))?;
+        let style = if i == selected {
+            Style { fg: Color::Black, bg: Color::Cyan, ..Default::default() }
         } else {
-            stdout.queue(SetForegroundColor(Color::White))?;
-            stdout.queue(SetBackgroundColor(Color::Reset))?;
-            stdout.queue(Print(format!("║   {:<18} {:>11}║", name, val)))?;
-        }
-        stdout.queue(ResetColor)?;
+            Style { fg: Color::White, ..Default::default() }
+        };
+        let marker = if i == selected { "▶" } else { " " };
+        surface.print(bx, y, &format!("║ {} {:<18} {:>11}║", marker, name, val), style);
     }
 
     let ey = 5 + fields.len() as u16;
-    stdout.queue(MoveTo(bx, ey))?;
-    stdout.queue(SetForegroundColor(Color::Cyan))?;
-    stdout.queue(Print(format!("╚{}╝", "═".repeat(box_w as usize - 2))))?;
-    stdout.queue(MoveTo(bx, ey + 1))?;
-    stdout.queue(SetForegroundColor(Color::DarkGrey))?;
-    stdout.queue(Print("  ↑↓ Select  ←→ Adjust  Enter Start  Esc Back"))?;
-    stdout.queue(ResetColor)?;
-    Ok(())
+    surface.print(bx, ey, &format!("╚{}╝", "═".repeat(box_w as usize - 2)), fg(Color::Cyan));
+    surface.print(bx, ey + 1, "  ↑↓ Select  ←→ Adjust  Enter Start  Esc Back", fg(Color::DarkGrey));
 }
 
 // ── Blessing selection ────────────────────────────────────────────────────
@@ -603,20 +497,19 @@ pub fn render_blessing_selection(
     chosen: &[usize],
     completed_tracks: usize,
 ) -> io::Result<()> {
-    let (term_w, _) = term_size().unwrap_or((80, 24));
+    let mut surface = TermSurface::new(stdout);
+    render_blessing_selection_inner(&mut surface, cursor, chosen, completed_tracks);
+    surface.done()
+}
+
+fn render_blessing_selection_inner(surface: &mut dyn Surface, cursor: usize, chosen: &[usize], completed_tracks: usize) {
+    let (term_w, _) = surface.size();
     let box_w = 50u16;
     let bx = (term_w / 2).saturating_sub(box_w / 2);
 
-    stdout.queue(MoveTo(bx, 1))?;
-    stdout.queue(SetForegroundColor(Color::Yellow))?;
-    stdout.queue(SetAttribute(Attribute::Bold))?;
-    stdout.queue(Print(format!("╔{}╗", "═".repeat(box_w as usize - 2))))?;
-    stdout.queue(MoveTo(bx, 2))?;
-    stdout.queue(Print(format!("║{:^w$}║", "SELECT BLESSINGS", w = box_w as usize - 2)))?;
-    stdout.queue(SetAttribute(Attribute::Reset))?;
-    stdout.queue(MoveTo(bx, 3))?;
-    stdout.queue(SetForegroundColor(Color::DarkGrey))?;
-    stdout.queue(Print(format!("╠{}╣", "═".repeat(box_w as usize - 2))))?;
+    surface.print(bx, 1, &format!("╔{}╗", "═".repeat(box_w as usize - 2)), bold(Color::Yellow));
+    surface.print(bx, 2, &format!("║{:^w$}║", "SELECT BLESSINGS", w = box_w as usize - 2), Style::default());
+    surface.print(bx, 3, &format!("╠{}╣", "═".repeat(box_w as usize - 2)), fg(Color::DarkGrey));
 
     for (i, blessing) in ALL_BLESSINGS.iter().enumerate() {
         let y = 4 + i as u16;
@@ -625,8 +518,7 @@ pub fn render_blessing_selection(
         let is_locked  = !blessings::is_unlocked(blessing, completed_tracks);
         let req_tracks = blessings::tracks_required(blessing.tier);
 
-        stdout.queue(MoveTo(bx, y))?;
-        let (fg, bg) = if is_cursor && !is_locked {
+        let (text_fg, bg) = if is_cursor && !is_locked {
             (Color::Black, Color::Yellow)
         } else if is_chosen {
             (Color::Green, Color::Reset)
@@ -635,58 +527,43 @@ pub fn render_blessing_selection(
         } else {
             (Color::White, Color::Reset)
         };
-        stdout.queue(SetForegroundColor(fg))?;
-        stdout.queue(SetBackgroundColor(bg))?;
         let tier_s = format!("[{}]", blessing.tier.label());
         let lock_s = if is_locked { "*" } else if is_chosen { "v" } else { " " };
-        stdout.queue(Print(format!("║{} {:<4} {:<26} {:>14}║",
+        let line = format!("║{} {:<4} {:<26} {:>14}║",
             lock_s, tier_s, blessing.name,
-            format!("{} tracks", req_tracks))))?;
-        stdout.queue(ResetColor)?;
+            format!("{} tracks", req_tracks));
+        surface.print(bx, y, &line, Style { fg: text_fg, bg, ..Default::default() });
     }
 
     let ey = 4 + ALL_BLESSINGS.len() as u16;
-    stdout.queue(MoveTo(bx, ey))?;
-    stdout.queue(SetForegroundColor(Color::Yellow))?;
-    stdout.queue(Print(format!("╚{}╝", "═".repeat(box_w as usize - 2))))?;
-    stdout.queue(MoveTo(bx, ey + 1))?;
-    stdout.queue(SetForegroundColor(Color::DarkGrey))?;
-    stdout.queue(Print("  ↑↓ Move  Enter Toggle  Space Start  Esc Back"))?;
-    stdout.queue(ResetColor)?;
-    Ok(())
+    surface.print(bx, ey, &format!("╚{}╝", "═".repeat(box_w as usize - 2)), fg(Color::Yellow));
+    surface.print(bx, ey + 1, "  ↑↓ Move  Enter Toggle  Space Start  Esc Back", fg(Color::DarkGrey));
 }
 
 // ── Inventory expansion popup ─────────────────────────────────────────────
 
 pub fn render_inv_expansion_popup(stdout: &mut Stdout) -> io::Result<()> {
-    let (term_w, term_h) = term_size().unwrap_or((80, 24));
+    let mut surface = TermSurface::new(stdout);
+    render_inv_expansion_popup_inner(&mut surface);
+    surface.done()
+}
+
+fn render_inv_expansion_popup_inner(surface: &mut dyn Surface) {
+    let (term_w, term_h) = surface.size();
     let box_w = 32u16;
     let bx = (term_w / 2).saturating_sub(box_w / 2);
     let by = (term_h / 2).saturating_sub(3);
 
-    stdout.queue(MoveTo(bx, by))?;
-    stdout.queue(SetForegroundColor(Color::Yellow))?;
-    stdout.queue(SetAttribute(Attribute::Bold))?;
-    stdout.queue(Print(format!("╔{}╗", "═".repeat(box_w as usize - 2))))?;
+    surface.print(bx, by, &format!("╔{}╗", "═".repeat(box_w as usize - 2)), bold(Color::Yellow));
 
-    stdout.queue(MoveTo(bx, by + 1))?;
     let title = format!("{:^w$}", "INVENTORY EXPANDED!", w = box_w as usize - 2);
-    stdout.queue(Print(format!("║{}║", title)))?;
+    surface.print(bx, by + 1, &format!("║{}║", title), Style::default());
 
-    stdout.queue(MoveTo(bx, by + 2))?;
-    stdout.queue(SetAttribute(Attribute::Reset))?;
-    stdout.queue(SetForegroundColor(Color::White))?;
     let msg = format!("{:^w$}", "+1 inventory slot unlocked", w = box_w as usize - 2);
-    stdout.queue(Print(format!("║{}║", msg)))?;
+    surface.print(bx, by + 2, &format!("║{}║", msg), fg(Color::White));
 
-    stdout.queue(MoveTo(bx, by + 3))?;
-    stdout.queue(SetForegroundColor(Color::DarkGrey))?;
     let hint = format!("{:^w$}", "Y Accept  N Decline", w = box_w as usize - 2);
-    stdout.queue(Print(format!("║{}║", hint)))?;
+    surface.print(bx, by + 3, &format!("║{}║", hint), fg(Color::DarkGrey));
 
-    stdout.queue(MoveTo(bx, by + 4))?;
-    stdout.queue(SetForegroundColor(Color::Yellow))?;
-    stdout.queue(Print(format!("╚{}╝", "═".repeat(box_w as usize - 2))))?;
-    stdout.queue(ResetColor)?;
-    Ok(())
+    surface.print(bx, by + 4, &format!("╚{}╝", "═".repeat(box_w as usize - 2)), fg(Color::Yellow));
 }

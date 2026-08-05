@@ -3,7 +3,7 @@ mod panels;
 mod popups;
 
 pub use board::render_board;
-pub use panels::{render_hud, render_score, render_orders, render_inventory, render_key_bar, render_game_over};
+pub use panels::{render_hud, render_orders, render_inventory, render_key_bar, render_game_over};
 pub use popups::{
     render_help, render_main_menu, render_campaign_select, render_level_intro,
     render_ad_overlay, render_options, render_custom_game, render_blessing_selection,
