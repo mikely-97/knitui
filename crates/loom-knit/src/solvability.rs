@@ -210,9 +210,28 @@ pub fn find_solution(
     let mut yarn_cols: Vec<Vec<Stitch>> = yarn.board.clone();
     let mut held: Vec<(Color, u16, bool)> = Vec::new();
     let mut path: Vec<(usize, usize)> = Vec::new();
+    let mut memo: DeadStates = HashSet::new();
 
     dfs_find(&cell_meta, &mut cells, &mut held, &mut yarn_cols,
-             h, w, spool_capacity, spool_limit, &mut path)
+             h, w, spool_capacity, spool_limit, &mut path, &mut memo)
+}
+
+/// Memoized set of (cells, held, yarn-column-lengths) states already proven
+/// to have zero reachable solutions. Same-colored spools that are
+/// simultaneously exposed generate many pick orderings that collapse onto
+/// the same downstream state; without this, the DFS re-explores each of
+/// those permutations from scratch.
+type DeadStates = HashSet<(Vec<bool>, Vec<(Color, u16, bool)>, Vec<usize>)>;
+
+fn state_key(
+    cells: &[bool],
+    held: &[(Color, u16, bool)],
+    yarn_cols: &[Vec<Stitch>],
+) -> (Vec<bool>, Vec<(Color, u16, bool)>, Vec<usize>) {
+    let mut held_sorted = held.to_vec();
+    held_sorted.sort_unstable();
+    let yarn_lengths: Vec<usize> = yarn_cols.iter().map(|col| col.len()).collect();
+    (cells.to_vec(), held_sorted, yarn_lengths)
 }
 
 fn dfs_find(
@@ -225,8 +244,14 @@ fn dfs_find(
     spool_capacity: u16,
     spool_limit: usize,
     path: &mut Vec<(usize, usize)>,
+    memo: &mut DeadStates,
 ) -> Option<Vec<(usize, usize)>> {
     eager_process(held, yarn_cols, spool_capacity);
+
+    let key = state_key(cells, held, yarn_cols);
+    if memo.contains(&key) {
+        return None;
+    }
 
     if cells.iter().all(|&c| !c)
         && held.is_empty()
@@ -236,11 +261,13 @@ fn dfs_find(
     }
 
     if held.len() >= spool_limit {
+        memo.insert(key);
         return None;
     }
 
     let selectable = selectable_indices(cell_meta, cells, h, w);
     if selectable.is_empty() {
+        memo.insert(key);
         return None;
     }
 
@@ -260,7 +287,7 @@ fn dfs_find(
         path.push((row, col));
 
         if let Some(solution) = dfs_find(cell_meta, cells, held, yarn_cols,
-                                          h, w, spool_capacity, spool_limit, path) {
+                                          h, w, spool_capacity, spool_limit, path, memo) {
             return Some(solution);
         }
 
@@ -269,6 +296,7 @@ fn dfs_find(
         *held = saved_held;
         *yarn_cols = saved_yarn;
     }
+    memo.insert(key);
     None
 }
 
@@ -298,9 +326,10 @@ pub fn count_solutions(
     let mut cells: Vec<bool> = cell_meta.iter().map(|(c, _)| c.is_some()).collect();
     let mut yarn_cols: Vec<Vec<Stitch>> = yarn.board.clone();
     let mut held: Vec<(Color, u16, bool)> = Vec::new(); // (color, fill, has_key)
+    let mut memo: DeadStates = HashSet::new();
 
     dfs_count(&cell_meta, &mut cells, &mut held, &mut yarn_cols,
-              h, w, spool_capacity, spool_limit, limit)
+              h, w, spool_capacity, spool_limit, limit, &mut memo)
 }
 
 fn dfs_count(
@@ -313,9 +342,15 @@ fn dfs_count(
     spool_capacity: u16,
     spool_limit: usize,
     limit: u64,
+    memo: &mut DeadStates,
 ) -> u64 {
     // Eagerly process held spools against yarn until no further progress.
     eager_process(held, yarn_cols, spool_capacity);
+
+    let key = state_key(cells, held, yarn_cols);
+    if memo.contains(&key) {
+        return 0;
+    }
 
     // Win: board clear, held empty, yarn exhausted.
     if cells.iter().all(|&c| !c)
@@ -328,11 +363,13 @@ fn dfs_count(
     // If held is at the limit after eager processing, no picks are possible
     // and no yarn progress was made — definitively stuck.
     if held.len() >= spool_limit {
+        memo.insert(key);
         return 0;
     }
 
     let selectable = selectable_indices(cell_meta, cells, h, w);
     if selectable.is_empty() {
+        memo.insert(key);
         return 0; // No board moves; remaining spools are buried.
     }
 
@@ -351,7 +388,7 @@ fn dfs_count(
         held.push((color, 0, has_key));
 
         count += dfs_count(cell_meta, cells, held, yarn_cols,
-                           h, w, spool_capacity, spool_limit, limit);
+                           h, w, spool_capacity, spool_limit, limit, memo);
 
         // Restore.
         cells[idx] = true;
@@ -359,8 +396,13 @@ fn dfs_count(
         *yarn_cols = saved_yarn;
 
         if count > limit {
-            return count; // Early exit: already over the cap.
+            // Truncated early: this is a lower bound, not the true total for
+            // this state, so it must NOT be memoized as dead.
+            return count;
         }
+    }
+    if count == 0 {
+        memo.insert(key);
     }
     count
 }

@@ -1,6 +1,6 @@
 use std::io::{self, BufRead};
 use knitui::engine::GameEngine;
-use knitui::solvability::{is_solvable, count_solutions};
+use knitui::solvability::{is_solvable, find_solution};
 
 fn main() {
     let stdin = io::stdin();
@@ -80,14 +80,16 @@ fn main() {
             heuristic_fail += 1;
         }
 
-        // Authoritative DFS check (limit=1: just need to know if at least 1 solution)
-        let solutions = count_solutions(
+        // Authoritative check: does at least one valid pick sequence exist?
+        // find_solution short-circuits on the first success, unlike
+        // count_solutions (which is built to count up to a cap, not to stop
+        // at the first hit).
+        let solution = find_solution(
             &engine.board, &engine.yarn,
             engine.spool_capacity, engine.spool_limit,
-            1,
         );
 
-        if solutions >= 1 {
+        if solution.is_some() {
             dfs_solvable += 1;
         } else {
             dfs_unsolvable += 1;
@@ -102,7 +104,7 @@ fn main() {
         let result = serde_json::json!({
             "board": total,
             "heuristic_pass": heuristic,
-            "dfs_solvable": solutions >= 1,
+            "dfs_solvable": solution.is_some(),
             "generation_attempts": gen_attempts,
             "config": config_desc,
         });

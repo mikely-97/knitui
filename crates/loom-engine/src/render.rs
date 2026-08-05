@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 /// conversion is a trivial `From` impl and existing color-derived logic can
 /// port by renaming a type path rather than redesigning around a different
 /// shape (e.g. nested named-color variants).
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub enum Color {
     Reset,
     Black,
