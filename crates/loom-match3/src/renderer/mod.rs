@@ -1,9 +1,13 @@
 #![allow(warnings)]
 
+#[cfg(not(target_arch = "wasm32"))]
 use std::io::{self, Stdout};
 
+#[cfg(not(target_arch = "wasm32"))]
 use crossterm::terminal;
+#[cfg(not(target_arch = "wasm32"))]
 use loom_engine_term::TermSurface;
+use loom_engine::render::Surface;
 
 use crate::engine::GameEngine;
 use crate::bonuses::BonusState;
@@ -12,9 +16,9 @@ mod board;
 mod panels;
 
 pub use board::render_board;
+pub use panels::{render_hud, render_key_bar};
+#[cfg(not(target_arch = "wasm32"))]
 pub use panels::{
-    render_hud,
-    render_key_bar,
     render_help,
     render_game_over,
     render_main_menu,
@@ -34,8 +38,12 @@ pub enum Layout { Vertical, Horizontal }
 
 /// Decide vertical vs horizontal based on terminal height.
 pub fn detect_layout(board_height: usize, board_width: usize, scale: u16) -> Layout {
+    #[cfg(not(target_arch = "wasm32"))]
+    let term_h = terminal::size().unwrap_or((80, 24)).1;
+    #[cfg(target_arch = "wasm32")]
+    let term_h = 24u16;
+
     let sh = scale;
-    let (_, term_h) = terminal::size().unwrap_or((80, 24));
     let board_h = board_height as u16 * (sh + CELL_GAP);
     let hud_h = 6u16;
     if board_h + hud_h + 4 <= term_h {
@@ -88,6 +96,7 @@ impl LayoutGeometry {
 // ── do_render ─────────────────────────────────────────────────────────────
 
 /// Full frame render during Playing state.
+#[cfg(not(target_arch = "wasm32"))]
 pub fn do_render(
     stdout: &mut Stdout,
     engine: &GameEngine,
@@ -95,10 +104,20 @@ pub fn do_render(
     objective_label: &str,
 ) -> io::Result<()> {
     let mut surface = TermSurface::begin(stdout)?;
-
-    render_hud(&mut surface, engine, geo, objective_label);
-    render_board(&mut surface, engine, geo);
-    render_key_bar(&mut surface, &engine.bonus_state);
-
+    do_render_to_surface(&mut surface, engine, geo, objective_label);
     surface.finish()
+}
+
+/// Render directly into a caller-owned `Surface`, no frame lifecycle of its
+/// own. Non-terminal frontends (web) should use this instead of
+/// [`do_render`], which additionally owns a `TermSurface` frame.
+pub fn do_render_to_surface(
+    surface: &mut dyn Surface,
+    engine: &GameEngine,
+    geo: &LayoutGeometry,
+    objective_label: &str,
+) {
+    render_hud(surface, engine, geo, objective_label);
+    render_board(surface, engine, geo);
+    render_key_bar(surface, &engine.bonus_state);
 }

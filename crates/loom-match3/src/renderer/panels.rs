@@ -1,5 +1,7 @@
 use loom_engine::render::{Attrs, Color, Style, Surface};
+#[cfg(not(target_arch = "wasm32"))]
 use loom_engine_term::TermSurface;
+#[cfg(not(target_arch = "wasm32"))]
 use std::io::{self, Stdout};
 
 use crate::blessings::{self, ALL_BLESSINGS};
@@ -106,6 +108,7 @@ pub fn render_key_bar(surface: &mut dyn Surface, bonus_state: &BonusState) {
 // ── render_help ───────────────────────────────────────────────────────────
 
 /// Full-screen help overlay. Any keypress will dismiss it.
+#[cfg(not(target_arch = "wasm32"))]
 pub fn render_help(stdout: &mut Stdout, engine: Option<&GameEngine>) -> io::Result<()> {
     let mut surface = TermSurface::begin(stdout)?;
     render_help_inner(&mut surface, engine);
@@ -224,6 +227,7 @@ fn render_help_inner(surface: &mut dyn Surface, engine: Option<&GameEngine>) {
 ///
 /// Drawn on top of an already-rendered `do_render` frame, so this only
 /// draws into a mid-frame `TermSurface` and does not clear/flush itself.
+#[cfg(not(target_arch = "wasm32"))]
 pub fn render_celebration(
     stdout: &mut Stdout,
     engine: &GameEngine,
@@ -261,6 +265,7 @@ fn render_celebration_inner(
 }
 
 /// Render the level-complete score summary screen (between campaign levels).
+#[cfg(not(target_arch = "wasm32"))]
 pub fn render_level_summary(
     stdout: &mut Stdout,
     score: u32,
@@ -340,6 +345,7 @@ fn render_level_summary_inner(
 /// Game-over / won overlay.
 ///
 /// Drawn on top of an already-rendered board frame (no clear of its own).
+#[cfg(not(target_arch = "wasm32"))]
 pub fn render_game_over(
     stdout: &mut Stdout,
     status: &GameStatus,
@@ -373,6 +379,7 @@ fn render_game_over_inner(surface: &mut dyn Surface, status: &GameStatus, score:
 // ── render_main_menu ──────────────────────────────────────────────────────
 
 /// Main menu screen.
+#[cfg(not(target_arch = "wasm32"))]
 pub fn render_main_menu(
     stdout: &mut Stdout,
     selected: usize,
@@ -418,6 +425,7 @@ fn render_main_menu_inner(surface: &mut dyn Surface, selected: usize, flash: Opt
 // ── render_options ────────────────────────────────────────────────────────
 
 /// Options screen (scale + color mode).
+#[cfg(not(target_arch = "wasm32"))]
 pub fn render_options(
     stdout: &mut Stdout,
     selected: usize,
@@ -460,6 +468,7 @@ const CARD_W: usize = 17;
 const CARD_H: usize = 11;
 const CARD_COLS: usize = 3;
 
+#[cfg(not(target_arch = "wasm32"))]
 pub fn render_blessing_selection(
     stdout: &mut Stdout,
     cursor: usize,

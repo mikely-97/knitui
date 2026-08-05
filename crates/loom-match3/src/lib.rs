@@ -13,4 +13,7 @@ pub mod preset;
 pub mod renderer;
 pub mod settings;
 pub mod game;
+#[cfg(not(target_arch = "wasm32"))]
 pub mod tui;
+#[cfg(target_arch = "wasm32")]
+pub mod web;
