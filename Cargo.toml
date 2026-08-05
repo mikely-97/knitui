@@ -2,6 +2,7 @@
 members = [
     "crates/loom-engine",
     "crates/loom-engine-term",
+    "crates/loom-engine-web",
     "crates/loom-knit",
     "crates/loom-match3",
     "crates/loom-merge2",
