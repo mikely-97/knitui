@@ -56,8 +56,9 @@ impl LayoutGeometry {
         let sh = scale;
         let sw = scale * 2;
 
+        let term_height = crossterm::terminal::size().unwrap_or((80, 24)).1;
         let layout = renderer::detect_layout(
-            &config.layout, config.visible_stitches, config.board_height, scale,
+            &config.layout, config.visible_stitches, config.board_height, scale, term_height,
         );
 
         let yarn_h = config.visible_stitches * sh

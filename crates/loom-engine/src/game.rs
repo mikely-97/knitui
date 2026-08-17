@@ -29,7 +29,9 @@ pub enum Action {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum GameStatus {
     Playing,
-    Won { score: u32 },
+    /// `score` is `None` for games with no numeric scoring concept (e.g. knit,
+    /// picross — completion is binary), `Some(_)` for games that track one.
+    Won { score: Option<u32> },
     Lost { reason: String },
     /// No valid moves but bonuses may help.
     Stuck,
@@ -63,8 +65,8 @@ pub trait GameEngine {
     /// Render the key bar (bottom of screen, shows available keys).
     fn render_keybar(&self, surface: &mut dyn Surface, y: u16);
 
-    /// Score for game-over display.
-    fn score(&self) -> u32;
+    /// Score for game-over display, if this game has a numeric-score concept.
+    fn score(&self) -> Option<u32> { None }
 
     /// Can this game watch ads for bonuses?
     fn can_watch_ad(&self) -> bool { false }

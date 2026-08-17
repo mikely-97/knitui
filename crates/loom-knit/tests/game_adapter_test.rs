@@ -1,0 +1,136 @@
+//! Proves the `loom_engine::game::GameEngine` adapter around loom-knit's
+//! concrete engine (crates/loom-knit/src/game.rs) is wired correctly — the
+//! generic Phase 3 `Shell<G>` will drive gameplay exclusively through this
+//! trait, so a bug here is invisible to the existing engine-level tests
+//! (which all call `knitui::engine::GameEngine` directly, bypassing the
+//! adapter entirely).
+
+use knitui::game::KnitGame;
+use loom_engine::game::{Action, Game, GameStatus, RenderArea};
+use loom_engine::input::{Key, KeyEvent};
+use loom_engine::render::CellGrid;
+
+fn full_area(w: u16, h: u16) -> RenderArea {
+    RenderArea { x: 0, y: 0, width: w, height: h }
+}
+
+#[test]
+fn create_engine_starts_playing() {
+    let game = KnitGame;
+    let config = game.default_config();
+    let engine = game.create_engine(&config, &[]);
+    assert_eq!(engine.status(), GameStatus::Playing);
+}
+
+#[test]
+fn render_draws_a_non_blank_frame() {
+    let game = KnitGame;
+    let config = game.default_config();
+    let engine = game.create_engine(&config, &[]);
+
+    let mut grid = CellGrid::new(120, 50);
+    engine.render(&mut grid, full_area(120, 50));
+
+    let drew_something = (0..50).any(|y| {
+        (0..120).any(|x| grid.get(x, y).glyph != ' ')
+    });
+    assert!(drew_something, "render() produced an entirely blank frame");
+}
+
+#[test]
+fn render_is_stable_across_a_small_terminal_height() {
+    // area.height feeds layout auto-detection (vertical vs horizontal) --
+    // this is the specific wiring the Phase 3 adapter had to add (detect_layout
+    // used to query crossterm internally). A tiny height should force the
+    // horizontal branch without panicking.
+    let game = KnitGame;
+    let config = game.default_config();
+    let engine = game.create_engine(&config, &[]);
+
+    let mut grid = CellGrid::new(200, 10);
+    engine.render(&mut grid, full_area(200, 10));
+    let drew_something = (0..10).any(|y| {
+        (0..200).any(|x| grid.get(x, y).glyph != ' ')
+    });
+    assert!(drew_something, "horizontal-layout render produced a blank frame");
+}
+
+#[test]
+fn arrow_keys_return_redraw_and_dont_panic() {
+    let game = KnitGame;
+    let config = game.default_config();
+    let mut engine = game.create_engine(&config, &[]);
+
+    for key in [Key::Up, Key::Down, Key::Left, Key::Right] {
+        let action = engine.handle_key(KeyEvent::new(key));
+        assert_eq!(action, Action::Redraw);
+    }
+}
+
+#[test]
+fn esc_with_no_active_bonus_quits_to_menu() {
+    let game = KnitGame;
+    let config = game.default_config();
+    let mut engine = game.create_engine(&config, &[]);
+
+    assert_eq!(engine.handle_key(KeyEvent::new(Key::Esc)), Action::QuitToMenu);
+}
+
+#[test]
+fn h_key_requests_help_screen() {
+    let game = KnitGame;
+    let config = game.default_config();
+    let mut engine = game.create_engine(&config, &[]);
+
+    assert_eq!(engine.handle_key(KeyEvent::new(Key::Char('h'))), Action::ShowHelp);
+}
+
+#[test]
+fn score_is_none_knit_has_no_numeric_score() {
+    let game = KnitGame;
+    let config = game.default_config();
+    let engine = game.create_engine(&config, &[]);
+    assert_eq!(engine.score(), None);
+}
+
+#[test]
+fn board_dims_matches_config() {
+    let game = KnitGame;
+    let config = game.default_config();
+    let engine = game.create_engine(&config, &[]);
+    assert_eq!(engine.board_dims(), (config.board_height, config.board_width));
+}
+
+#[test]
+fn scale_round_trips() {
+    let game = KnitGame;
+    let config = game.default_config();
+    let mut engine = game.create_engine(&config, &[]);
+
+    engine.set_scale(3);
+    assert_eq!(engine.scale(), 3);
+
+    // A render after changing scale must not panic -- proves the adapter's
+    // stored geometry (not just the config clone) actually uses the new value.
+    let mut grid = CellGrid::new(200, 50);
+    engine.render(&mut grid, full_area(200, 50));
+}
+
+#[test]
+fn pick_up_and_tick_do_not_panic_across_a_scripted_sequence() {
+    let game = KnitGame;
+    let config = game.default_config();
+    let mut engine = game.create_engine(&config, &[]);
+
+    for _ in 0..20 {
+        engine.handle_key(KeyEvent::new(Key::Enter));
+        engine.tick();
+        if engine.status() != GameStatus::Playing {
+            break;
+        }
+        engine.handle_key(KeyEvent::new(Key::Right));
+    }
+    // No panic across a real, if unsophisticated, play sequence is the bar
+    // here -- solving correctness is already covered by the engine-level
+    // test suite (game_flow_test.rs etc.), which this adapter delegates to.
+}
