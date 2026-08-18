@@ -1,3 +1,4 @@
+use loom_engine::blessings::Blessing;
 use loom_engine::render::Color;
 use loom_engine::game::{Game, GameId, GameEngine};
 
@@ -11,6 +12,7 @@ pub struct M3Game;
 
 impl Game for M3Game {
     type Config = Config;
+    type CampaignEntry = CampaignState;
 
     fn id(&self) -> GameId { GameId::Match3 }
     fn name(&self) -> &'static str { "Match-3" }
@@ -46,6 +48,26 @@ impl Game for M3Game {
             format!("Board: {}×{}, {} colors", l.board_height, l.board_width, l.color_number),
             format!("Moves: {}, Special tiles: {}%", l.move_limit, l.special_tile_pct),
         ]
+    }
+
+    fn new_campaign_entry(&self, track: usize) -> CampaignState {
+        CampaignState::new(track)
+    }
+
+    fn campaign_config(&self, entry: &CampaignState, base: &Config) -> Config {
+        entry.to_config(base)
+    }
+
+    fn complete_campaign_level(&self, entry: &mut CampaignState) -> bool {
+        entry.complete_level()
+    }
+
+    fn available_blessings(&self, completed_tracks: usize) -> Vec<&'static Blessing> {
+        crate::blessings::available_blessings(completed_tracks)
+    }
+
+    fn confirm_blessings(&self, entry: &mut CampaignState, ids: &[String]) {
+        entry.blessings = ids.to_vec();
     }
 
     fn endless_wave_config(&self, wave: u32, base: &Config) -> Config {

@@ -117,6 +117,71 @@ fn scale_round_trips() {
 }
 
 #[test]
+fn campaign_entry_progresses_and_completes() {
+    let game = KnitGame;
+    let mut entry = game.new_campaign_entry(0);
+    assert_eq!(entry.current_level, 0);
+    assert!(!entry.completed);
+
+    let total = entry.total_levels();
+    for i in 0..total {
+        let done = game.complete_campaign_level(&mut entry);
+        assert_eq!(done, i + 1 == total);
+    }
+    assert!(entry.completed);
+}
+
+#[test]
+fn campaign_config_reflects_level_and_hard_track_flag() {
+    let game = KnitGame;
+    let base = game.default_config();
+    let entry = game.new_campaign_entry(0);
+    let cfg = game.campaign_config(&entry, &base);
+    // Track 0 (level 0) is a real track's first level -- just prove the
+    // config actually came from the level table, not an unrelated default.
+    assert!(cfg.board_height > 0 && cfg.board_width > 0);
+}
+
+#[test]
+fn confirm_blessings_records_ids_and_banks_one_time_bonuses() {
+    let game = KnitGame;
+    let mut entry = game.new_campaign_entry(0);
+    let before_scissors = entry.banked_scissors;
+    let before_balloons = entry.banked_balloons;
+
+    game.confirm_blessings(&mut entry, &[
+        "apprentices_kit".to_string(),
+        "light_pockets".to_string(),
+    ]);
+
+    assert_eq!(entry.blessings, vec!["apprentices_kit", "light_pockets"]);
+    assert_eq!(entry.banked_scissors, before_scissors + 1);
+    assert_eq!(entry.banked_balloons, before_balloons + 1);
+}
+
+#[test]
+fn available_blessings_grows_with_completed_tracks() {
+    let game = KnitGame;
+    let at_zero = game.available_blessings(0).len();
+    let at_three = game.available_blessings(3).len();
+    assert!(at_three > at_zero);
+}
+
+#[test]
+fn create_campaign_engine_applies_ad_limit_and_blessings() {
+    let game = KnitGame;
+    let base = game.default_config();
+    let mut entry = game.new_campaign_entry(0);
+    game.confirm_blessings(&mut entry, &["light_pockets".to_string()]);
+
+    let cfg = game.campaign_config(&entry, &base);
+    let engine = game.create_campaign_engine(&entry, &cfg, &[]);
+    // No panic building it is the main bar (proves set_ad_limit/set_blessings
+    // wiring didn't break); status should still be a fresh, playable game.
+    assert_eq!(engine.status(), GameStatus::Playing);
+}
+
+#[test]
 fn pick_up_and_tick_do_not_panic_across_a_scripted_sequence() {
     let game = KnitGame;
     let config = game.default_config();

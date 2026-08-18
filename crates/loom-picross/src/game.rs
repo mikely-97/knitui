@@ -1,13 +1,15 @@
+use loom_engine::blessings::Blessing;
 use loom_engine::render::Color;
 use loom_engine::game::{Game, GameId, GameEngine};
 
-use crate::campaign::{TRACK_NAMES, TRACK_COUNT, levels_for_track, level_count};
+use crate::campaign::{TRACK_NAMES, TRACK_COUNT, levels_for_track, level_count, PicrossCampaignEntry};
 use crate::config::Config;
 
 pub struct PicrossGame;
 
 impl Game for PicrossGame {
     type Config = Config;
+    type CampaignEntry = PicrossCampaignEntry;
 
     fn id(&self) -> GameId { GameId::Picross }
     fn name(&self) -> &'static str { "Picross" }
@@ -42,6 +44,22 @@ impl Game for PicrossGame {
         } else {
             vec!["Unknown puzzle".to_string()]
         }
+    }
+
+    fn new_campaign_entry(&self, track: usize) -> PicrossCampaignEntry {
+        PicrossCampaignEntry::new(track)
+    }
+
+    fn campaign_config(&self, _entry: &PicrossCampaignEntry, base: &Config) -> Config {
+        base.clone()
+    }
+
+    fn complete_campaign_level(&self, entry: &mut PicrossCampaignEntry) -> bool {
+        entry.complete_level()
+    }
+
+    fn available_blessings(&self, _completed_tracks: usize) -> Vec<&'static Blessing> {
+        Vec::new()
     }
 
     fn endless_wave_config(&self, _wave: u32, base: &Config) -> Config {

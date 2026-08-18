@@ -1,3 +1,5 @@
+use crate::blessings::Blessing;
+use crate::campaign::CampaignEntry;
 use crate::input::KeyEvent;
 use crate::render::{Color, Surface};
 
@@ -104,6 +106,12 @@ pub struct ConfigField {
 /// Definition of a game type. Each game crate implements this.
 pub trait Game: 'static {
     type Config: GameConfig;
+    /// This game's persisted campaign-progress type (e.g. knit's
+    /// `CampaignState`). Only the minimal bookkeeping surface
+    /// (`CampaignEntry`) is generic; game-specific semantics (what a level
+    /// or a blessing actually does to it) live in the methods below, which
+    /// take `&Self::CampaignEntry` and are implemented per game.
+    type CampaignEntry: CampaignEntry;
 
     // Identity
     fn id(&self) -> GameId;
@@ -120,6 +128,33 @@ pub trait Game: 'static {
     fn level_count(&self, track: usize) -> usize;
     fn level_config(&self, track: usize, level: usize, base: &Self::Config) -> Self::Config;
     fn level_intro_lines(&self, track: usize, level: usize) -> Vec<String>;
+
+    /// Build a fresh campaign-progress entry for a track (e.g. `CampaignState::new`).
+    fn new_campaign_entry(&self, track: usize) -> Self::CampaignEntry;
+    /// Config for a campaign entry's current level — level params, banked
+    /// bonuses, and any blessing numeric effects already merged in.
+    fn campaign_config(&self, entry: &Self::CampaignEntry, base: &Self::Config) -> Self::Config;
+    /// Build a `GameEngine` for a campaign run, applying whatever
+    /// entry-specific runtime setup (ad limits, blessing behavior flags,
+    /// ...) the plain `create_engine` doesn't know about. Default: no extra
+    /// setup, same as a non-campaign game.
+    fn create_campaign_engine(
+        &self, _entry: &Self::CampaignEntry, config: &Self::Config, palette: &[Color],
+    ) -> Box<dyn GameEngine> {
+        self.create_engine(config, palette)
+    }
+    /// Apply a level-completion result to a campaign entry (advance level,
+    /// bank rewards, ...). Returns true if the track is now fully complete.
+    fn complete_campaign_level(&self, entry: &mut Self::CampaignEntry) -> bool;
+
+    // Blessings — optional; games with no blessing system use the defaults.
+    /// Blessings selectable at campaign start, gated by completed-track count.
+    fn available_blessings(&self, _completed_tracks: usize) -> Vec<&'static Blessing> { Vec::new() }
+    /// Record chosen blessing IDs on a campaign entry and apply any
+    /// one-time banked bonuses they grant.
+    fn confirm_blessings(&self, entry: &mut Self::CampaignEntry, ids: &[String]) {
+        let _ = (entry, ids);
+    }
 
     // Endless
     fn endless_wave_config(&self, wave: u32, base: &Self::Config) -> Self::Config;

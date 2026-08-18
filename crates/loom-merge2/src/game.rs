@@ -1,6 +1,8 @@
+use loom_engine::blessings::Blessing;
 use loom_engine::render::Color;
 use loom_engine::game::{Game, GameId, GameEngine};
 
+use crate::campaign::CampaignState;
 use crate::campaign_levels::{TRACK_NAMES, TRACK_COUNT, mission_count, track_def};
 use crate::config::Config;
 use crate::endless::EndlessParams;
@@ -10,6 +12,7 @@ pub struct M2Game;
 
 impl Game for M2Game {
     type Config = Config;
+    type CampaignEntry = CampaignState;
 
     fn id(&self) -> GameId { GameId::Merge2 }
     fn name(&self) -> &'static str { "Merge-2" }
@@ -58,6 +61,27 @@ impl Game for M2Game {
             format!("{} — Mission {}/{}", TRACK_NAMES[track], level + 1, total),
             desc.to_string(),
         ]
+    }
+
+    // Merge-2's CampaignState embeds live game-world state (board, inventory,
+    // energy, active orders), not just level params -- it doesn't fit the
+    // "derive a Config from an entry" shape the other 3 games share. Wiring
+    // this properly is a real design task for merge2's own adapter pass
+    // (same status as create_engine above), not a mechanical port.
+    fn new_campaign_entry(&self, _track: usize) -> CampaignState {
+        unimplemented!("M2Game campaign wiring will be finished alongside its GameEngine adapter")
+    }
+
+    fn campaign_config(&self, _entry: &CampaignState, _base: &Config) -> Config {
+        unimplemented!("see new_campaign_entry")
+    }
+
+    fn complete_campaign_level(&self, _entry: &mut CampaignState) -> bool {
+        unimplemented!("see new_campaign_entry")
+    }
+
+    fn available_blessings(&self, completed_tracks: usize) -> Vec<&'static Blessing> {
+        crate::blessings::available_blessings(completed_tracks)
     }
 
     fn endless_wave_config(&self, wave: u32, base: &Config) -> Config {

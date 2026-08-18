@@ -1,3 +1,4 @@
+use loom_engine::blessings::Blessing;
 use loom_engine::render::{Color, Surface};
 use loom_engine::game::{
     Action, Game, GameId, GameEngine as GameEngineTrait, GameStatus as EngineGameStatus,
@@ -7,7 +8,7 @@ use loom_engine::input::{Key, KeyEvent};
 
 use crate::board_entity::Direction;
 use crate::config::Config;
-use crate::campaign_levels::{TRACK_NAMES, TRACK_COUNT, levels_for_track};
+use crate::campaign_levels::{TRACK_NAMES, TRACK_COUNT, levels_for_track, is_hard_track};
 use crate::campaign::CampaignState;
 use crate::endless::EndlessState;
 use crate::engine::{BonusState, GameEngine as KnitEngine, GameStatus as KnitStatus};
@@ -18,6 +19,7 @@ pub struct KnitGame;
 
 impl Game for KnitGame {
     type Config = Config;
+    type CampaignEntry = CampaignState;
 
     fn id(&self) -> GameId { GameId::Knit }
     fn name(&self) -> &'static str { "Knit" }
@@ -56,6 +58,49 @@ impl Game for KnitGame {
             format!("Board: {}×{}, {} colors", l.board_height, l.board_width, l.color_number),
             format!("Obstacles: {}%, Conveyors: {}%", l.obstacle_percentage, l.conveyor_percentage),
         ]
+    }
+
+    fn new_campaign_entry(&self, track: usize) -> CampaignState {
+        CampaignState::new(track)
+    }
+
+    fn campaign_config(&self, entry: &CampaignState, base: &Config) -> Config {
+        let mut cfg = entry.to_config(base);
+        cfg.hard_mode = is_hard_track(entry.track_idx);
+        cfg
+    }
+
+    fn create_campaign_engine(
+        &self, entry: &CampaignState, config: &Config, palette: &[Color],
+    ) -> Box<dyn GameEngineTrait> {
+        let mut adapter = KnitEngineAdapter {
+            engine: KnitEngine::new(config),
+            config: config.clone(),
+        };
+        adapter.engine.set_ad_limit(entry.ad_limit());
+        if !config.hard_mode {
+            adapter.engine.set_blessings(&entry.blessings);
+        }
+        let _ = palette;
+        Box::new(adapter)
+    }
+
+    fn complete_campaign_level(&self, entry: &mut CampaignState) -> bool {
+        entry.complete_level()
+    }
+
+    fn available_blessings(&self, completed_tracks: usize) -> Vec<&'static Blessing> {
+        crate::blessings::available_blessings(completed_tracks)
+    }
+
+    fn confirm_blessings(&self, entry: &mut CampaignState, ids: &[String]) {
+        entry.blessings = ids.to_vec();
+        if crate::blessings::has(&entry.blessings, "apprentices_kit") {
+            entry.banked_scissors += 1;
+        }
+        if crate::blessings::has(&entry.blessings, "light_pockets") {
+            entry.banked_balloons += 1;
+        }
     }
 
     fn endless_wave_config(&self, wave: u32, base: &Config) -> Config {
