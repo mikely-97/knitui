@@ -1,31 +1,18 @@
-#![allow(warnings)]
-
-#[cfg(not(target_arch = "wasm32"))]
-use std::io::{self, Stdout};
+#![allow(dead_code)]
 
 #[cfg(not(target_arch = "wasm32"))]
 use crossterm::terminal;
-#[cfg(not(target_arch = "wasm32"))]
-use loom_engine_term::TermSurface;
 use loom_engine::render::Surface;
 
 use crate::engine::GameEngine;
-use crate::bonuses::BonusState;
 
 mod board;
 mod panels;
 
 pub use board::render_board;
-pub use panels::{render_hud, render_key_bar};
-#[cfg(not(target_arch = "wasm32"))]
 pub use panels::{
-    render_help,
-    render_game_over,
-    render_main_menu,
-    render_options,
-    render_blessing_selection,
-    render_celebration,
-    render_level_summary,
+    render_hud, render_key_bar,
+    render_help_to_surface, render_celebration_to_surface, render_game_over_to_surface,
 };
 
 // ── Layout constants ──────────────────────────────────────────────────────
@@ -36,17 +23,15 @@ pub const COMP_GAP: u16 = 3;   // gap between components (board vs HUD panel)
 #[derive(Clone, Copy, Debug)]
 pub enum Layout { Vertical, Horizontal }
 
-/// Decide vertical vs horizontal based on terminal height.
-pub fn detect_layout(board_height: usize, board_width: usize, scale: u16) -> Layout {
-    #[cfg(not(target_arch = "wasm32"))]
-    let term_h = terminal::size().unwrap_or((80, 24)).1;
-    #[cfg(target_arch = "wasm32")]
-    let term_h = 24u16;
-
+/// Decide vertical vs horizontal for a given render-target height. Portable
+/// (no crossterm/wasm branching) — the caller owns the height query (native:
+/// `crossterm::terminal::size()`; the `GameEngine` trait adapter:
+/// `RenderArea::height`; wasm's `web.rs`: its own fixed canvas-row count).
+pub fn detect_layout(board_height: usize, _board_width: usize, scale: u16, term_height: u16) -> Layout {
     let sh = scale;
     let board_h = board_height as u16 * (sh + CELL_GAP);
     let hud_h = 6u16;
-    if board_h + hud_h + 4 <= term_h {
+    if board_h + hud_h + 4 <= term_height {
         Layout::Vertical
     } else {
         Layout::Horizontal
@@ -65,12 +50,22 @@ pub struct LayoutGeometry {
 }
 
 impl LayoutGeometry {
+    /// Native/wasm convenience: resolves the render-target height itself
+    /// (real terminal size on native, a fixed row count on wasm). Used by
+    /// `web.rs`'s wasm build.
     pub fn compute(board_height: usize, board_width: usize, scale: u16) -> Self {
-        let layout = detect_layout(board_height, board_width, scale);
-        let sh = scale;
-        let sw = scale * 2;
-        let cell_w = sw + CELL_GAP;
-        let board_render_w = board_width as u16 * cell_w;
+        #[cfg(not(target_arch = "wasm32"))]
+        let term_h = terminal::size().unwrap_or((80, 24)).1;
+        #[cfg(target_arch = "wasm32")]
+        let term_h = 24u16;
+        Self::for_height(board_height, board_width, scale, term_h)
+    }
+
+    /// Portable: caller supplies the render-target height explicitly (the
+    /// `GameEngine` trait adapter passes `RenderArea::height`; headless
+    /// tests pass a `CellGrid`'s height). No crossterm/wasm branching.
+    pub fn for_height(board_height: usize, board_width: usize, scale: u16, term_height: u16) -> Self {
+        let layout = detect_layout(board_height, board_width, scale, term_height);
 
         match layout {
             Layout::Vertical => Self {
@@ -93,24 +88,17 @@ impl LayoutGeometry {
     }
 }
 
-// ── do_render ─────────────────────────────────────────────────────────────
-
-/// Full frame render during Playing state.
-#[cfg(not(target_arch = "wasm32"))]
-pub fn do_render(
-    stdout: &mut Stdout,
-    engine: &GameEngine,
-    geo: &LayoutGeometry,
-    objective_label: &str,
-) -> io::Result<()> {
-    let mut surface = TermSurface::begin(stdout)?;
-    do_render_to_surface(&mut surface, engine, geo, objective_label);
-    surface.finish()
-}
+// ── do_render_to_surface ──────────────────────────────────────────────────
+// match3 is now driven entirely through loom_engine::shell::Shell<M3Game>
+// (Phase 4, native) or web.rs (wasm) -- both go through this Surface-only
+// entry point. The old Stdout-owning `do_render` wrapper (and the matching
+// Stdout wrappers for help/celebration/game-over/main-menu/options/
+// blessing-selection/level-summary in panels.rs) were deleted as dead code
+// once tui.rs's hand-rolled loop was replaced -- see git history if a
+// future frontend needs a Stdout-owning entry point again.
 
 /// Render directly into a caller-owned `Surface`, no frame lifecycle of its
-/// own. Non-terminal frontends (web) should use this instead of
-/// [`do_render`], which additionally owns a `TermSurface` frame.
+/// own.
 pub fn do_render_to_surface(
     surface: &mut dyn Surface,
     engine: &GameEngine,

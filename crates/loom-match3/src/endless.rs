@@ -51,6 +51,7 @@ impl EndlessState {
         cfg.laser = self.banked_laser;
         cfg.blaster = self.banked_blaster;
         cfg.warp = self.banked_warp;
+        cfg.is_endless = true;
         cfg
     }
 }

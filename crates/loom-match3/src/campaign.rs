@@ -51,6 +51,12 @@ impl CampaignEntry for CampaignState {
     fn current_level(&self) -> usize { self.current_level }
     fn total_levels(&self) -> usize { levels_for_track(self.track_idx).len() }
     fn is_completed(&self) -> bool { self.completed }
+
+    /// match3 (unlike knit) has no once-only gate here — the original
+    /// `tui.rs` unconditionally sent every campaign-track entry through
+    /// blessing selection, even when blessings were already chosen (letting
+    /// the player reroll on every re-entry). Preserved as-is.
+    fn needs_blessing_selection(&self) -> bool { true }
 }
 
 impl CampaignState {

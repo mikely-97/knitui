@@ -1,10 +1,6 @@
 use loom_engine::render::{Attrs, Color, Style, Surface};
-#[cfg(not(target_arch = "wasm32"))]
-use loom_engine_term::TermSurface;
-#[cfg(not(target_arch = "wasm32"))]
-use std::io::{self, Stdout};
 
-use crate::blessings::{self, ALL_BLESSINGS};
+use crate::blessings::ALL_BLESSINGS;
 use crate::bonuses::BonusState;
 use crate::engine::{GameEngine, GameStatus};
 
@@ -105,14 +101,11 @@ pub fn render_key_bar(surface: &mut dyn Surface, bonus_state: &BonusState) {
     surface.print(0, term_h - 1, &padded, Style { attrs: Attrs::REVERSE, ..Default::default() });
 }
 
-// ── render_help ───────────────────────────────────────────────────────────
-
-/// Full-screen help overlay. Any keypress will dismiss it.
-#[cfg(not(target_arch = "wasm32"))]
-pub fn render_help(stdout: &mut Stdout, engine: Option<&GameEngine>) -> io::Result<()> {
-    let mut surface = TermSurface::begin(stdout)?;
-    render_help_inner(&mut surface, engine);
-    surface.finish()
+/// Portable counterpart to [`render_help`] — the entry point the
+/// `GameEngine` trait adapter uses (no `Stdout`/frame lifecycle available
+/// from a portable caller).
+pub fn render_help_to_surface(surface: &mut dyn Surface, engine: Option<&GameEngine>) {
+    render_help_inner(surface, engine);
 }
 
 fn render_help_inner(surface: &mut dyn Surface, engine: Option<&GameEngine>) {
@@ -223,20 +216,14 @@ fn render_help_inner(surface: &mut dyn Surface, engine: Option<&GameEngine>) {
     surface.print(bx, end_y + 1, &format!("{:^w$}", "Press any key to close", w = box_w as usize), fg(Color::DarkGrey));
 }
 
-/// Render a celebration sweep overlay on the board.
-///
-/// Drawn on top of an already-rendered `do_render` frame, so this only
-/// draws into a mid-frame `TermSurface` and does not clear/flush itself.
-#[cfg(not(target_arch = "wasm32"))]
-pub fn render_celebration(
-    stdout: &mut Stdout,
+/// Portable counterpart to [`render_celebration`] — see [`render_help_to_surface`].
+pub fn render_celebration_to_surface(
+    surface: &mut dyn Surface,
     engine: &GameEngine,
     geo: &super::LayoutGeometry,
     tick: u8,
-) -> io::Result<()> {
-    let mut surface = TermSurface::new(stdout);
-    render_celebration_inner(&mut surface, engine, geo, tick);
-    surface.done()
+) {
+    render_celebration_inner(surface, engine, geo, tick);
 }
 
 fn render_celebration_inner(
@@ -264,96 +251,22 @@ fn render_celebration_inner(
     }
 }
 
-/// Render the level-complete score summary screen (between campaign levels).
-#[cfg(not(target_arch = "wasm32"))]
-pub fn render_level_summary(
-    stdout: &mut Stdout,
-    score: u32,
-    target: Option<u32>,
-    level_num: usize,
-    total_levels: usize,
-    bonuses: &crate::bonuses::BonusInventory,
-) -> io::Result<()> {
-    let mut surface = TermSurface::begin(stdout)?;
-    render_level_summary_inner(&mut surface, score, target, level_num, total_levels, bonuses);
-    surface.finish()
-}
-
-fn render_level_summary_inner(
-    surface: &mut dyn Surface,
-    score: u32,
-    target: Option<u32>,
-    level_num: usize,
-    total_levels: usize,
-    bonuses: &crate::bonuses::BonusInventory,
-) {
-    let (tw, th) = surface.size();
-    let box_w = 34u16;
-    let bx = (tw / 2).saturating_sub(box_w / 2);
-    let by = th / 4;
-    let inner = box_w as usize - 2;
-
-    surface.print(bx, by, &format!("╔{}╗", "═".repeat(box_w as usize - 2)), Style { fg: Color::Yellow, attrs: Attrs::BOLD, ..Default::default() });
-    surface.print(bx, by + 1, &format!("║{:^w$}║", "LEVEL COMPLETE!", w = inner), bold());
-    surface.print(bx, by + 2, &format!("╠{}╣", "═".repeat(box_w as usize - 2)), fg(Color::DarkGrey));
-
-    let level_str = format!("Level {}/{}", level_num, total_levels);
-    surface.print(bx, by + 3, &format!("║ {:<w$}║", level_str, w = inner - 1), fg(Color::White));
-
-    let score_str = if let Some(t) = target {
-        format!("Score: {} / {}", score, t)
-    } else {
-        format!("Score: {}", score)
-    };
-    surface.print(bx, by + 4, &format!("║ {:<w$}║", score_str, w = inner - 1), Style::default());
-
-    let stars: u8 = if let Some(t) = target {
-        if score >= t * 3 / 2 { 3 } else if score >= t { 2 } else { 1 }
-    } else { 3 };
-    let star_str = format!("Stars: {}{}", "★".repeat(stars as usize), "☆".repeat(3 - stars as usize));
-    surface.print(bx, by + 5, &format!("║ {:<w$}║", star_str, w = inner - 1), fg(Color::Yellow));
-
-    surface.print(bx, by + 6, &format!("╠{}╣", "═".repeat(box_w as usize - 2)), fg(Color::DarkGrey));
-    surface.print(bx, by + 7, &format!("║{:^w$}║", "Bonuses Carried Over", w = inner), fg(Color::Cyan));
-
-    let bonus_list = [
-        ("Hammer",     bonuses.hammer as u32),
-        ("Laser",      bonuses.laser as u32),
-        ("Blaster",    bonuses.blaster as u32),
-        ("Warp",       bonuses.warp as u32),
-        ("Color Bomb", bonuses.color_bomb as u32),
-    ];
-    let mut row_off = 8u16;
-    for (name, count) in &bonus_list {
-        if *count > 0 {
-            let s = format!("  {} x{}", name, count);
-            surface.print(bx, by + row_off, &format!("║{:<w$}║", s, w = inner), fg(Color::White));
-            row_off += 1;
-        }
-    }
-    if row_off == 8 {
-        surface.print(bx, by + row_off, &format!("║{:^w$}║", "none", w = inner), fg(Color::DarkGrey));
-        row_off += 1;
-    }
-
-    surface.print(bx, by + row_off, &format!("╚{}╝", "═".repeat(box_w as usize - 2)), fg(Color::Yellow));
-    surface.print(bx, by + row_off + 1, &format!("{:^w$}", "Press Enter to continue", w = box_w as usize), fg(Color::DarkGrey));
-}
-
 // ── render_game_over ──────────────────────────────────────────────────────
 
-/// Game-over / won overlay.
-///
-/// Drawn on top of an already-rendered board frame (no clear of its own).
-#[cfg(not(target_arch = "wasm32"))]
-pub fn render_game_over(
-    stdout: &mut Stdout,
+/// Portable counterpart to [`render_game_over`], with an optional message
+/// override (e.g. campaign level-progress text) that replaces the whole box
+/// with a single status line — mirrors loom-knit's `draw_overlay_to_surface`.
+pub fn render_game_over_to_surface(
+    surface: &mut dyn Surface,
     status: &GameStatus,
     score: u32,
-) -> io::Result<()> {
-    let mut surface = TermSurface::new(stdout);
-    render_game_over_inner(&mut surface, status, score);
-    surface.done()
+    overlay_msg: Option<&str>,
+) {
+    if let Some(msg) = overlay_msg {
+        surface.print(0, 0, msg, Style::default());
+        return;
+    }
+    render_game_over_inner(surface, status, score);
 }
 
 fn render_game_over_inner(surface: &mut dyn Surface, status: &GameStatus, score: u32) {
@@ -376,213 +289,3 @@ fn render_game_over_inner(surface: &mut dyn Surface, status: &GameStatus, score:
     surface.print(cx, cy + 5, "╚══════════════════╝", Style::default());
 }
 
-// ── render_main_menu ──────────────────────────────────────────────────────
-
-/// Main menu screen.
-#[cfg(not(target_arch = "wasm32"))]
-pub fn render_main_menu(
-    stdout: &mut Stdout,
-    selected: usize,
-    flash: Option<&str>,
-) -> io::Result<()> {
-    let mut surface = TermSurface::begin(stdout)?;
-    render_main_menu_inner(&mut surface, selected, flash);
-    surface.finish()
-}
-
-fn render_main_menu_inner(surface: &mut dyn Surface, selected: usize, flash: Option<&str>) {
-    let (tw, th) = surface.size();
-    let cx = tw / 2 - 12;
-    let cy = th / 4;
-
-    surface.print(cx, cy, "  ╔══════════════════════╗", Style::default());
-    surface.print(cx, cy + 1, "  ║    m3tui  Match-3    ║", Style::default());
-    surface.print(cx, cy + 2, "  ╚══════════════════════╝", Style::default());
-
-    const ITEMS: &[&str] = &[
-        "Quick Game",
-        "Custom Game",
-        "Campaign",
-        "Endless",
-        "Options",
-        "Quit",
-    ];
-
-    for (i, item) in ITEMS.iter().enumerate() {
-        let y = cy + 4 + i as u16;
-        if i == selected {
-            surface.print(cx + 2, y, &format!("► {:}", item), Style { attrs: Attrs::REVERSE, ..Default::default() });
-        } else {
-            surface.print(cx + 2, y, &format!("  {:}", item), Style::default());
-        }
-    }
-
-    if let Some(msg) = flash {
-        surface.print(cx, cy + 4 + ITEMS.len() as u16 + 1, &format!("  {}", msg), Style::default());
-    }
-}
-
-// ── render_options ────────────────────────────────────────────────────────
-
-/// Options screen (scale + color mode).
-#[cfg(not(target_arch = "wasm32"))]
-pub fn render_options(
-    stdout: &mut Stdout,
-    selected: usize,
-    scale: u16,
-    color_mode: &str,
-) -> io::Result<()> {
-    let mut surface = TermSurface::begin(stdout)?;
-    render_options_inner(&mut surface, selected, scale, color_mode);
-    surface.finish()
-}
-
-fn render_options_inner(surface: &mut dyn Surface, selected: usize, scale: u16, color_mode: &str) {
-    let (tw, th) = surface.size();
-    let cx = tw / 2 - 12;
-    let cy = th / 4;
-
-    surface.print(cx, cy, "  OPTIONS", Style::default());
-
-    let fields = [
-        format!("Scale:      {}", scale),
-        format!("Color Mode: {}", color_mode),
-        "Back".to_string(),
-    ];
-
-    for (i, field) in fields.iter().enumerate() {
-        let y = cy + 2 + i as u16;
-        if i == selected {
-            surface.print(cx, y, &format!("► {}", field), Style { attrs: Attrs::REVERSE, ..Default::default() });
-        } else {
-            surface.print(cx, y, &format!("  {}", field), Style::default());
-        }
-    }
-
-    surface.print(cx, cy + 2 + fields.len() as u16 + 1, "  ← → change value   Esc back", Style::default());
-}
-
-// ── render_blessing_selection ─────────────────────────────────────────────
-
-const CARD_W: usize = 17;
-const CARD_H: usize = 11;
-const CARD_COLS: usize = 3;
-
-#[cfg(not(target_arch = "wasm32"))]
-pub fn render_blessing_selection(
-    stdout: &mut Stdout,
-    cursor: usize,
-    chosen: &[usize],
-    completed_tracks: usize,
-) -> io::Result<()> {
-    let mut surface = TermSurface::begin(stdout)?;
-    render_blessing_selection_inner(&mut surface, cursor, chosen, completed_tracks);
-    surface.finish()
-}
-
-fn render_blessing_selection_inner(
-    surface: &mut dyn Surface,
-    cursor: usize,
-    chosen: &[usize],
-    completed_tracks: usize,
-) {
-    let (term_w, _term_h) = surface.size();
-    let total_blessings = ALL_BLESSINGS.len();
-    let rows = (total_blessings + CARD_COLS - 1) / CARD_COLS;
-
-    // Title
-    let title = "═══ CHOOSE 3 BLESSINGS ═══";
-    let title_x = term_w.saturating_sub(title.len() as u16) / 2;
-    surface.print(title_x, 0, title, Style::default());
-
-    // Grid origin
-    let grid_w = (CARD_W + 3) * CARD_COLS + 1;
-    let grid_x = (term_w as usize).saturating_sub(grid_w) / 2;
-    let grid_y = 2u16;
-
-    for idx in 0..total_blessings {
-        let b = &ALL_BLESSINGS[idx];
-        let row = idx / CARD_COLS;
-        let col = idx % CARD_COLS;
-        let x = (grid_x + col * (CARD_W + 3)) as u16;
-        let y = grid_y + (row as u16) * (CARD_H as u16 + 1);
-
-        let is_cursor = idx == cursor;
-        let is_chosen = chosen.contains(&idx);
-        let unlocked = blessings::is_unlocked(b, completed_tracks);
-
-        let (tl, tr, bl, br, hz, vt) = if is_chosen {
-            ('╔', '╗', '╚', '╝', '═', '║')
-        } else {
-            ('┌', '┐', '└', '┘', '─', '│')
-        };
-
-        let highlight_style = if is_chosen {
-            fg(Color::Green)
-        } else if is_cursor {
-            fg(Color::Yellow)
-        } else {
-            Style::default()
-        };
-
-        // Top border
-        let top = format!("{}{}{}", tl, hz.to_string().repeat(CARD_W), tr);
-        surface.print(x, y, &top, highlight_style);
-
-        // Art lines (5 lines)
-        for (ai, art_line) in b.ascii_art.iter().enumerate() {
-            let padded = format!("{:^w$}", art_line, w = CARD_W);
-            let line = format!("{}{}{}", vt, padded, vt);
-            let style = if !unlocked { fg(Color::DarkGrey) } else { highlight_style };
-            surface.print(x, y + 1 + ai as u16, &line, style);
-        }
-
-        // Name line
-        let name_str = format!("{:^w$}", b.name, w = CARD_W);
-        let name_line = format!("{}{}{}", vt, name_str, vt);
-        let name_style = if !unlocked {
-            fg(Color::DarkGrey)
-        } else {
-            Style { fg: highlight_style.fg, attrs: highlight_style.attrs | Attrs::BOLD, ..Default::default() }
-        };
-        surface.print(x, y + 6, &name_line, name_style);
-
-        // Tier line
-        let tier_label = if unlocked {
-            format!("{:^w$}", format!("─ {} Tier ─", b.tier.label()), w = CARD_W)
-        } else {
-            let needed = blessings::tracks_required(b.tier);
-            format!("{:^w$}", format!("Locked ({}+ tracks)", needed), w = CARD_W)
-        };
-        let tier_line = format!("{}{}{}", vt, tier_label, vt);
-        let tier_style = if !unlocked { fg(Color::DarkGrey) } else { Style::default() };
-        surface.print(x, y + 7, &tier_line, tier_style);
-
-        // Description line
-        let desc = format!("{:^w$}", b.description, w = CARD_W);
-        let desc_line = format!("{}{}{}", vt, desc, vt);
-        let desc_style = if !unlocked { fg(Color::DarkGrey) } else { Style::default() };
-        surface.print(x, y + 8, &desc_line, desc_style);
-
-        // Bottom border
-        let bot = format!("{}{}{}", bl, hz.to_string().repeat(CARD_W), br);
-        surface.print(x, y + 9, &bot, highlight_style);
-
-        // Selection marker
-        if is_chosen {
-            let marker = format!("{:^w$}", "★ SELECTED", w = CARD_W + 2);
-            surface.print(x, y + 10, &marker, fg(Color::Green));
-        }
-    }
-
-    // Status bar
-    let status_y = grid_y + (rows as u16) * (CARD_H as u16 + 1) + 1;
-    let status = format!(
-        "Selected: {}/3    ↑↓←→ Navigate  Enter/Space: Toggle  {}  Esc: Back",
-        chosen.len(),
-        if chosen.len() == 3 { "C: Confirm" } else { "" },
-    );
-    let sx = (term_w as usize).saturating_sub(status.len()) / 2;
-    let status_style = if chosen.len() == 3 { fg(Color::Green) } else { fg(Color::DarkGrey) };
-    surface.print(sx as u16, status_y, &status, status_style);
-}

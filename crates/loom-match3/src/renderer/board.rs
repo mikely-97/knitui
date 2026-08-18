@@ -1,6 +1,6 @@
 use loom_engine::render::{Attrs, Color, Style, Surface};
 
-use crate::board::{CellContent, SpecialPiece, TileModifier};
+use crate::board::{CellContent, TileModifier};
 use crate::engine::{GameEngine, GamePhase};
 use crate::glyphs;
 
@@ -41,7 +41,7 @@ pub fn render_board(
                 let x = geo.board_x + c as u16 * (sw + gap);
 
                 let row_offset_u = row_offset as usize;
-                let is_cursor = engine.cursor_row == r && engine.cursor_col == c;
+                let _is_cursor = engine.cursor_row == r && engine.cursor_col == c;
                 let is_selected = engine.selected == Some((r, c));
                 let is_bouncing = bounce_cells.contains(&(r, c));
                 let in_match = is_in_active_match(engine, r, c);

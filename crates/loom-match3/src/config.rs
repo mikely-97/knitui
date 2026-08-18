@@ -54,6 +54,13 @@ pub struct Config {
     /// Percentage of cells that start with Ice tile modifier (0–100, applied on top of special_tile_pct)
     #[arg(long, default_value_t = 0)]
     pub ice_tile_pct: u16,
+
+    /// Set by `M3Game::endless_wave_config` to mark an endless run. Not a
+    /// CLI flag — governs the `GameEngine` adapter's win/stuck semantics
+    /// (endless treats "moves exhausted with points scored" as wave-complete
+    /// rather than game-over, and auto-consumes a Warp charge when stuck).
+    #[arg(skip)]
+    pub is_endless: bool,
 }
 
 impl loom_engine::game::GameConfig for Config {
