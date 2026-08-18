@@ -80,8 +80,8 @@ impl Game for M2Game {
         unimplemented!("see new_campaign_entry")
     }
 
-    fn available_blessings(&self, completed_tracks: usize) -> Vec<&'static Blessing> {
-        crate::blessings::available_blessings(completed_tracks)
+    fn all_blessings(&self) -> &'static [Blessing] {
+        crate::blessings::ALL_BLESSINGS
     }
 
     fn endless_wave_config(&self, wave: u32, base: &Config) -> Config {

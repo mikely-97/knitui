@@ -62,8 +62,8 @@ impl Game for M3Game {
         entry.complete_level()
     }
 
-    fn available_blessings(&self, completed_tracks: usize) -> Vec<&'static Blessing> {
-        crate::blessings::available_blessings(completed_tracks)
+    fn all_blessings(&self) -> &'static [Blessing] {
+        crate::blessings::ALL_BLESSINGS
     }
 
     fn confirm_blessings(&self, entry: &mut CampaignState, ids: &[String]) {

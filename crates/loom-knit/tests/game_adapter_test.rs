@@ -160,11 +160,11 @@ fn confirm_blessings_records_ids_and_banks_one_time_bonuses() {
 }
 
 #[test]
-fn available_blessings_grows_with_completed_tracks() {
+fn all_blessings_returns_the_full_catalog() {
     let game = KnitGame;
-    let at_zero = game.available_blessings(0).len();
-    let at_three = game.available_blessings(3).len();
-    assert!(at_three > at_zero);
+    // The blessing-selection screen needs the whole list (locked cards are
+    // shown greyed out, not hidden) -- 12 blessings total for knit.
+    assert_eq!(game.all_blessings().len(), 12);
 }
 
 #[test]

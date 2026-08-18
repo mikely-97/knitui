@@ -148,8 +148,12 @@ pub trait Game: 'static {
     fn complete_campaign_level(&self, entry: &mut Self::CampaignEntry) -> bool;
 
     // Blessings — optional; games with no blessing system use the defaults.
-    /// Blessings selectable at campaign start, gated by completed-track count.
-    fn available_blessings(&self, _completed_tracks: usize) -> Vec<&'static Blessing> { Vec::new() }
+    /// This game's full blessing catalog (locked and unlocked alike — the
+    /// blessing-selection screen shows locked cards greyed out, it needs
+    /// the whole list, not a pre-filtered one). Use
+    /// `loom_engine::blessings::is_unlocked` per-card against a
+    /// completed-track count to determine lock state.
+    fn all_blessings(&self) -> &'static [Blessing] { &[] }
     /// Record chosen blessing IDs on a campaign entry and apply any
     /// one-time banked bonuses they grant.
     fn confirm_blessings(&self, entry: &mut Self::CampaignEntry, ids: &[String]) {
