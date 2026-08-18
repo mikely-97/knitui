@@ -80,6 +80,26 @@ impl GameConfig for Config {
     fn color_count(&self) -> usize {
         self.family_count as usize
     }
+    fn custom_fields(&self) -> Vec<(&'static str, u16)> {
+        vec![
+            ("Board Rows", self.board_rows),
+            ("Board Cols", self.board_cols),
+            ("Energy Max", self.energy_max),
+            ("Energy Regen Secs", self.energy_regen_secs as u16),
+        ]
+    }
+
+    fn adjust_custom_field(&mut self, field: usize, delta: i16) {
+        let d = delta as i32;
+        match field {
+            1 => self.board_rows = (self.board_rows as i32 + d).clamp(4, 16) as u16,
+            2 => self.board_cols = (self.board_cols as i32 + d).clamp(4, 16) as u16,
+            3 => self.energy_max = (self.energy_max as i32 + d).clamp(10, 999) as u16,
+            4 => self.energy_regen_secs = (self.energy_regen_secs as i32 + d).clamp(1, 999) as u32,
+            _ => {}
+        }
+    }
+
     fn scale(&self) -> u16 {
         self.scale
     }

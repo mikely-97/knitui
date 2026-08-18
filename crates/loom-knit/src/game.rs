@@ -221,6 +221,18 @@ impl GameEngineTrait for KnitEngineAdapter {
         // behavior, which always redraws the whole frame atomically).
     }
 
+    fn render_game_over_overlay(&self, surface: &mut dyn Surface, status: &EngineGameStatus, overlay_msg: Option<&str>) {
+        let knit_status = match status {
+            EngineGameStatus::Won { .. } => KnitStatus::Won,
+            _ => KnitStatus::Stuck,
+        };
+        renderer::draw_overlay_to_surface(surface, &self.engine, &knit_status, overlay_msg);
+    }
+
+    fn render_help(&self, surface: &mut dyn Surface) {
+        renderer::render_help_to_surface(surface, &self.engine);
+    }
+
     fn score(&self) -> Option<u32> { None }
 
     fn can_watch_ad(&self) -> bool { self.engine.can_watch_ad() }

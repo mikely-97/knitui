@@ -64,6 +64,28 @@ impl loom_engine::game::GameConfig for Config {
     fn color_mode(&self) -> &str { &self.color_mode }
     fn set_scale(&mut self, s: u16) { self.scale = s; }
     fn set_color_mode(&mut self, m: String) { self.color_mode = m; }
+
+    fn custom_fields(&self) -> Vec<(&'static str, u16)> {
+        vec![
+            ("Board Height", self.board_height),
+            ("Board Width", self.board_width),
+            ("Color Count", self.color_number as u16),
+            ("Move Limit", self.move_limit as u16),
+            ("Special Tile %", self.special_tile_pct),
+        ]
+    }
+
+    fn adjust_custom_field(&mut self, field: usize, delta: i16) {
+        let d = delta as i32;
+        match field {
+            1 => self.board_height = (self.board_height as i32 + d).clamp(4, 16) as u16,
+            2 => self.board_width = (self.board_width as i32 + d).clamp(4, 16) as u16,
+            3 => self.color_number = (self.color_number as i32 + d).clamp(3, 7) as u8,
+            4 => self.move_limit = (self.move_limit as i32 + d).clamp(10, 99) as u32,
+            5 => self.special_tile_pct = (self.special_tile_pct as i32 + d).clamp(0, 50) as u16,
+            _ => {}
+        }
+    }
 }
 
 #[cfg(test)]

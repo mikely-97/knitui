@@ -23,6 +23,12 @@ pub fn render_help(stdout: &mut Stdout, engine: &GameEngine) -> io::Result<()> {
     surface.finish()
 }
 
+/// Surface-only entry point for the help screen (native-independent — see
+/// `render_vertical_to_surface` for the rationale behind this naming).
+pub fn render_help_to_surface(surface: &mut dyn Surface, engine: &GameEngine) {
+    render_help_inner(surface, engine);
+}
+
 fn render_help_inner(surface: &mut dyn Surface, engine: &GameEngine) {
     let (term_w, _) = surface.size();
     let box_w = 52u16;

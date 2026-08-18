@@ -23,4 +23,10 @@ impl GameConfig for Config {
     fn color_mode(&self) -> &str { &self.color_mode }
     fn set_scale(&mut self, s: u16) { self.scale = s; }
     fn set_color_mode(&mut self, m: String) { self.color_mode = m; }
+
+    // Picross has no CustomGame screen today (puzzles are curated, not
+    // randomly generated from parameters) -- see the Phase 3 scaffolding
+    // survey. No fields to expose or adjust.
+    fn custom_fields(&self) -> Vec<(&'static str, u16)> { Vec::new() }
+    fn adjust_custom_field(&mut self, _field: usize, _delta: i16) {}
 }

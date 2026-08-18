@@ -67,6 +67,15 @@ pub trait GameEngine {
     /// Render the key bar (bottom of screen, shows available keys).
     fn render_keybar(&self, surface: &mut dyn Surface, y: u16);
 
+    /// Render the game-over overlay (status message, optional
+    /// campaign/endless-specific text) on top of the last-rendered frame.
+    fn render_game_over_overlay(&self, surface: &mut dyn Surface, status: &GameStatus, overlay_msg: Option<&str>);
+
+    /// Render the help screen. Deliberately per-game rather than generic:
+    /// a useful help screen shows live state (active blessings, bonus
+    /// counts, ...) that only the concrete engine knows about.
+    fn render_help(&self, surface: &mut dyn Surface);
+
     /// Score for game-over display, if this game has a numeric-score concept.
     fn score(&self) -> Option<u32> { None }
 
@@ -92,15 +101,14 @@ pub trait GameConfig: Clone {
     fn color_mode(&self) -> &str;
     fn set_scale(&mut self, scale: u16);
     fn set_color_mode(&mut self, mode: String);
-}
 
-/// A field definition for the custom-game configuration screen.
-pub struct ConfigField {
-    pub label: &'static str,
-    pub min: i64,
-    pub max: i64,
-    pub get: fn(&dyn std::any::Any) -> i64,
-    pub set: fn(&mut dyn std::any::Any, i64),
+    /// (label, current value) pairs for the custom-game config editor, in
+    /// display order. Index 0 in the editor screen is reserved for preset
+    /// selection, so these are addressed 1-based by `adjust_custom_field`.
+    fn custom_fields(&self) -> Vec<(&'static str, u16)>;
+    /// Adjust one custom field by `delta`. `field` is the same 1-based
+    /// index scheme as above.
+    fn adjust_custom_field(&mut self, field: usize, delta: i16);
 }
 
 /// Definition of a game type. Each game crate implements this.

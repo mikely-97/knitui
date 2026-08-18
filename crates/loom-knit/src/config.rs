@@ -80,6 +80,38 @@ impl loom_engine::game::GameConfig for Config {
     fn color_mode(&self) -> &str { &self.color_mode }
     fn set_scale(&mut self, s: u16) { self.scale = s; }
     fn set_color_mode(&mut self, m: String) { self.color_mode = m; }
+
+    fn custom_fields(&self) -> Vec<(&'static str, u16)> {
+        vec![
+            ("Board Height", self.board_height),
+            ("Board Width", self.board_width),
+            ("Color Count", self.color_number),
+            ("Obstacle %", self.obstacle_percentage),
+            ("Conveyor %", self.conveyor_percentage),
+            ("Scissors", self.scissors),
+            ("Tweezers", self.tweezers),
+            ("Balloons", self.balloons),
+            ("Hard Mode", if self.hard_mode { 1 } else { 0 }),
+        ]
+    }
+
+    fn adjust_custom_field(&mut self, field: usize, delta: i16) {
+        let apply = |val: &mut u16, min: u16, max: u16| {
+            *val = (*val as i16 + delta).clamp(min as i16, max as i16) as u16;
+        };
+        match field {
+            1 => apply(&mut self.board_height, 2, MAX_BOARD_DIM),
+            2 => apply(&mut self.board_width, 2, MAX_BOARD_DIM),
+            3 => apply(&mut self.color_number, 2, 8),
+            4 => apply(&mut self.obstacle_percentage, 0, 50),
+            5 => apply(&mut self.conveyor_percentage, 0, 50),
+            6 => apply(&mut self.scissors, 0, 99),
+            7 => apply(&mut self.tweezers, 0, 99),
+            8 => apply(&mut self.balloons, 0, 99),
+            9 => { self.hard_mode = !self.hard_mode; }
+            _ => {}
+        }
+    }
 }
 
 impl Config {

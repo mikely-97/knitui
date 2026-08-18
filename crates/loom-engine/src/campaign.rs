@@ -15,6 +15,12 @@ pub trait CampaignEntry: Serialize + DeserializeOwned + Clone {
     fn current_level(&self) -> usize;
     fn total_levels(&self) -> usize;
     fn is_completed(&self) -> bool;
+
+    /// Whether the shell should route to the blessing-selection screen
+    /// before this entry's next level (vs. going straight to the level
+    /// intro). Default `false` — games with no blessing system, or tracks
+    /// that opt out of blessings entirely, never show it.
+    fn needs_blessing_selection(&self) -> bool { false }
 }
 
 /// Persistent storage for all campaign saves (one per track).
