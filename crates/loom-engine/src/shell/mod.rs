@@ -160,9 +160,12 @@ impl<G: Game> Shell<G> {
                     engine.render(surface, RenderArea { x: 0, y: 0, width: w, height: h });
                 }
             }
-            TuiState::Celebration { .. } => {
+            TuiState::Celebration { ticks_remaining, .. } => {
                 if let Some(engine) = &self.engine {
-                    engine.render(surface, RenderArea { x: 0, y: 0, width: w, height: h });
+                    let area = RenderArea { x: 0, y: 0, width: w, height: h };
+                    engine.render(surface, area);
+                    let tick = CELEBRATION_TICKS.saturating_sub(*ticks_remaining);
+                    engine.render_celebration(surface, area, tick);
                 }
             }
             TuiState::GameOver(status) => {

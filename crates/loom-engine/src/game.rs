@@ -71,6 +71,13 @@ pub trait GameEngine {
     /// campaign/endless-specific text) on top of the last-rendered frame.
     fn render_game_over_overlay(&self, surface: &mut dyn Surface, status: &GameStatus, overlay_msg: Option<&str>);
 
+    /// Render a win-celebration effect on top of the last-rendered frame.
+    /// `tick` runs 0..16 over the shell's fixed celebration duration.
+    /// Default no-op — not every game has a celebration effect.
+    fn render_celebration(&self, surface: &mut dyn Surface, area: RenderArea, tick: u8) {
+        let _ = (surface, area, tick);
+    }
+
     /// Render the help screen. Deliberately per-game rather than generic:
     /// a useful help screen shows live state (active blessings, bonus
     /// counts, ...) that only the concrete engine knows about.

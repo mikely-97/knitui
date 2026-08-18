@@ -1,14 +1,10 @@
-#![allow(warnings)]
+#![allow(dead_code)]
 
 mod board;
 mod panels;
 pub use board::*;
 pub use panels::*;
 
-#[cfg(not(target_arch = "wasm32"))]
-use std::io::{self, Stdout, Write};
-#[cfg(not(target_arch = "wasm32"))]
-use loom_engine_term::TermSurface;
 use loom_engine::render::{Color, Style, Surface};
 use crate::config::Config;
 use crate::engine::{GameEngine, GameStatus};
@@ -86,8 +82,9 @@ pub fn compute_geometry(config: &Config, term_height: u16) -> (Layout, u16, u16,
 
 /// Render the vertical layout directly into a caller-owned `Surface` (no
 /// frame lifecycle of its own -- the caller clears/blits). This is the
-/// entry point non-terminal frontends (web, tests) should use instead of
-/// [`render_vertical`], which additionally owns a `TermSurface` frame.
+/// entry point every frontend goes through now (native rendering via
+/// `Shell<KnitGame>` wraps a `TermSurface` around this call; web via
+/// `WasmSurface`).
 pub fn render_vertical_to_surface(
     surface: &mut dyn Surface,
     engine: &GameEngine,
@@ -111,8 +108,7 @@ pub fn render_vertical_to_surface(
     render_keybar(surface, engine, term_h.saturating_sub(1));
 }
 
-/// Render the horizontal layout directly into a caller-owned `Surface` — the
-/// Surface-only counterpart to [`render_horizontal`] (see
+/// Render the horizontal layout directly into a caller-owned `Surface` (see
 /// [`render_vertical_to_surface`] for the rationale).
 pub fn render_horizontal_to_surface(
     surface: &mut dyn Surface,
@@ -121,7 +117,6 @@ pub fn render_horizontal_to_surface(
     board_x: u16,
     scale: u16,
 ) {
-    let sh = scale;
     let sw = scale * 2;
     let yarn_w = engine.yarn.yarn_lines * sw
         + engine.yarn.yarn_lines.saturating_sub(1) * YARN_HGAP;
@@ -162,49 +157,13 @@ pub fn draw_overlay_to_surface(
 }
 
 // ── Rendering ─────────────────────────────────────────────────────────────────
-// The functions below own a terminal frame (TermSurface::begin/finish) and
-// are native-only; non-terminal frontends should call
-// `render_vertical_to_surface` (above) directly instead.
-
-#[cfg(not(target_arch = "wasm32"))]
-pub fn render_vertical(
-    stdout: &mut Stdout,
-    engine: &GameEngine,
-    board_y: u16,
-    scale: u16,
-) -> io::Result<()> {
-    let sh = scale;
-    let yarn_h = engine.yarn.visible_stitches * sh
-        + engine.yarn.visible_stitches.saturating_sub(1) * YARN_VGAP;
-    let active_y = yarn_h + COMP_GAP;
-
-    let mut surface = TermSurface::begin(stdout)?;
-
-    render_yarn(&mut surface, engine, 0, 0, scale, true);
-    render_active_h(&mut surface, engine, 0, active_y, scale);
-    render_board(&mut surface, engine, 0, board_y, scale);
-
-    let board_h = 1 + engine.board.height * (sh + 1);
-    let bonus_y = board_y + board_h + 1;
-    render_bonus_display_h(&mut surface, engine, 0, bonus_y);
-
-    let (_, term_h) = surface.size();
-    render_keybar(&mut surface, engine, term_h.saturating_sub(1));
-
-    surface.finish()
-}
-
-#[cfg(not(target_arch = "wasm32"))]
-fn draw_stuck_overlay(
-    stdout: &mut Stdout,
-    engine: &GameEngine,
-    status: &GameStatus,
-    overlay_msg: Option<&str>,
-) -> io::Result<()> {
-    let mut surface = TermSurface::new(stdout);
-    draw_stuck_overlay_inner(&mut surface, engine, status, overlay_msg);
-    surface.done()
-}
+// loom-knit is now driven entirely through loom_engine::shell::Shell<KnitGame>
+// (Phase 3), which only calls the Surface-only entry points above. The
+// Stdout-wrapping functions that used to be called directly from tui.rs's
+// hand-rolled loop (render_vertical/render_horizontal/do_render/... and
+// their _overlay variants) were deleted here as dead code once that loop
+// was replaced -- see git history if a future frontend needs a
+// Stdout-owning entry point again.
 
 fn draw_stuck_overlay_inner(
     surface: &mut dyn Surface,
@@ -247,108 +206,3 @@ fn draw_stuck_overlay_inner(
     }
 }
 
-#[cfg(not(target_arch = "wasm32"))]
-pub fn render_vertical_overlay(
-    stdout: &mut Stdout,
-    engine: &GameEngine,
-    board_y: u16,
-    scale: u16,
-    status: &GameStatus,
-    overlay_msg: Option<&str>,
-) -> io::Result<()> {
-    render_vertical(stdout, engine, board_y, scale)?;
-    draw_stuck_overlay(stdout, engine, status, overlay_msg)?;
-    stdout.flush()
-}
-
-#[cfg(not(target_arch = "wasm32"))]
-pub fn render_horizontal(
-    stdout: &mut Stdout,
-    engine: &GameEngine,
-    yarn_x: u16,
-    board_x: u16,
-    scale: u16,
-) -> io::Result<()> {
-    let sh = scale;
-    let sw = scale * 2;
-    let yarn_w = engine.yarn.yarn_lines * sw
-        + engine.yarn.yarn_lines.saturating_sub(1) * YARN_HGAP;
-    let active_x = board_x - COMP_GAP - sw;
-
-    let mut surface = TermSurface::begin(stdout)?;
-
-    // Left balloon flank (deeper patches)
-    if yarn_x > 0 {
-        render_balloon_flank(&mut surface, engine, 0, 0, scale, FlankSide::Left);
-    }
-
-    // Yarn columns
-    render_yarn(&mut surface, engine, yarn_x, 0, scale, false);
-
-    // Right balloon flank (front patches)
-    let right_flank_x = yarn_x + yarn_w + YARN_HGAP;
-    if right_flank_x < active_x {
-        render_balloon_flank(&mut surface, engine, right_flank_x, 0, scale, FlankSide::Right);
-    }
-
-    render_active_v(&mut surface, engine, active_x, 0, scale);
-    render_board(&mut surface, engine, board_x, 0, scale);
-
-    let board_w = 1 + engine.board.width * (sw + 1);
-    let panel_x = board_x + board_w + 2;
-    render_bonus_panel(&mut surface, engine, panel_x, 0);
-
-    let (_, term_h) = surface.size();
-    render_keybar(&mut surface, engine, term_h.saturating_sub(1));
-
-    surface.finish()
-}
-
-#[cfg(not(target_arch = "wasm32"))]
-pub fn render_horizontal_overlay(
-    stdout: &mut Stdout,
-    engine: &GameEngine,
-    yarn_x: u16,
-    board_x: u16,
-    scale: u16,
-    status: &GameStatus,
-    overlay_msg: Option<&str>,
-) -> io::Result<()> {
-    render_horizontal(stdout, engine, yarn_x, board_x, scale)?;
-    draw_stuck_overlay(stdout, engine, status, overlay_msg)?;
-    stdout.flush()
-}
-
-#[cfg(not(target_arch = "wasm32"))]
-pub fn do_render(
-    stdout: &mut Stdout,
-    engine: &GameEngine,
-    layout: Layout,
-    yarn_x: u16,
-    board_x: u16,
-    board_y: u16,
-    scale: u16,
-) -> io::Result<()> {
-    match layout {
-        Layout::Vertical => render_vertical(stdout, engine, board_y, scale),
-        Layout::Horizontal => render_horizontal(stdout, engine, yarn_x, board_x, scale),
-    }
-}
-
-#[cfg(not(target_arch = "wasm32"))]
-pub fn do_render_overlay(
-    stdout: &mut Stdout,
-    engine: &GameEngine,
-    layout: Layout,
-    yarn_x: u16,
-    board_x: u16,
-    board_y: u16,
-    scale: u16,
-    status: &GameStatus,
-    overlay_msg: Option<&str>,
-) -> io::Result<()> {
-    match layout {
-        Layout::Vertical => render_vertical_overlay(stdout, engine, board_y, scale, status, overlay_msg),
-        Layout::Horizontal => render_horizontal_overlay(stdout, engine, yarn_x, board_x, scale, status, overlay_msg),
-    }
-}

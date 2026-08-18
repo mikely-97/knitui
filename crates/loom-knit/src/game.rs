@@ -233,6 +233,15 @@ impl GameEngineTrait for KnitEngineAdapter {
         renderer::render_help_to_surface(surface, &self.engine);
     }
 
+    fn render_celebration(&self, surface: &mut dyn Surface, area: RenderArea, tick: u8) {
+        let (layout, _yarn_x, board_x, board_y) = renderer::compute_geometry(&self.config, area.height);
+        let (bx, by) = match layout {
+            renderer::Layout::Horizontal => (board_x, 0),
+            renderer::Layout::Vertical => (0, board_y),
+        };
+        renderer::render_celebration_to_surface(surface, &self.engine, bx, by, self.config.scale, tick);
+    }
+
     fn score(&self) -> Option<u32> { None }
 
     fn can_watch_ad(&self) -> bool { self.engine.can_watch_ad() }

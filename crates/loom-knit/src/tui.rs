@@ -1,123 +1,27 @@
-#![allow(warnings)]
+//! Native terminal entry point. Thin: owns CLI parsing, disk I/O (settings/
+//! campaign/high-score/ad-quotes loading), the crossterm event loop, and
+//! terminal init/restore. All actual game/menu/campaign state and logic
+//! lives in the portable `loom_engine::shell::Shell<KnitGame>` (Phase 3) --
+//! this file's job is purely to drive it.
 
-use std::io::{Write, stdout, Stdout};
-use std::time::{Duration, Instant};
+use std::io::{stdout, Stdout};
+use std::time::Duration;
 
-use crossterm::{
-    ExecutableCommand, execute,
-    event::{poll, read, Event, KeyCode},
-};
+use crossterm::event::{poll, read, Event, KeyCode};
 
 use clap::{CommandFactory, Parser, parser::ValueSource};
 
-use loom_engine::campaign::CampaignEntry;
+use loom_engine::campaign::CampaignSaves;
+use loom_engine::endless::EndlessHighScore;
+use loom_engine::input::{Key, KeyEvent};
+use loom_engine::settings::UserSettings;
+use loom_engine::shell::Shell;
+use loom_engine_term::TermSurface;
 
 use crate::ad_content;
-use crate::blessings::{self, ALL_BLESSINGS};
-use crate::board_entity::Direction;
-use crate::campaign::{CampaignSaves, CampaignState};
-use crate::campaign_levels::{self, TRACK_NAMES, TRACK_COUNT, is_hard_track};
-use crate::endless::{EndlessState, EndlessHighScore};
-use crate::config::{Config, MAX_BOARD_DIM};
-use crate::engine::{GameEngine, GameStatus, BonusState};
-use crate::preset::PRESETS;
-use crate::renderer::{self, Layout, COMP_GAP, YARN_HGAP, YARN_VGAP};
-use crate::settings::{self, UserSettings};
-
-enum TuiState {
-    MainMenu { selected: usize, flash: Option<String> },
-    CustomGame {
-        preset_idx: usize,
-        selected_field: usize,
-        config: Config,
-    },
-    CampaignSelect { selected: usize },
-    BlessingSelection { cursor: usize, chosen: Vec<usize> },
-    CampaignLevelIntro,
-    Options { selected: usize },
-    Playing,
-    Celebration { ticks_remaining: u8, next_status: GameStatus },
-    GameOver(GameStatus),
-    Help,
-    WatchingAd { started_at: Instant, quote: String },
-}
-
-struct LayoutGeometry {
-    layout: Layout,
-    yarn_x: u16,
-    board_x: u16,
-    board_y: u16,
-    scale: u16,
-}
-
-impl LayoutGeometry {
-    fn compute(config: &Config) -> Self {
-        let scale = config.scale;
-        let sh = scale;
-        let sw = scale * 2;
-
-        let term_height = crossterm::terminal::size().unwrap_or((80, 24)).1;
-        let layout = renderer::detect_layout(
-            &config.layout, config.visible_stitches, config.board_height, scale, term_height,
-        );
-
-        let yarn_h = config.visible_stitches * sh
-            + config.visible_stitches.saturating_sub(1) * YARN_VGAP;
-        let board_y: u16 = yarn_h + COMP_GAP + sh + COMP_GAP;
-
-        let yarn_w = config.yarn_lines * sw
-            + config.yarn_lines.saturating_sub(1) * YARN_HGAP;
-        let has_flanks = config.balloons > 0 && config.balloon_count > 0;
-        let (yarn_x, board_x) = if has_flanks {
-            let has_left  = config.balloon_count / 2 > 0;
-            let has_right = (config.balloon_count + 1) / 2 > 0;
-            let left_w  = if has_left  { sw } else { 0 };
-            let right_w = if has_right { sw } else { 0 };
-            let left_gap  = if has_left  { YARN_HGAP } else { 0 };
-            let right_gap = if has_right { YARN_HGAP } else { 0 };
-            let yx = left_w + left_gap;
-            let bx = yx + yarn_w + right_gap + right_w + COMP_GAP + sw + COMP_GAP;
-            (yx, bx)
-        } else {
-            (0u16, yarn_w + COMP_GAP + sw + COMP_GAP)
-        };
-
-        Self { layout, yarn_x, board_x, board_y, scale }
-    }
-}
-
-fn custom_game_fields(config: &Config) -> Vec<(&'static str, u16)> {
-    vec![
-        ("Board Height", config.board_height),
-        ("Board Width", config.board_width),
-        ("Color Count", config.color_number),
-        ("Obstacle %", config.obstacle_percentage),
-        ("Conveyor %", config.conveyor_percentage),
-        ("Scissors", config.scissors),
-        ("Tweezers", config.tweezers),
-        ("Balloons", config.balloons),
-        ("Hard Mode", if config.hard_mode { 1 } else { 0 }),
-    ]
-}
-
-fn adjust_custom_field(config: &mut Config, field: usize, delta: i16) {
-    let apply = |val: &mut u16, min: u16, max: u16| {
-        let new = (*val as i16 + delta).clamp(min as i16, max as i16) as u16;
-        *val = new;
-    };
-    match field {
-        1 => apply(&mut config.board_height, 2, MAX_BOARD_DIM),
-        2 => apply(&mut config.board_width, 2, MAX_BOARD_DIM),
-        3 => apply(&mut config.color_number, 2, 8),
-        4 => apply(&mut config.obstacle_percentage, 0, 50),
-        5 => apply(&mut config.conveyor_percentage, 0, 50),
-        6 => apply(&mut config.scissors, 0, 99),
-        7 => apply(&mut config.tweezers, 0, 99),
-        8 => apply(&mut config.balloons, 0, 99),
-        9 => { config.hard_mode = !config.hard_mode; }
-        _ => {}
-    }
-}
+use crate::campaign::CampaignState;
+use crate::config::Config;
+use crate::game::KnitGame;
 
 const GAME_ARGS: &[&str] = &[
     "board_height", "board_width", "color_number",
@@ -125,31 +29,13 @@ const GAME_ARGS: &[&str] = &[
     "scissors", "tweezers", "balloons",
 ];
 
-fn advance_endless_wave(
-    endless_ctx: &mut Option<EndlessState>,
-    game_config: &mut Config,
-    cli_config: &Config,
-    geo: &mut LayoutGeometry,
-    engine: &mut Option<GameEngine>,
-) {
-    let ctx = endless_ctx.as_mut().unwrap();
-    ctx.advance();
-    *game_config = ctx.to_config(cli_config);
-    *geo = LayoutGeometry::compute(game_config);
-    *engine = Some(GameEngine::new(game_config));
-}
+/// Poll timeout / tick cadence. 80ms matches the original hand-rolled
+/// loop's celebration-animation frame pacing (16 frames * 80ms) -- using it
+/// as the general poll timeout too (rather than a slower idle timeout with
+/// a separate fast path for celebration) is a small, harmless unification.
+const TICK_MS: u64 = 80;
 
-fn campaign_overlay_msg(ctx: &Option<CampaignState>, status: &GameStatus) -> Option<String> {
-    let ctx = ctx.as_ref()?;
-    let level_label = format!("[{}/{}]", ctx.current_level + 1, ctx.total_levels());
-    Some(match status {
-        GameStatus::Won => format!("{} You won! N:Next Level  M:Menu  Q:Quit", level_label),
-        GameStatus::Stuck => format!("{} You're lost! R:Retry  A:Ad  M:Menu  Q:Quit", level_label),
-        _ => return None,
-    })
-}
-
-/// Run the knitui game from the standalone binary (parses CLI args).
+/// Run knitui from the standalone binary (parses CLI args).
 pub fn run_cli() -> std::io::Result<()> {
     let matches = Config::command().get_matches_from(std::env::args_os());
     let skip_menu = GAME_ARGS.iter().any(|name| {
@@ -157,7 +43,7 @@ pub fn run_cli() -> std::io::Result<()> {
     });
     let mut cli_config = Config::parse();
 
-    let mut user_settings = UserSettings::load("knitui");
+    let user_settings = UserSettings::load("knitui");
     if matches.value_source("scale") != Some(ValueSource::CommandLine) {
         cli_config.scale = user_settings.scale;
     }
@@ -168,9 +54,9 @@ pub fn run_cli() -> std::io::Result<()> {
     run_event_loop(cli_config, user_settings, skip_menu)
 }
 
-/// Run the knitui game from the game selector (default config, always shows menu).
+/// Run knitui from the game selector (default config, always shows menu).
 pub fn run_from_menu() -> std::io::Result<()> {
-    let mut user_settings = UserSettings::load("knitui");
+    let user_settings = UserSettings::load("knitui");
     let mut config = Config::parse_from::<[&str; 0], &str>([]);
     config.scale = user_settings.scale;
     config.color_mode = user_settings.color_mode.clone();
@@ -178,695 +64,70 @@ pub fn run_from_menu() -> std::io::Result<()> {
 }
 
 fn run_event_loop(
-    mut cli_config: Config,
-    mut user_settings: UserSettings,
+    cli_config: Config,
+    user_settings: UserSettings,
     skip_menu: bool,
 ) -> std::io::Result<()> {
     let ad_quotes = ad_content::load_quotes(&cli_config.ad_file, "knitui");
-    const AD_DURATION_SECS: u64 = 15;
+    let campaign_saves = CampaignSaves::<CampaignState>::load("knitui");
+    let endless_hs = EndlessHighScore::load("knitui");
+
+    let mut shell = Shell::new(
+        KnitGame,
+        cli_config,
+        user_settings,
+        campaign_saves,
+        endless_hs,
+        ad_quotes,
+        "FREE SCISSORS".to_string(),
+        skip_menu,
+    );
 
     let mut stdout = stdout();
     loom_engine_term::init()?;
 
-    let mut campaign_saves = CampaignSaves::<CampaignState>::load("knitui");
-    let mut campaign_ctx: Option<CampaignState> = None;
-    let mut endless_ctx: Option<EndlessState> = None;
-    let mut endless_hs = EndlessHighScore::load("knitui");
-
-    let mut game_config = cli_config.clone();
-    let mut geo = LayoutGeometry::compute(&game_config);
-
-    let (mut engine, mut tui_state): (Option<GameEngine>, TuiState) = if skip_menu {
-        let e = GameEngine::new(&game_config);
-        renderer::do_render(&mut stdout, &e, geo.layout, geo.yarn_x, geo.board_x, geo.board_y, geo.scale)?;
-        (Some(e), TuiState::Playing)
-    } else {
-        renderer::render_main_menu(&mut stdout, 0, None)?;
-        (None, TuiState::MainMenu { selected: 0, flash: None })
-    };
+    render(&mut stdout, &shell)?;
 
     loop {
-        if poll(Duration::from_millis(150))? {
+        if poll(Duration::from_millis(TICK_MS))? {
             if let Event::Key(event) = read()? {
-                match tui_state {
-                    TuiState::MainMenu { ref mut selected, ref mut flash } => {
-                        *flash = None;
-                        match event.code {
-                            KeyCode::Up => {
-                                if *selected > 0 { *selected -= 1; }
-                            }
-                            KeyCode::Down => {
-                                if *selected < 5 { *selected += 1; }
-                            }
-                            KeyCode::Enter => {
-                                match *selected {
-                                    0 => {
-                                        game_config = cli_config.clone();
-                                        geo = LayoutGeometry::compute(&game_config);
-                                        engine = Some(GameEngine::new(&game_config));
-                                        tui_state = TuiState::Playing;
-                                        renderer::do_render(
-                                            &mut stdout, engine.as_ref().unwrap(),
-                                            geo.layout, geo.yarn_x, geo.board_x, geo.board_y, geo.scale,
-                                        )?;
-                                        continue;
-                                    }
-                                    1 => {
-                                        let preset_cfg = PRESETS[1].to_config(&cli_config);
-                                        tui_state = TuiState::CustomGame {
-                                            preset_idx: 1,
-                                            selected_field: 0,
-                                            config: preset_cfg,
-                                        };
-                                    }
-                                    2 => {
-                                        tui_state = TuiState::CampaignSelect { selected: 0 };
-                                    }
-                                    3 => {
-                                        let state = EndlessState::new();
-                                        game_config = state.to_config(&cli_config);
-                                        geo = LayoutGeometry::compute(&game_config);
-                                        engine = Some(GameEngine::new(&game_config));
-                                        endless_ctx = Some(state);
-                                        tui_state = TuiState::Playing;
-                                        renderer::do_render(
-                                            &mut stdout, engine.as_ref().unwrap(),
-                                            geo.layout, geo.yarn_x, geo.board_x, geo.board_y, geo.scale,
-                                        )?;
-                                        continue;
-                                    }
-                                    4 => {
-                                        tui_state = TuiState::Options { selected: 0 };
-                                    }
-                                    5 => break,
-                                    _ => {}
-                                }
-                            }
-                            KeyCode::Char('q') | KeyCode::Char('Q') | KeyCode::Esc => break,
-                            _ => {}
-                        }
-                        if let TuiState::MainMenu { selected, ref flash } = tui_state {
-                            renderer::render_main_menu(
-                                &mut stdout, selected, flash.as_deref(),
-                            )?;
-                        } else if let TuiState::CustomGame { preset_idx, selected_field, ref config } = tui_state {
-                            let fields = custom_game_fields(config);
-                            renderer::render_custom_game(
-                                &mut stdout, PRESETS[preset_idx].name, &fields, selected_field,
-                            )?;
-                        } else if let TuiState::CampaignSelect { selected } = tui_state {
-                            let sizes: Vec<usize> = (0..TRACK_COUNT).map(|i| campaign_levels::levels_for_track(i).len()).collect();
-                            let labels: Vec<String> = (0..TRACK_COUNT).map(|i| campaign_saves.progress_label(i)).collect();
-                            renderer::render_campaign_select(
-                                &mut stdout, selected, TRACK_NAMES, &sizes, &labels,
-                            )?;
-                        } else if let TuiState::Options { selected } = tui_state {
-                            renderer::render_options(
-                                &mut stdout, selected,
-                                user_settings.scale, &user_settings.color_mode,
-                            )?;
-                        }
-                    }
-                    TuiState::Options { ref mut selected } => {
-                        match event.code {
-                            KeyCode::Up => {
-                                if *selected > 0 { *selected -= 1; }
-                            }
-                            KeyCode::Down => {
-                                if *selected < 1 { *selected += 1; }
-                            }
-                            KeyCode::Left => {
-                                match *selected {
-                                    0 => {
-                                        if user_settings.scale > 1 {
-                                            user_settings.scale -= 1;
-                                        }
-                                    }
-                                    1 => {
-                                        user_settings.color_mode = settings::prev_color_mode(&user_settings.color_mode).to_string();
-                                    }
-                                    _ => {}
-                                }
-                            }
-                            KeyCode::Right => {
-                                match *selected {
-                                    0 => {
-                                        if user_settings.scale < 5 {
-                                            user_settings.scale += 1;
-                                        }
-                                    }
-                                    1 => {
-                                        user_settings.color_mode = settings::next_color_mode(&user_settings.color_mode).to_string();
-                                    }
-                                    _ => {}
-                                }
-                            }
-                            KeyCode::Esc => {
-                                user_settings.save("knitui");
-                                cli_config.scale = user_settings.scale;
-                                cli_config.color_mode = user_settings.color_mode.clone();
-                                tui_state = TuiState::MainMenu { selected: 4, flash: None };
-                                renderer::render_main_menu(&mut stdout, 4, None)?;
-                                continue;
-                            }
-                            _ => {}
-                        }
-                        renderer::render_options(
-                            &mut stdout, *selected,
-                            user_settings.scale, &user_settings.color_mode,
-                        )?;
-                    }
-                    TuiState::CampaignSelect { ref mut selected } => {
-                        match event.code {
-                            KeyCode::Up => {
-                                if *selected > 0 { *selected -= 1; }
-                            }
-                            KeyCode::Down => {
-                                if *selected < TRACK_COUNT - 1 { *selected += 1; }
-                            }
-                            KeyCode::Enter => {
-                                let track_idx = *selected;
-                                let state = campaign_saves.get(track_idx).cloned().unwrap_or_else(|| {
-                                    CampaignState::new(track_idx)
-                                });
-                                if state.completed {
-                                    campaign_saves.reset(track_idx);
-                                    let s = CampaignState::new(track_idx);
-                                    campaign_ctx = Some(s);
-                                } else {
-                                    campaign_ctx = Some(state);
-                                }
-                                let ctx = campaign_ctx.as_ref().unwrap();
-                                if ctx.blessings.is_empty() && !is_hard_track(ctx.track_idx) {
-                                    // New campaign — show blessing selection (skip for hard mode)
-                                    let completed = (0..TRACK_COUNT)
-                                        .filter(|&i| campaign_saves.get(i).map_or(false, |s| s.is_completed()))
-                                        .count();
-                                    tui_state = TuiState::BlessingSelection { cursor: 0, chosen: vec![] };
-                                    renderer::render_blessing_selection(
-                                        &mut stdout, 0, &[], completed,
-                                    )?;
-                                } else {
-                                    // Resuming — skip to level intro
-                                    tui_state = TuiState::CampaignLevelIntro;
-                                    let levels = campaign_levels::levels_for_track(ctx.track_idx);
-                                    let level = &levels[ctx.current_level];
-                                    renderer::render_level_intro(
-                                        &mut stdout,
-                                        TRACK_NAMES[ctx.track_idx],
-                                        ctx.current_level + 1,
-                                        ctx.total_levels(),
-                                        level.board_height,
-                                        level.board_width,
-                                        level.color_number,
-                                    )?;
-                                }
-                                continue;
-                            }
-                            KeyCode::Esc => {
-                                tui_state = TuiState::MainMenu { selected: 2, flash: None };
-                                renderer::render_main_menu(&mut stdout, 2, None)?;
-                                continue;
-                            }
-                            _ => {}
-                        }
-                        let sizes: Vec<usize> = (0..TRACK_COUNT).map(|i| campaign_levels::levels_for_track(i).len()).collect();
-                        let labels: Vec<String> = (0..TRACK_COUNT).map(|i| campaign_saves.progress_label(i)).collect();
-                        renderer::render_campaign_select(
-                            &mut stdout, *selected, TRACK_NAMES, &sizes, &labels,
-                        )?;
-                    }
-                    TuiState::BlessingSelection { ref mut cursor, ref mut chosen } => {
-                        let completed = (0..TRACK_COUNT)
-                            .filter(|&i| campaign_saves.get(i).map_or(false, |s| s.is_completed()))
-                            .count();
-                        let total = ALL_BLESSINGS.len();
-                        let cols = 3usize;
-                        match event.code {
-                            KeyCode::Up => {
-                                if *cursor >= cols { *cursor -= cols; }
-                            }
-                            KeyCode::Down => {
-                                if *cursor + cols < total { *cursor += cols; }
-                            }
-                            KeyCode::Left => {
-                                if *cursor % cols > 0 { *cursor -= 1; }
-                            }
-                            KeyCode::Right => {
-                                if *cursor % cols < cols - 1 && *cursor + 1 < total {
-                                    *cursor += 1;
-                                }
-                            }
-                            KeyCode::Enter | KeyCode::Char(' ') => {
-                                let b = &ALL_BLESSINGS[*cursor];
-                                if blessings::is_unlocked(b, completed) {
-                                    if let Some(pos) = chosen.iter().position(|&i| i == *cursor) {
-                                        // Deselect
-                                        chosen.remove(pos);
-                                    } else if chosen.len() < 3 {
-                                        // Select
-                                        chosen.push(*cursor);
-                                    }
-                                    // If 3 chosen, allow confirm via a second Enter
-                                    // (handled below after render)
-                                }
-                            }
-                            KeyCode::Char('c') | KeyCode::Char('C') if chosen.len() == 3 => {
-                                // Confirm blessings
-                                let ids: Vec<String> = chosen.iter()
-                                    .map(|&i| ALL_BLESSINGS[i].id.to_string())
-                                    .collect();
-                                let ctx = campaign_ctx.as_mut().unwrap();
-                                ctx.blessings = ids;
-                                // Apply one-time banked bonuses
-                                if blessings::has(&ctx.blessings, "apprentices_kit") {
-                                    ctx.banked_scissors += 1;
-                                }
-                                if blessings::has(&ctx.blessings, "light_pockets") {
-                                    ctx.banked_balloons += 1;
-                                }
-                                campaign_saves.upsert(ctx.clone());
-                                campaign_saves.save("knitui");
-                                // Transition to level intro
-                                tui_state = TuiState::CampaignLevelIntro;
-                                let levels = campaign_levels::levels_for_track(ctx.track_idx);
-                                let level = &levels[ctx.current_level];
-                                renderer::render_level_intro(
-                                    &mut stdout,
-                                    TRACK_NAMES[ctx.track_idx],
-                                    ctx.current_level + 1,
-                                    ctx.total_levels(),
-                                    level.board_height,
-                                    level.board_width,
-                                    level.color_number,
-                                )?;
-                                continue;
-                            }
-                            KeyCode::Esc => {
-                                campaign_ctx = None;
-                                tui_state = TuiState::CampaignSelect { selected: 0 };
-                                let sizes: Vec<usize> = (0..TRACK_COUNT).map(|i| campaign_levels::levels_for_track(i).len()).collect();
-                                let labels: Vec<String> = (0..TRACK_COUNT).map(|i| campaign_saves.progress_label(i)).collect();
-                                renderer::render_campaign_select(
-                                    &mut stdout, 0, TRACK_NAMES, &sizes, &labels,
-                                )?;
-                                continue;
-                            }
-                            _ => {}
-                        }
-                        renderer::render_blessing_selection(
-                            &mut stdout, *cursor, chosen, completed,
-                        )?;
-                    }
-                    TuiState::CampaignLevelIntro => {
-                        match event.code {
-                            KeyCode::Enter => {
-                                let ctx = campaign_ctx.as_ref().unwrap();
-                                game_config = ctx.to_config(&cli_config);
-                                game_config.hard_mode = is_hard_track(ctx.track_idx);
-                                geo = LayoutGeometry::compute(&game_config);
-                                let mut e = GameEngine::new(&game_config);
-                                e.set_ad_limit(ctx.ad_limit());
-                                if !game_config.hard_mode {
-                                    e.set_blessings(&ctx.blessings);
-                                }
-                                engine = Some(e);
-                                tui_state = TuiState::Playing;
-                                renderer::do_render(
-                                    &mut stdout, engine.as_ref().unwrap(),
-                                    geo.layout, geo.yarn_x, geo.board_x, geo.board_y, geo.scale,
-                                )?;
-                                continue;
-                            }
-                            KeyCode::Esc => {
-                                campaign_ctx = None;
-                                tui_state = TuiState::CampaignSelect { selected: 0 };
-                                let sizes: Vec<usize> = (0..TRACK_COUNT).map(|i| campaign_levels::levels_for_track(i).len()).collect();
-                                let labels: Vec<String> = (0..TRACK_COUNT).map(|i| campaign_saves.progress_label(i)).collect();
-                                renderer::render_campaign_select(
-                                    &mut stdout, 0, TRACK_NAMES, &sizes, &labels,
-                                )?;
-                                continue;
-                            }
-                            _ => {}
-                        }
-                    }
-                    TuiState::CustomGame { ref mut preset_idx, ref mut selected_field, ref mut config } => {
-                        match event.code {
-                            KeyCode::Up => {
-                                if *selected_field > 0 { *selected_field -= 1; }
-                            }
-                            KeyCode::Down => {
-                                if *selected_field < 9 { *selected_field += 1; }
-                            }
-                            KeyCode::Left => {
-                                if *selected_field == 0 {
-                                    if *preset_idx > 0 { *preset_idx -= 1; }
-                                    else { *preset_idx = PRESETS.len() - 1; }
-                                    *config = PRESETS[*preset_idx].to_config(&cli_config);
-                                } else {
-                                    adjust_custom_field(config, *selected_field, -1);
-                                }
-                            }
-                            KeyCode::Right => {
-                                if *selected_field == 0 {
-                                    *preset_idx = (*preset_idx + 1) % PRESETS.len();
-                                    *config = PRESETS[*preset_idx].to_config(&cli_config);
-                                } else {
-                                    adjust_custom_field(config, *selected_field, 1);
-                                }
-                            }
-                            KeyCode::Enter => {
-                                game_config = config.clone();
-                                geo = LayoutGeometry::compute(&game_config);
-                                engine = Some(GameEngine::new(&game_config));
-                                tui_state = TuiState::Playing;
-                                renderer::do_render(
-                                    &mut stdout, engine.as_ref().unwrap(),
-                                    geo.layout, geo.yarn_x, geo.board_x, geo.board_y, geo.scale,
-                                )?;
-                                continue;
-                            }
-                            KeyCode::Esc => {
-                                tui_state = TuiState::MainMenu { selected: 1, flash: None };
-                                renderer::render_main_menu(&mut stdout, 1, None)?;
-                                continue;
-                            }
-                            _ => {}
-                        }
-                        if let TuiState::CustomGame { preset_idx, selected_field, ref config } = tui_state {
-                            let fields = custom_game_fields(config);
-                            renderer::render_custom_game(
-                                &mut stdout, PRESETS[preset_idx].name, &fields, selected_field,
-                            )?;
-                        }
-                    }
-                    TuiState::GameOver(ref status) => {
-                        match event.code {
-                            KeyCode::Char('a') | KeyCode::Char('A') => {
-                                if engine.as_ref().unwrap().can_watch_ad() {
-                                    let quote = ad_content::random_quote(&ad_quotes).to_string();
-                                    tui_state = TuiState::WatchingAd {
-                                        started_at: Instant::now(),
-                                        quote,
-                                    };
-                                }
-                            }
-                            KeyCode::Char('r') | KeyCode::Char('R') | KeyCode::Char('n') | KeyCode::Char('N') => {
-                                if endless_ctx.is_some() {
-                                    endless_ctx = None;
-                                    let state = EndlessState::new();
-                                    game_config = state.to_config(&cli_config);
-                                    geo = LayoutGeometry::compute(&game_config);
-                                    engine = Some(GameEngine::new(&game_config));
-                                    endless_ctx = Some(state);
-                                    tui_state = TuiState::Playing;
-                                    renderer::do_render(&mut stdout, engine.as_ref().unwrap(), geo.layout, geo.yarn_x, geo.board_x, geo.board_y, geo.scale)?;
-                                } else if let Some(ref mut ctx) = campaign_ctx {
-                                    if *status == GameStatus::Won {
-                                        let done = ctx.complete_level();
-                                        campaign_saves.upsert(ctx.clone());
-                                        campaign_saves.save("knitui");
-                                        if done {
-                                            campaign_ctx = None;
-                                            tui_state = TuiState::MainMenu {
-                                                selected: 2,
-                                                flash: Some("Campaign complete!".to_string()),
-                                            };
-                                            renderer::render_main_menu(&mut stdout, 2, Some("Campaign complete!"))?;
-                                            continue;
-                                        }
-                                        tui_state = TuiState::CampaignLevelIntro;
-                                        let levels = campaign_levels::levels_for_track(ctx.track_idx);
-                                        let level = &levels[ctx.current_level];
-                                        renderer::render_level_intro(
-                                            &mut stdout,
-                                            TRACK_NAMES[ctx.track_idx],
-                                            ctx.current_level + 1,
-                                            ctx.total_levels(),
-                                            level.board_height,
-                                            level.board_width,
-                                            level.color_number,
-                                        )?;
-                                        continue;
-                                    } else {
-                                        game_config = ctx.to_config(&cli_config);
-                                        geo = LayoutGeometry::compute(&game_config);
-                                        let mut e = GameEngine::new(&game_config);
-                                        e.set_ad_limit(ctx.ad_limit());
-                                        e.set_blessings(&ctx.blessings);
-                                        engine = Some(e);
-                                        tui_state = TuiState::Playing;
-                                        renderer::do_render(&mut stdout, engine.as_ref().unwrap(), geo.layout, geo.yarn_x, geo.board_x, geo.board_y, geo.scale)?;
-                                    }
-                                } else {
-                                    engine = Some(GameEngine::new(&game_config));
-                                    tui_state = TuiState::Playing;
-                                    renderer::do_render(&mut stdout, engine.as_ref().unwrap(), geo.layout, geo.yarn_x, geo.board_x, geo.board_y, geo.scale)?;
-                                }
-                            }
-                            KeyCode::Char('m') | KeyCode::Char('M') | KeyCode::Esc => {
-                                if campaign_ctx.is_some() {
-                                    campaign_saves.upsert(campaign_ctx.as_ref().unwrap().clone());
-                                    campaign_saves.save("knitui");
-                                    campaign_ctx = None;
-                                }
-                                endless_ctx = None;
-                                tui_state = TuiState::MainMenu { selected: 0, flash: None };
-                                renderer::render_main_menu(&mut stdout, 0, None)?;
-                                continue;
-                            }
-                            KeyCode::Char('q') | KeyCode::Char('Q') => {
-                                if campaign_ctx.is_some() {
-                                    campaign_saves.upsert(campaign_ctx.as_ref().unwrap().clone());
-                                    campaign_saves.save("knitui");
-                                }
-                                break;
-                            }
-                            KeyCode::Char('z') | KeyCode::Char('Z') if *status == GameStatus::Stuck => {
-                                let _ = engine.as_mut().unwrap().use_scissors();
-                                let e = engine.as_ref().unwrap();
-                                match e.status() {
-                                    GameStatus::Playing => {
-                                        tui_state = TuiState::Playing;
-                                        renderer::do_render(&mut stdout, e, geo.layout, geo.yarn_x, geo.board_x, geo.board_y, geo.scale)?;
-                                    }
-                                    s => {
-                                        renderer::do_render_overlay(&mut stdout, e, geo.layout, geo.yarn_x, geo.board_x, geo.board_y, geo.scale, &s, None)?;
-                                        tui_state = TuiState::GameOver(s);
-                                    }
-                                }
-                            }
-                            KeyCode::Char('x') | KeyCode::Char('X') if *status == GameStatus::Stuck => {
-                                if engine.as_mut().unwrap().use_tweezers().is_ok() {
-                                    tui_state = TuiState::Playing;
-                                    renderer::do_render(&mut stdout, engine.as_ref().unwrap(), geo.layout, geo.yarn_x, geo.board_x, geo.board_y, geo.scale)?;
-                                }
-                            }
-                            KeyCode::Char('c') | KeyCode::Char('C') if *status == GameStatus::Stuck => {
-                                let _ = engine.as_mut().unwrap().use_balloons();
-                                let e = engine.as_ref().unwrap();
-                                match e.status() {
-                                    GameStatus::Playing => {
-                                        tui_state = TuiState::Playing;
-                                        renderer::do_render(&mut stdout, e, geo.layout, geo.yarn_x, geo.board_x, geo.board_y, geo.scale)?;
-                                    }
-                                    s => {
-                                        renderer::do_render_overlay(&mut stdout, e, geo.layout, geo.yarn_x, geo.board_x, geo.board_y, geo.scale, &s, None)?;
-                                        tui_state = TuiState::GameOver(s);
-                                    }
-                                }
-                            }
-                            _ => {}
-                        }
-                    }
-                    TuiState::Help => {
-                        tui_state = TuiState::Playing;
-                        renderer::do_render(&mut stdout, engine.as_ref().unwrap(), geo.layout, geo.yarn_x, geo.board_x, geo.board_y, geo.scale)?;
-                    }
-                    TuiState::WatchingAd { ref started_at, .. } => {
-                        match event.code {
-                            KeyCode::Esc => {
-                                if started_at.elapsed().as_secs() >= AD_DURATION_SECS {
-                                    engine.as_mut().unwrap().watch_ad();
-                                    let status = engine.as_ref().unwrap().status();
-                                    tui_state = match status {
-                                        GameStatus::Playing => TuiState::Playing,
-                                        _ => TuiState::GameOver(status),
-                                    };
-                                    renderer::do_render(&mut stdout, engine.as_ref().unwrap(), geo.layout, geo.yarn_x, geo.board_x, geo.board_y, geo.scale)?;
-                                }
-                            }
-                            _ => {}
-                        }
-                    }
-                    TuiState::Playing => {
-                        match event.code {
-                            KeyCode::Left  => { let _ = engine.as_mut().unwrap().move_cursor(Direction::Left);  }
-                            KeyCode::Right => { let _ = engine.as_mut().unwrap().move_cursor(Direction::Right); }
-                            KeyCode::Up    => { let _ = engine.as_mut().unwrap().move_cursor(Direction::Up);    }
-                            KeyCode::Down  => { let _ = engine.as_mut().unwrap().move_cursor(Direction::Down);  }
-                            KeyCode::Esc => {
-                                if engine.as_ref().unwrap().bonus_state != BonusState::None {
-                                    engine.as_mut().unwrap().cancel_tweezers();
-                                } else {
-                                    if campaign_ctx.is_some() {
-                                        campaign_saves.upsert(campaign_ctx.as_ref().unwrap().clone());
-                                        campaign_saves.save("knitui");
-                                        campaign_ctx = None;
-                                    }
-                                    tui_state = TuiState::MainMenu { selected: 0, flash: None };
-                                    renderer::render_main_menu(&mut stdout, 0, None)?;
-                                    continue;
-                                }
-                            }
-
-                            KeyCode::Enter => {
-                                if engine.as_mut().unwrap().pick_up().is_ok() {
-                                    match engine.as_ref().unwrap().status() {
-                                        GameStatus::Playing => {}
-                                        GameStatus::Won if endless_ctx.is_some() => {
-                                            advance_endless_wave(&mut endless_ctx, &mut game_config, &cli_config, &mut geo, &mut engine);
-                                            renderer::do_render(&mut stdout, engine.as_ref().unwrap(), geo.layout, geo.yarn_x, geo.board_x, geo.board_y, geo.scale)?;
-                                            continue;
-                                        }
-                                        s @ GameStatus::Won => {
-                                            tui_state = TuiState::Celebration { ticks_remaining: 16, next_status: s };
-                                            continue;
-                                        }
-                                        s => {
-                                            if endless_ctx.is_some() && s == GameStatus::Stuck {
-                                                let wave = endless_ctx.as_ref().unwrap().wave;
-                                                endless_hs.update(wave);
-                                                endless_hs.save("knitui");
-                                                renderer::render_endless_gameover(&mut stdout, wave, endless_hs.best_wave)?;
-                                            } else {
-                                                let overlay = campaign_overlay_msg(&campaign_ctx, &s);
-                                                renderer::do_render_overlay(&mut stdout, engine.as_ref().unwrap(), geo.layout, geo.yarn_x, geo.board_x, geo.board_y, geo.scale, &s, overlay.as_deref())?;
-                                            }
-                                            tui_state = TuiState::GameOver(s);
-                                            continue;
-                                        }
-                                    };
-                                }
-                            }
-
-                            KeyCode::Char('a') | KeyCode::Char('A') => {
-                                if engine.as_ref().unwrap().can_watch_ad() {
-                                    let quote = ad_content::random_quote(&ad_quotes).to_string();
-                                    tui_state = TuiState::WatchingAd {
-                                        started_at: Instant::now(),
-                                        quote,
-                                    };
-                                }
-                                continue;
-                            }
-                            KeyCode::Char('h') | KeyCode::Char('H') => {
-                                renderer::render_help(&mut stdout, engine.as_ref().unwrap())?;
-                                tui_state = TuiState::Help;
-                                continue;
-                            }
-                            KeyCode::Char('z') | KeyCode::Char('Z') => {
-                                let _ = engine.as_mut().unwrap().use_scissors();
-                            }
-                            KeyCode::Char('x') | KeyCode::Char('X') => {
-                                let _ = engine.as_mut().unwrap().use_tweezers();
-                            }
-                            KeyCode::Char('c') | KeyCode::Char('C') => {
-                                let _ = engine.as_mut().unwrap().use_balloons();
-                            }
-                            KeyCode::Char('?') => {
-                                let e = engine.as_mut().unwrap();
-                                if e.blessing_flags.match_hint {
-                                    if let Some(cell) = e.compute_hint() {
-                                        e.hint_cell = Some(cell);
-                                        e.hint_ticks = 60;
-                                    }
-                                } else {
-                                    // No blessing — show status message via flash (reuse flash mechanism)
-                                    // We render a brief overlay message by doing a partial re-render
-                                    // with a status line. Simplest: set a transient status string
-                                    // and fall through to do_render which will display it.
-                                }
-                                renderer::do_render(&mut stdout, engine.as_ref().unwrap(), geo.layout, geo.yarn_x, geo.board_x, geo.board_y, geo.scale)?;
-                                if !engine.as_ref().unwrap().blessing_flags.match_hint {
-                                    // Print status message below board
-                                    use crossterm::QueueableCommand;
-                                    use crossterm::cursor::MoveTo;
-                                    use crossterm::style::{Print, Stylize};
-                                    let (_, term_h) = crossterm::terminal::size().unwrap_or((80, 24));
-                                    stdout.queue(MoveTo(0, term_h.saturating_sub(1)))?;
-                                    stdout.queue(Print("No hint (requires Scout's Eye blessing)".dark_grey()))?;
-                                    stdout.flush()?;
-                                }
-                                continue;
-                            }
-
-                            _ => { continue; }
-                        }
-
-                        renderer::do_render(&mut stdout, engine.as_ref().unwrap(), geo.layout, geo.yarn_x, geo.board_x, geo.board_y, geo.scale)?;
-                    }
-                    TuiState::Celebration { .. } => {
-                        // Celebration is driven by the tick loop below, ignore keypresses
-                    }
+                if let Some(key) = convert_key(event.code) {
+                    shell.handle_key(key);
                 }
             }
-        } else if matches!(tui_state, TuiState::Playing) {
-            if let Some(e) = engine.as_mut() { e.tick_hint(); }
         }
-        if matches!(tui_state, TuiState::Playing) && !engine.as_ref().unwrap().held_spools.is_empty() {
-            engine.as_mut().unwrap().process_all_active();
-            match engine.as_ref().unwrap().status() {
-                GameStatus::Playing => renderer::do_render(&mut stdout, engine.as_ref().unwrap(), geo.layout, geo.yarn_x, geo.board_x, geo.board_y, geo.scale)?,
-                GameStatus::Won if endless_ctx.is_some() => {
-                    advance_endless_wave(&mut endless_ctx, &mut game_config, &cli_config, &mut geo, &mut engine);
-                    renderer::do_render(&mut stdout, engine.as_ref().unwrap(), geo.layout, geo.yarn_x, geo.board_x, geo.board_y, geo.scale)?;
-                }
-                s @ GameStatus::Won => {
-                    tui_state = TuiState::Celebration { ticks_remaining: 16, next_status: s };
-                }
-                s => {
-                    if endless_ctx.is_some() && s == GameStatus::Stuck {
-                        let wave = endless_ctx.as_ref().unwrap().wave;
-                        endless_hs.update(wave);
-                        endless_hs.save("knitui");
-                        renderer::render_endless_gameover(&mut stdout, wave, endless_hs.best_wave)?;
-                    } else {
-                        let overlay = campaign_overlay_msg(&campaign_ctx, &s);
-                        renderer::do_render_overlay(&mut stdout, engine.as_ref().unwrap(), geo.layout, geo.yarn_x, geo.board_x, geo.board_y, geo.scale, &s, overlay.as_deref())?;
-                    }
-                    tui_state = TuiState::GameOver(s);
-                }
-            };
-        }
+        // Unconditional every iteration (not just on poll timeout) --
+        // matches the original loop's process_all_active() call, which ran
+        // every pass regardless of whether a key arrived that pass.
+        shell.tick();
 
-        // ── Celebration animation tick ──────────────────────────────────
-        if let TuiState::Celebration { ref mut ticks_remaining, ref next_status } = tui_state {
-            if *ticks_remaining > 0 {
-                let e = engine.as_ref().unwrap();
-                renderer::do_render(&mut stdout, e, geo.layout, geo.yarn_x, geo.board_x, geo.board_y, geo.scale)?;
-                let (bx, by) = match geo.layout {
-                    Layout::Horizontal => (geo.board_x, 0),
-                    Layout::Vertical => (0, geo.board_y),
-                };
-                renderer::render_celebration(&mut stdout, e, bx, by, geo.scale, 16 - *ticks_remaining)?;
-                stdout.flush()?;
-                *ticks_remaining -= 1;
-                std::thread::sleep(Duration::from_millis(80));
-            } else {
-                let status = next_status.clone();
-                let overlay = campaign_overlay_msg(&campaign_ctx, &status);
-                renderer::do_render_overlay(&mut stdout, engine.as_ref().unwrap(), geo.layout, geo.yarn_x, geo.board_x, geo.board_y, geo.scale, &status, overlay.as_deref())?;
-                tui_state = TuiState::GameOver(status);
-            }
+        if shell.should_quit() {
+            break;
         }
-
-        if let TuiState::WatchingAd { ref started_at, ref quote } = tui_state {
-            renderer::render_ad_overlay(&mut stdout, quote, started_at, AD_DURATION_SECS)?;
-        }
+        render(&mut stdout, &shell)?;
     }
 
+    shell.save_on_exit();
     loom_engine_term::restore()?;
     Ok(())
+}
+
+fn render(stdout: &mut Stdout, shell: &Shell<KnitGame>) -> std::io::Result<()> {
+    let mut surface = TermSurface::begin(stdout)?;
+    shell.render(&mut surface);
+    surface.finish()
+}
+
+fn convert_key(code: KeyCode) -> Option<KeyEvent> {
+    let key = match code {
+        KeyCode::Up => Key::Up,
+        KeyCode::Down => Key::Down,
+        KeyCode::Left => Key::Left,
+        KeyCode::Right => Key::Right,
+        KeyCode::Enter => Key::Enter,
+        KeyCode::Esc => Key::Esc,
+        KeyCode::Char(c) => Key::Char(c),
+        _ => return None,
+    };
+    Some(KeyEvent::new(key))
 }
