@@ -4,7 +4,7 @@ use loom_engine::campaign::CampaignEntry;
 pub use loom_engine::campaign::CampaignSaves;
 
 use crate::blessings;
-use crate::campaign_levels::levels_for_track;
+use crate::campaign_levels::{levels_for_track, is_hard_track};
 use crate::config::Config;
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -25,6 +25,13 @@ impl CampaignEntry for CampaignState {
     fn current_level(&self) -> usize { self.current_level }
     fn total_levels(&self) -> usize { levels_for_track(self.track_idx).len() }
     fn is_completed(&self) -> bool { self.completed }
+
+    /// New campaign entries (no blessings chosen yet) show the blessing-select
+    /// screen once, unless the track is hard mode (which has no blessings).
+    /// Matches the original `tui.rs` gate exactly.
+    fn needs_blessing_selection(&self) -> bool {
+        self.blessings.is_empty() && !is_hard_track(self.track_idx)
+    }
 }
 
 impl CampaignState {
@@ -215,6 +222,25 @@ mod tests {
         let cfg = s.to_config(&default_config());
         // Level 0 of track 0 gives 0 scissors + 0 banked + 1 sharp_start = 1
         assert!(cfg.scissors >= 1);
+    }
+
+    #[test]
+    fn needs_blessing_selection_true_for_fresh_normal_track() {
+        let s = CampaignState::new(0);
+        assert!(s.needs_blessing_selection());
+    }
+
+    #[test]
+    fn needs_blessing_selection_false_once_blessings_chosen() {
+        let mut s = CampaignState::new(0);
+        s.blessings = vec!["lucky_find".to_string()];
+        assert!(!s.needs_blessing_selection());
+    }
+
+    #[test]
+    fn needs_blessing_selection_false_for_hard_track_even_when_fresh() {
+        let s = CampaignState::new(3); // track 3 is the hard track
+        assert!(!s.needs_blessing_selection());
     }
 
     #[test]
