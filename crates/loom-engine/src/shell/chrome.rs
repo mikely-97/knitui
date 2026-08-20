@@ -13,6 +13,7 @@
 use std::time::Instant;
 
 use crate::blessings::{self, Blessing};
+use crate::game::MenuItem;
 use crate::render::{Attrs, Color, Style, Surface};
 
 fn fg(color: Color) -> Style {
@@ -20,8 +21,7 @@ fn fg(color: Color) -> Style {
 }
 
 /// Render the main menu screen.
-pub fn render_main_menu(surface: &mut dyn Surface, game_name: &str, selected: usize, flash: Option<&str>) {
-    let items = ["Quick Game", "Custom Game", "Campaign", "Endless", "Options", "Quit"];
+pub fn render_main_menu(surface: &mut dyn Surface, game_name: &str, items: &[MenuItem], selected: usize, flash: Option<&str>) {
     let (term_w, term_h) = surface.size();
     let start_y = term_h / 2 - (items.len() as u16 + 4) / 2;
 
@@ -32,7 +32,7 @@ pub fn render_main_menu(surface: &mut dyn Surface, game_name: &str, selected: us
     for (i, item) in items.iter().enumerate() {
         let y = start_y + 2 + i as u16;
         let prefix = if i == selected { "> " } else { "  " };
-        let line = format!("{}{}", prefix, item);
+        let line = format!("{}{}", prefix, item.label());
         let x = (term_w.saturating_sub(line.chars().count() as u16 + 4)) / 2;
         let style = if i == selected { Style { attrs: Attrs::REVERSE, ..Default::default() } } else { Style::default() };
         surface.print(x, y, &line, style);

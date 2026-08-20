@@ -251,4 +251,6 @@ impl GameEngineTrait for KnitEngineAdapter {
     fn set_scale(&mut self, scale: u16) { self.config.scale = scale; }
 
     fn board_dims(&self) -> (u16, u16) { (self.engine.board.height, self.engine.board.width) }
+
+    fn as_any(&self) -> &dyn std::any::Any { self }
 }

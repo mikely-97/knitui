@@ -21,7 +21,7 @@ use std::time::Instant;
 
 use crate::campaign::{CampaignEntry, CampaignSaves};
 use crate::endless::EndlessHighScore;
-use crate::game::{Action, Game, GameConfig, GameEngine, GameStatus, RenderArea};
+use crate::game::{Action, Game, GameConfig, GameEngine, GameStatus, MenuItem, RenderArea};
 use crate::input::{Key, KeyEvent};
 use crate::render::Surface;
 use crate::settings::UserSettings;
@@ -116,9 +116,20 @@ impl<G: Game> Shell<G> {
     /// Persist whatever needs saving on the way out (in-progress campaign
     /// run). Call once, right before exiting the native event loop.
     pub fn save_on_exit(&mut self) {
+        self.sync_campaign_state();
         if let Some(ctx) = self.campaign_ctx.take() {
             self.campaign_saves.upsert(ctx);
             self.campaign_saves.save(self.game.config_dir());
+        }
+    }
+
+    /// Sync live engine state into the in-progress campaign entry, for games
+    /// whose `CampaignEntry` embeds mutating world state (see
+    /// `Game::sync_campaign_entry`'s doc comment). No-op default for the
+    /// other games. Called before every point that might save `campaign_ctx`.
+    fn sync_campaign_state(&mut self) {
+        if let (Some(engine), Some(entry)) = (self.engine.as_ref(), self.campaign_ctx.as_mut()) {
+            self.game.sync_campaign_entry(engine.as_ref(), entry);
         }
     }
 
@@ -128,7 +139,7 @@ impl<G: Game> Shell<G> {
         let (w, h) = surface.size();
         match &self.state {
             TuiState::MainMenu { selected, flash } => {
-                chrome::render_main_menu(surface, self.game.name(), *selected, flash.as_deref());
+                chrome::render_main_menu(surface, self.game.name(), self.game.main_menu_items(), *selected, flash.as_deref());
             }
             TuiState::CustomGame { preset_idx, selected_field, config } => {
                 let fields = config.custom_fields();
@@ -234,6 +245,7 @@ impl<G: Game> Shell<G> {
     // ── Status-driven transitions (Won/Stuck after a play action) ──────────
 
     fn after_status_change(&mut self) {
+        self.sync_campaign_state();
         let Some(engine) = self.engine.as_ref() else { return };
         let status = engine.status();
         match status {
@@ -293,36 +305,35 @@ impl<G: Game> Shell<G> {
     }
 
     fn handle_main_menu(&mut self, key: KeyEvent) {
+        let items = self.game.main_menu_items();
         let TuiState::MainMenu { selected, flash } = &mut self.state else { unreachable!() };
         *flash = None;
         match key.key {
             Key::Up => { if *selected > 0 { *selected -= 1; } }
-            Key::Down => { if *selected < 5 { *selected += 1; } }
+            Key::Down => { if *selected < items.len().saturating_sub(1) { *selected += 1; } }
             Key::Esc | Key::Char('q') | Key::Char('Q') => { self.want_quit = true; }
             Key::Enter => {
-                let choice = *selected;
-                match choice {
-                    0 => { // Quick Game
+                match items.get(*selected).copied() {
+                    Some(MenuItem::QuickGame) => {
                         self.game_config = self.cli_config.clone();
                         self.engine = Some(self.game.create_engine(&self.game_config, &[]));
                         self.state = TuiState::Playing;
                     }
-                    1 => { // Custom Game
+                    Some(MenuItem::CustomGame) => {
                         let presets = self.game.presets();
                         let cfg = presets.get(1).or(presets.get(0)).map(|(_, c)| c.clone())
                             .unwrap_or_else(|| self.cli_config.clone());
                         self.state = TuiState::CustomGame { preset_idx: 1.min(presets.len().saturating_sub(1)), selected_field: 0, config: cfg };
                     }
-                    2 => { self.state = TuiState::CampaignSelect { selected: 0 }; }
-                    3 => { // Endless
+                    Some(MenuItem::Campaign) => { self.state = TuiState::CampaignSelect { selected: 0 }; }
+                    Some(MenuItem::Endless) => {
                         self.endless_wave = Some(1);
                         self.game_config = self.game.endless_wave_config(1, &self.cli_config);
                         self.engine = Some(self.game.create_engine(&self.game_config, &[]));
                         self.state = TuiState::Playing;
                     }
-                    4 => { self.state = TuiState::Options { selected: 0 }; }
-                    5 => { self.want_quit = true; }
-                    _ => {}
+                    Some(MenuItem::Options) => { self.state = TuiState::Options { selected: 0 }; }
+                    Some(MenuItem::Quit) | None => { self.want_quit = true; }
                 }
             }
             _ => {}
@@ -494,6 +505,7 @@ impl<G: Game> Shell<G> {
     }
 
     fn quit_to_menu(&mut self) {
+        self.sync_campaign_state();
         if let Some(ctx) = self.campaign_ctx.take() {
             self.campaign_saves.upsert(ctx);
             self.campaign_saves.save(self.game.config_dir());

@@ -300,6 +300,8 @@ impl GameEngineTrait for M3EngineAdapter {
     fn set_scale(&mut self, scale: u16) { self.config.scale = scale; }
 
     fn board_dims(&self) -> (u16, u16) { (self.engine.board.height as u16, self.engine.board.width as u16) }
+
+    fn as_any(&self) -> &dyn std::any::Any { self }
 }
 
 fn objective_label(engine: &M3Engine, objective: Option<&LevelObjective>) -> String {

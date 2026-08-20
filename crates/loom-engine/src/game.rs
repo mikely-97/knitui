@@ -39,6 +39,34 @@ pub enum GameStatus {
     Stuck,
 }
 
+/// One entry in the generic main menu. Not every game has all five play
+/// modes (merge2 has no standalone "Quick Game"; picross has only Campaign)
+/// -- `Game::main_menu_items` returns the subset+order a given game wants,
+/// and `Shell`/`chrome::render_main_menu` render/route off that list
+/// instead of a hardcoded 6-item menu.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum MenuItem {
+    QuickGame,
+    CustomGame,
+    Campaign,
+    Endless,
+    Options,
+    Quit,
+}
+
+impl MenuItem {
+    pub fn label(&self) -> &'static str {
+        match self {
+            MenuItem::QuickGame => "Quick Game",
+            MenuItem::CustomGame => "Custom Game",
+            MenuItem::Campaign => "Campaign",
+            MenuItem::Endless => "Endless",
+            MenuItem::Options => "Options",
+            MenuItem::Quit => "Quit",
+        }
+    }
+}
+
 /// Rectangle describing where the game should render.
 #[derive(Clone, Copy, Debug)]
 pub struct RenderArea {
@@ -96,6 +124,13 @@ pub trait GameEngine {
 
     /// Board dimensions in cells (rows, cols) — used for layout calculations.
     fn board_dims(&self) -> (u16, u16);
+
+    /// Type-erased self-reference, so `Game::sync_campaign_entry` can
+    /// downcast a `&dyn GameEngine` back to the concrete adapter when a
+    /// game's `CampaignEntry` embeds live world state that must be synced
+    /// back before saving (merge2's persistent board/inventory/energy, as
+    /// opposed to knit/match3's config-only entries, which never need this).
+    fn as_any(&self) -> &dyn std::any::Any;
 }
 
 /// Shared trait for game configuration. Each game has its own Config struct
@@ -162,6 +197,16 @@ pub trait Game: 'static {
     /// bank rewards, ...). Returns true if the track is now fully complete.
     fn complete_campaign_level(&self, entry: &mut Self::CampaignEntry) -> bool;
 
+    /// Sync live engine state back into a campaign entry before it's saved.
+    /// Default no-op: most games' entries are pure bookkeeping (level index,
+    /// banked bonuses) that `complete_campaign_level` already keeps correct,
+    /// with a fresh board rebuilt from `Config` on every attempt. Override
+    /// when `CampaignEntry` itself embeds live, mutating world state (see
+    /// `GameEngine::as_any`'s doc comment).
+    fn sync_campaign_entry(&self, engine: &dyn GameEngine, entry: &mut Self::CampaignEntry) {
+        let _ = (engine, entry);
+    }
+
     // Blessings — optional; games with no blessing system use the defaults.
     /// This game's full blessing catalog (locked and unlocked alike — the
     /// blessing-selection screen shows locked cards greyed out, it needs
@@ -181,4 +226,12 @@ pub trait Game: 'static {
     // UI metadata
     fn help_lines(&self) -> Vec<(&'static str, &'static str)>;
     fn presets(&self) -> Vec<(&'static str, Self::Config)>;
+
+    /// Main-menu items this game offers, in display order. Default matches
+    /// the original 4-game-uniform menu (knit, match3). Override for games
+    /// whose menu shape differs (merge2 has no Quick Game; picross has only
+    /// Campaign + Quit).
+    fn main_menu_items(&self) -> &'static [MenuItem] {
+        &[MenuItem::QuickGame, MenuItem::CustomGame, MenuItem::Campaign, MenuItem::Endless, MenuItem::Options, MenuItem::Quit]
+    }
 }
