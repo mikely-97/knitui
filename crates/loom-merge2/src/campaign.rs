@@ -51,6 +51,12 @@ impl CampaignEntry for CampaignState {
     fn is_completed(&self) -> bool {
         self.completed
     }
+
+    /// Like match3 (unlike knit), the original `tui.rs` unconditionally
+    /// sent every campaign-track entry through blessing selection, even
+    /// when blessings were already chosen -- letting the player review/
+    /// reroll on every re-entry. Preserved as-is.
+    fn needs_blessing_selection(&self) -> bool { true }
 }
 
 impl CampaignState {

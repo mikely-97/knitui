@@ -2,16 +2,13 @@ mod board;
 mod panels;
 mod popups;
 
-#[cfg(not(target_arch = "wasm32"))]
-pub use board::render_board;
-#[cfg(not(target_arch = "wasm32"))]
-pub use panels::{render_hud, render_orders, render_inventory, render_key_bar, render_game_over};
-#[cfg(not(target_arch = "wasm32"))]
-pub use popups::{
-    render_help, render_main_menu, render_campaign_select, render_level_intro,
-    render_ad_overlay, render_options, render_custom_game, render_blessing_selection,
-    render_inv_expansion_popup, render_celebration, render_mission_summary,
+pub use board::render_board_inner;
+pub use panels::{
+    render_game_over_to_surface,
+    render_hud_inner, render_orders_inner, render_inventory_inner, render_key_bar_inner,
 };
+#[cfg(not(target_arch = "wasm32"))]
+pub use popups::{render_help_to_surface, render_celebration_to_surface};
 
 #[cfg(not(target_arch = "wasm32"))]
 use crossterm::terminal::size as term_size;
@@ -34,14 +31,24 @@ pub struct LayoutGeometry {
 }
 
 impl LayoutGeometry {
+    /// Native/wasm convenience: resolves the render-target width itself
+    /// (real terminal size on native, a fixed column count on wasm). Used
+    /// by `web.rs`'s wasm build.
     pub fn compute(engine: &GameEngine) -> Self {
-        let scale = engine.scale;
-        let (cw, _) = cell_dims(scale);
-        let board_w = (engine.board.cols * (cw + 1) + 1) as u16;
         #[cfg(not(target_arch = "wasm32"))]
         let term_w = term_size().unwrap_or((80, 24)).0;
         #[cfg(target_arch = "wasm32")]
         let term_w = 100u16;
+        Self::for_width(engine, term_w)
+    }
+
+    /// Portable: caller supplies the render-target width explicitly (the
+    /// `GameEngine` trait adapter passes `RenderArea::width`; headless
+    /// tests pass a `CellGrid`'s width). No crossterm/wasm branching.
+    pub fn for_width(engine: &GameEngine, term_w: u16) -> Self {
+        let scale = engine.scale;
+        let (cw, _) = cell_dims(scale);
+        let board_w = (engine.board.cols * (cw + 1) + 1) as u16;
         let order_panel_w = 24u16;
 
         if term_w >= board_w + 3 + order_panel_w {

@@ -1,9 +1,4 @@
-#[cfg(not(target_arch = "wasm32"))]
-use std::io::{self, Stdout};
-
 use loom_engine::render::{Attrs, Color, Style, Surface};
-#[cfg(not(target_arch = "wasm32"))]
-use loom_engine_term::TermSurface;
 
 use loom_engine::anim::AnimKind;
 use crate::board::Cell;
@@ -157,15 +152,6 @@ fn render_cell_content(
 }
 
 // ── Board ─────────────────────────────────────────────────────────────────
-
-/// Only ever called from inside tui.rs's centralized Clear/flush dispatcher,
-/// so this draws into a mid-frame `TermSurface` (no clear/flush of its own).
-#[cfg(not(target_arch = "wasm32"))]
-pub fn render_board(stdout: &mut Stdout, engine: &GameEngine, geo: &LayoutGeometry) -> io::Result<()> {
-    let mut surface = TermSurface::new(stdout);
-    render_board_inner(&mut surface, engine, geo);
-    surface.done()
-}
 
 pub fn render_board_inner(
     surface: &mut dyn Surface,
