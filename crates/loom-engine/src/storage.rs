@@ -31,25 +31,28 @@ impl Storage for FsStorage {
     }
 }
 
+/// In-memory `Storage`, for tests (of anything built on `Storage`, in any
+/// crate in this workspace) and for FFI hosts with no natural persistence
+/// backend of their own. Never touches disk or any external state — safe
+/// to use freely without risk to real save data (see the `Shell<G>` test
+/// suites in every game crate, which use this instead of `FsStorage` for
+/// exactly that reason).
+#[derive(Default)]
+pub struct MemStorage(std::cell::RefCell<std::collections::HashMap<(String, String), String>>);
+
+impl Storage for MemStorage {
+    fn load(&self, namespace: &str, key: &str) -> Option<String> {
+        self.0.borrow().get(&(namespace.to_string(), key.to_string())).cloned()
+    }
+
+    fn save(&self, namespace: &str, key: &str, value: &str) {
+        self.0.borrow_mut().insert((namespace.to_string(), key.to_string()), value.to_string());
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::cell::RefCell;
-    use std::collections::HashMap;
-
-    /// In-memory Storage for testing consumers of the trait without touching disk.
-    #[derive(Default)]
-    struct MemStorage(RefCell<HashMap<(String, String), String>>);
-
-    impl Storage for MemStorage {
-        fn load(&self, namespace: &str, key: &str) -> Option<String> {
-            self.0.borrow().get(&(namespace.to_string(), key.to_string())).cloned()
-        }
-
-        fn save(&self, namespace: &str, key: &str, value: &str) {
-            self.0.borrow_mut().insert((namespace.to_string(), key.to_string()), value.to_string());
-        }
-    }
 
     #[test]
     fn roundtrip_via_trait_object() {

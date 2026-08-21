@@ -52,6 +52,7 @@ fn run_event_loop(cli_config: Config, user_settings: UserSettings) -> std::io::R
         Vec::new(), // no ad quotes wired yet (matches an already-disclosed gap)
         String::new(),
         false,
+        Box::new(loom_engine::storage::FsStorage),
     );
 
     let mut stdout = stdout();

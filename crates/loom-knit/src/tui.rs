@@ -81,6 +81,7 @@ fn run_event_loop(
         ad_quotes,
         "FREE SCISSORS".to_string(),
         skip_menu,
+        Box::new(loom_engine::storage::FsStorage),
     );
 
     let mut stdout = stdout();

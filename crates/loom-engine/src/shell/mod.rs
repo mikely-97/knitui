@@ -25,6 +25,7 @@ use crate::game::{Action, Game, GameConfig, GameEngine, GameStatus, MenuItem, Re
 use crate::input::{Key, KeyEvent};
 use crate::render::Surface;
 use crate::settings::UserSettings;
+use crate::storage::Storage;
 
 /// Screen/mode the shell is currently in. Generic over `G` because
 /// `CustomGame` holds a live, editable `G::Config`.
@@ -68,13 +69,24 @@ pub struct Shell<G: Game> {
     /// gates it).
     ad_reward_label: String,
     want_quit: bool,
+    /// Where `Shell` itself persists settings/campaign/high-score updates
+    /// made *during* play (quit, blessing confirm, level complete, options
+    /// change, ...). Loading the initial state is still the frontend's job
+    /// (see `new`'s doc comment) — this only covers writes Shell makes on
+    /// its own. `native-storage`'s `FsStorage` on native frontends,
+    /// `loom-engine-web`'s `WebStorage` (localStorage) on web, an
+    /// in-memory or host-forwarding impl for FFI hosts.
+    storage: Box<dyn Storage>,
 }
 
 impl<G: Game> Shell<G> {
     /// `skip_menu`: start directly in Playing with `cli_config` (mirrors
     /// each game's `--skip-menu`-equivalent CLI flag). Loading
     /// campaign/settings/high-score state and reading ad quotes off disk
-    /// are the native binary's job (I/O) — pass the results in here.
+    /// are the frontend's job (I/O) — pass the results in here. `storage`
+    /// is what `Shell` itself writes to for in-session saves (see the
+    /// `storage` field's doc comment) — pass the same backend the
+    /// frontend used to load, so writes and reads agree.
     pub fn new(
         game: G,
         cli_config: G::Config,
@@ -84,6 +96,7 @@ impl<G: Game> Shell<G> {
         ad_quotes: Vec<String>,
         ad_reward_label: String,
         skip_menu: bool,
+        storage: Box<dyn Storage>,
     ) -> Self {
         let game_config = cli_config.clone();
         let (engine, state) = if skip_menu {
@@ -106,6 +119,7 @@ impl<G: Game> Shell<G> {
             ad_quotes,
             ad_reward_label,
             want_quit: false,
+            storage,
         }
     }
 
@@ -119,7 +133,7 @@ impl<G: Game> Shell<G> {
         self.sync_campaign_state();
         if let Some(ctx) = self.campaign_ctx.take() {
             self.campaign_saves.upsert(ctx);
-            self.campaign_saves.save(self.game.config_dir());
+            self.campaign_saves.save_from(self.storage.as_ref(), self.game.config_dir());
         }
     }
 
@@ -255,6 +269,21 @@ impl<G: Game> Shell<G> {
             }
             GameStatus::Won { .. } => {
                 self.state = TuiState::Celebration { ticks_remaining: CELEBRATION_TICKS, next_status: status };
+            }
+            _ if self.endless_wave.is_some() => {
+                // The run just ended (Stuck/Lost, not a wave-advance Won) --
+                // record the high score. Previously unreachable: nothing in
+                // Shell ever called EndlessHighScore::update, so the
+                // endless-gameover screen's "best" display never changed
+                // from whatever was loaded at startup, across all 4 games,
+                // since Phase 3. Matches the original per-game tui.rs
+                // behavior (e.g. match3's resolve_win_transition).
+                if let Some(wave) = self.endless_wave {
+                    if self.endless_hs.update(wave as usize) {
+                        self.endless_hs.save_from(self.storage.as_ref(), self.game.config_dir());
+                    }
+                }
+                self.state = TuiState::GameOver(status);
             }
             _ => {
                 self.state = TuiState::GameOver(status);
@@ -430,7 +459,7 @@ impl<G: Game> Shell<G> {
                 if let Some(entry) = self.campaign_ctx.as_mut() {
                     self.game.confirm_blessings(entry, &ids);
                     self.campaign_saves.upsert(entry.clone());
-                    self.campaign_saves.save(self.game.config_dir());
+                    self.campaign_saves.save_from(self.storage.as_ref(), self.game.config_dir());
                 }
                 self.state = TuiState::CampaignLevelIntro;
             }
@@ -476,7 +505,7 @@ impl<G: Game> Shell<G> {
                 _ => {}
             },
             Key::Esc => {
-                self.user_settings.save(self.game.config_dir());
+                self.user_settings.save_from(self.storage.as_ref(), self.game.config_dir());
                 self.cli_config.set_scale(self.user_settings.scale);
                 self.cli_config.set_color_mode(self.user_settings.color_mode.clone());
                 self.state = TuiState::MainMenu { selected: 4, flash: None };
@@ -508,7 +537,7 @@ impl<G: Game> Shell<G> {
         self.sync_campaign_state();
         if let Some(ctx) = self.campaign_ctx.take() {
             self.campaign_saves.upsert(ctx);
-            self.campaign_saves.save(self.game.config_dir());
+            self.campaign_saves.save_from(self.storage.as_ref(), self.game.config_dir());
         }
         self.endless_wave = None;
         self.state = TuiState::MainMenu { selected: 0, flash: None };
@@ -536,7 +565,7 @@ impl<G: Game> Shell<G> {
                     if matches!(status, GameStatus::Won { .. }) {
                         let done = self.game.complete_campaign_level(&mut entry);
                         self.campaign_saves.upsert(entry.clone());
-                        self.campaign_saves.save(self.game.config_dir());
+                        self.campaign_saves.save_from(self.storage.as_ref(), self.game.config_dir());
                         if done {
                             self.campaign_ctx = None;
                             self.state = TuiState::MainMenu { selected: 2, flash: Some("Campaign complete!".to_string()) };
@@ -562,7 +591,7 @@ impl<G: Game> Shell<G> {
             Key::Char('q') | Key::Char('Q') => {
                 if let Some(ctx) = self.campaign_ctx.take() {
                     self.campaign_saves.upsert(ctx);
-                    self.campaign_saves.save(self.game.config_dir());
+                    self.campaign_saves.save_from(self.storage.as_ref(), self.game.config_dir());
                 }
                 self.want_quit = true;
             }

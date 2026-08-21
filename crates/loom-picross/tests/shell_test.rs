@@ -4,14 +4,11 @@
 //! exercise the campaign path plus the always-available Playing/Help/quit
 //! flows.
 //!
-//! `Shell` persists settings/campaign under the real "picross" config dir
-//! (same location the actual game uses -- there's no injectable storage
-//! backend for this yet). `ConfigGuard` backs up and restores those files
-//! around every test so a test run can never leave the user's real save
-//! data altered, even if a test panics.
-
-use std::fs;
-use std::path::PathBuf;
+//! `Shell` now takes an injected `Storage` backend (added alongside the web
+//! frontend's Shell<G> wiring, so localStorage-backed saves actually work
+//! there) -- these tests pass `MemStorage`, so they never touch the real
+//! `~/.config/picross/` files at all, unlike the earlier `ConfigGuard`
+//! backup/restore approach this file used before that existed.
 
 use pictui::game::PicrossGame;
 use loom_engine::campaign::CampaignSaves;
@@ -21,36 +18,7 @@ use loom_engine::input::{Key, KeyEvent};
 use loom_engine::render::CellGrid;
 use loom_engine::settings::UserSettings;
 use loom_engine::shell::Shell;
-
-struct ConfigGuard {
-    dir: PathBuf,
-    backup: Vec<(PathBuf, Option<Vec<u8>>)>,
-}
-
-impl ConfigGuard {
-    fn new() -> Self {
-        let dir = dirs::config_dir().unwrap().join("picross");
-        let files = ["settings.json", "campaign.json"];
-        let backup = files.iter().map(|f| {
-            let p = dir.join(f);
-            let contents = fs::read(&p).ok();
-            (p, contents)
-        }).collect();
-        Self { dir, backup }
-    }
-}
-
-impl Drop for ConfigGuard {
-    fn drop(&mut self) {
-        let _ = fs::create_dir_all(&self.dir);
-        for (path, contents) in &self.backup {
-            match contents {
-                Some(bytes) => { let _ = fs::write(path, bytes); }
-                None => { let _ = fs::remove_file(path); }
-            }
-        }
-    }
-}
+use loom_engine::storage::MemStorage;
 
 fn new_shell(skip_menu: bool) -> Shell<PicrossGame> {
     let game = PicrossGame;
@@ -64,6 +32,7 @@ fn new_shell(skip_menu: bool) -> Shell<PicrossGame> {
         Vec::new(),
         String::new(),
         skip_menu,
+        Box::new(MemStorage::default()),
     )
 }
 
@@ -79,14 +48,12 @@ fn render_nonblank(shell: &Shell<PicrossGame>) -> bool {
 
 #[test]
 fn main_menu_renders_with_only_campaign_and_quit() {
-    let _guard = ConfigGuard::new();
     let shell = new_shell(false);
     assert!(render_nonblank(&shell));
 }
 
 #[test]
 fn skip_menu_starts_directly_in_playing() {
-    let _guard = ConfigGuard::new();
     let shell = new_shell(true);
     assert!(render_nonblank(&shell));
 }
@@ -95,7 +62,6 @@ fn skip_menu_starts_directly_in_playing() {
 fn campaign_select_does_not_show_blessing_selection() {
     // Picross has no blessing system -- needs_blessing_selection() is
     // false, so track selection should go straight to CampaignLevelIntro.
-    let _guard = ConfigGuard::new();
     let mut shell = new_shell(false);
     press(&mut shell, Key::Enter); // MainMenu index 0 = Campaign
     assert!(render_nonblank(&shell)); // CampaignSelect
@@ -105,7 +71,6 @@ fn campaign_select_does_not_show_blessing_selection() {
 
 #[test]
 fn campaign_full_flow_reaches_a_playable_puzzle() {
-    let _guard = ConfigGuard::new();
     let mut shell = new_shell(false);
     press(&mut shell, Key::Enter); // Campaign
     press(&mut shell, Key::Enter); // track 0 -> CampaignLevelIntro
@@ -117,7 +82,6 @@ fn campaign_full_flow_reaches_a_playable_puzzle() {
 
 #[test]
 fn esc_from_playing_returns_to_menu() {
-    let _guard = ConfigGuard::new();
     let mut shell = new_shell(true);
     press(&mut shell, Key::Esc);
     assert!(render_nonblank(&shell));
@@ -125,7 +89,6 @@ fn esc_from_playing_returns_to_menu() {
 
 #[test]
 fn help_screen_toggles_back_to_playing() {
-    let _guard = ConfigGuard::new();
     let mut shell = new_shell(true);
     press(&mut shell, Key::Char('h'));
     assert!(render_nonblank(&shell));
@@ -135,7 +98,6 @@ fn help_screen_toggles_back_to_playing() {
 
 #[test]
 fn tick_does_not_panic_while_playing() {
-    let _guard = ConfigGuard::new();
     let mut shell = new_shell(true);
     for _ in 0..5 {
         shell.tick();
@@ -145,7 +107,6 @@ fn tick_does_not_panic_while_playing() {
 
 #[test]
 fn playing_through_a_scripted_sequence_does_not_panic() {
-    let _guard = ConfigGuard::new();
     let mut shell = new_shell(true);
     for _ in 0..30 {
         press(&mut shell, Key::Enter);
@@ -162,7 +123,6 @@ fn playing_through_a_scripted_sequence_does_not_panic() {
 fn campaign_progresses_sequentially_across_two_puzzles() {
     // Confirms the sequential-only campaign model actually works end to
     // end through Shell, not just at the Game-trait level.
-    let _guard = ConfigGuard::new();
     let mut shell = new_shell(false);
     press(&mut shell, Key::Enter); // Campaign
     press(&mut shell, Key::Enter); // track 0 -> CampaignLevelIntro

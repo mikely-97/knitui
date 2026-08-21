@@ -67,6 +67,7 @@ fn run_event_loop(
         Vec::new(), // match3 has no watch-an-ad feature (no ad_reward_label/quotes)
         String::new(),
         false, // match3's original tui.rs always starts at the main menu
+        Box::new(loom_engine::storage::FsStorage),
     );
 
     let mut stdout = stdout();

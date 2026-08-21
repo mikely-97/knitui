@@ -44,6 +44,7 @@ pub fn run_from_menu() -> std::io::Result<()> {
         Vec::new(),
         String::new(),
         false,
+        Box::new(loom_engine::storage::FsStorage),
     );
 
     let mut stdout = stdout();

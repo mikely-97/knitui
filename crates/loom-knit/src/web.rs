@@ -1,27 +1,29 @@
-// wasm-bindgen entry point wiring loom-knit's GameEngine to a canvas via
-// loom-engine-web. Deliberately minimal: drives straight into gameplay
-// (mirrors the existing `--skip-menu` CLI path), no menu/campaign/blessing
-// screens -- those are Phase 3+ (Shell<G>) territory, not this crate's job.
+// wasm-bindgen entry point driving loom-knit's full Shell<KnitGame> --
+// menus, campaign, endless, options, blessings, help -- through a canvas,
+// via loom-engine-web. Full parity with the native terminal build:
+// same screens, same state machine, same saves (via WebStorage,
+// localStorage-backed, instead of FsStorage's real files).
 
 use clap::Parser;
 use wasm_bindgen::prelude::*;
 use web_sys::{CanvasRenderingContext2d, KeyboardEvent};
 
-use loom_engine::input::Key;
+use loom_engine::campaign::CampaignSaves;
+use loom_engine::endless::EndlessHighScore;
+use loom_engine::game::Game;
 use loom_engine::render::{Style, Surface};
-use loom_engine_web::{key_from_event, WasmSurface};
+use loom_engine::settings::UserSettings;
+use loom_engine::shell::Shell;
+use loom_engine_web::{key_from_event, WasmSurface, WebStorage};
 
-use crate::board_entity::Direction;
+use crate::campaign::CampaignState;
 use crate::config::Config;
-use crate::engine::GameEngine;
-use crate::renderer::{self, COMP_GAP, YARN_VGAP};
+use crate::game::KnitGame;
 
 #[wasm_bindgen]
 pub struct WebGame {
-    engine: GameEngine,
+    shell: Shell<KnitGame>,
     surface: WasmSurface,
-    board_y: u16,
-    scale: u16,
 }
 
 #[wasm_bindgen]
@@ -30,36 +32,61 @@ impl WebGame {
     pub fn new(ctx: CanvasRenderingContext2d, cols: u16, rows: u16, font_px: f64) -> WebGame {
         loom_engine_web::init_panic_hook();
 
-        let config = Config::parse_from::<[&str; 0], &str>([]);
-        let engine = GameEngine::new(&config);
+        let config_dir = KnitGame.config_dir();
+        let user_settings = UserSettings::load_from(&WebStorage, config_dir);
+        let mut cli_config = Config::parse_from::<[&str; 0], &str>([]);
+        cli_config.scale = user_settings.scale;
+        cli_config.color_mode = user_settings.color_mode.clone();
+        let campaign_saves = CampaignSaves::<CampaignState>::load_from(&WebStorage, config_dir);
+        let endless_hs = EndlessHighScore::load_from(&WebStorage, config_dir);
+
+        let shell = Shell::new(
+            KnitGame,
+            cli_config,
+            user_settings,
+            campaign_saves,
+            endless_hs,
+            Vec::new(), // no ad quotes wired for web yet -- can_watch_ad() gates
+                        // the overlay, so an empty quote list is harmless, not
+                        // a broken feature (same as knit's native ad_file gap).
+            "FREE SCISSORS".to_string(),
+            false, // start at the main menu, not straight into play
+            Box::new(WebStorage),
+        );
+
         let surface = WasmSurface::new(ctx, cols, rows, font_px);
-
-        let sh = config.scale;
-        let yarn_h = config.visible_stitches * sh
-            + config.visible_stitches.saturating_sub(1) * YARN_VGAP;
-        let board_y = yarn_h + COMP_GAP + sh + COMP_GAP;
-
-        WebGame { engine, surface, board_y, scale: config.scale }
+        WebGame { shell, surface }
     }
 
-    /// Feed a browser `KeyboardEvent` straight to the engine. Unrecognized
-    /// keys (per the deliberately minimal `Key` enum) are ignored.
+    /// Feed a browser `KeyboardEvent` to the shell. Unrecognized keys (per
+    /// the deliberately minimal `Key` enum) are ignored.
     pub fn handle_key(&mut self, event: KeyboardEvent) {
         let Some(key_event) = key_from_event(&event) else { return };
-        match key_event.key {
-            Key::Up => { let _ = self.engine.move_cursor(Direction::Up); }
-            Key::Down => { let _ = self.engine.move_cursor(Direction::Down); }
-            Key::Left => { let _ = self.engine.move_cursor(Direction::Left); }
-            Key::Right => { let _ = self.engine.move_cursor(Direction::Right); }
-            Key::Enter => { let _ = self.engine.pick_up(); }
-            _ => {}
-        }
+        self.shell.handle_key(key_event);
     }
 
-    /// Redraw the full frame. The caller (JS `requestAnimationFrame` loop)
-    /// decides when to call this -- the engine itself has no frame timing.
+    /// Advance background/animation state by one tick. The caller (JS
+    /// `requestAnimationFrame` loop) decides the cadence.
+    pub fn tick(&mut self) {
+        self.shell.tick();
+    }
+
+    /// True once the player has selected Quit from the main menu. The web
+    /// page can react however it likes (e.g. show a message) -- there's no
+    /// forced navigation.
+    pub fn should_quit(&self) -> bool {
+        self.shell.should_quit()
+    }
+
+    /// Persist any in-progress campaign run. Call before the page
+    /// unloads, mirroring the native build's exit sequence.
+    pub fn save_on_exit(&mut self) {
+        self.shell.save_on_exit();
+    }
+
+    /// Redraw the full frame.
     pub fn render(&mut self) {
         self.surface.clear(Style::default());
-        renderer::render_vertical_to_surface(&mut self.surface, &self.engine, self.board_y, self.scale);
+        self.shell.render(&mut self.surface);
     }
 }

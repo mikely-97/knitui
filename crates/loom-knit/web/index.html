@@ -10,7 +10,7 @@
 </head>
 <body>
 <canvas id="game"></canvas>
-<p style="text-align:center">Arrow keys move, Enter picks up. Board regenerates on reload.</p>
+<p style="text-align:center">Same menus, campaign, and options as the terminal build. Arrow keys navigate, Enter selects, Esc backs out.</p>
 <script type="module">
   import init, { WebGame } from './pkg/knitui.js';
 
@@ -35,7 +35,22 @@
       e.preventDefault();
     });
 
+    // Persist any in-progress campaign run before the tab closes, matching
+    // the native build's save-on-exit sequence.
+    window.addEventListener('beforeunload', () => {
+      game.save_on_exit();
+    });
+
+    // Ticks every animation frame (~60fps), not the native build's ~80ms
+    // poll cadence -- each frontend owns its own timing per the engine's
+    // design (see loom-engine::shell's doc comment), so background
+    // processing (e.g. held-spool auto-winding) just runs faster here.
+    //
+    // Deliberately keeps rendering even after should_quit() -- a web page
+    // has no process to exit, so "Quit" from the main menu just leaves the
+    // player on that screen rather than freezing the canvas.
     function frame() {
+      game.tick();
       game.render();
       requestAnimationFrame(frame);
     }

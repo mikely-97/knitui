@@ -78,5 +78,10 @@ fn new_shell<G: Game>(game: G) -> Shell<G> {
         Vec::new(),
         String::new(),
         false,
+        // FFI hosts are native processes -- same real config-dir-backed
+        // storage every native frontend uses, matching "host-owns-the-
+        // loop": in-session saves Shell makes go to the same place a
+        // terminal frontend's would.
+        Box::new(loom_engine::storage::FsStorage),
     )
 }

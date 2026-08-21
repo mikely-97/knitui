@@ -1,7 +1,11 @@
 # loom-knit web build
 
 Browser build of loom-knit's `WebGame` (see `../src/web.rs`), backed by
-`loom-engine-web`'s canvas `Surface` impl.
+`loom-engine-web`'s canvas `Surface` impl. Drives the full
+`Shell<KnitGame>` state machine -- same main menu, custom game, campaign,
+endless, options, and help screens as the native terminal build, with
+settings/campaign/high-score saves going to `localStorage` (via
+`loom-engine-web`'s `WebStorage`) instead of real files.
 
 ## Build
 
@@ -22,11 +26,13 @@ node smoke_test.mjs
 ```
 
 Runs `WebGame` under Node with mock `CanvasRenderingContext2d`/`KeyboardEvent`
-objects. Verifies the actual compiled `.wasm` constructs, generates a board
-(exercising the solvability retry loop and `getRandomValues` via the
-`wasm_js` getrandom backend), renders, and responds to cursor-move/pick-up
-input without throwing. It does **not** check pixel output -- only a real
-browser can confirm that.
+objects. Verifies the actual compiled `.wasm` constructs and runs the full
+menu -> Quick Game -> play -> help -> quit-to-menu flow without throwing
+(exercising the solvability retry loop, `getRandomValues` via the
+`wasm_js` getrandom backend, and the generic `Shell<KnitGame>` state
+machine end to end). It does **not** check pixel output, and `WebStorage`
+silently no-ops under Node (no real `localStorage`) -- only a real browser
+can confirm rendering and persistence.
 
 ## Actual browser check
 
@@ -34,7 +40,7 @@ browser can confirm that.
 python3 -m http.server 8000   # from this directory; ES module imports need http://, not file://
 ```
 
-Then open `http://localhost:8000/`. Arrow keys move the cursor, Enter picks
-up. The board is fixed at the default `Config` (6x6, scale 1) -- there's no
-menu yet, this is the core gameplay loop only (see `../src/web.rs`'s doc
-comment for why).
+Then open `http://localhost:8000/`. Same controls as the terminal build:
+arrow keys navigate menus and move the board cursor, Enter selects/picks
+up, Esc backs out. Settings/campaign/high-score persist across reloads via
+`localStorage`.
