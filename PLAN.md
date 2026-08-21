@@ -100,13 +100,28 @@ for the FFI surfaces' exact shape and usage.
 
 ## Next Steps
 
+### Completed since Phase 5: full Shell<G> web parity (2026-08-21)
+
+All 4 games' `web.rs` now drive the same `Shell<G>` state machine
+`tui.rs` does — main menu, custom game, campaign, endless, options, help
+— instead of a bare gameplay loop. This needed a real prerequisite fix
+first: `Shell<G>` had no injectable storage backend (its in-session saves
+were hardcoded to `FsStorage`'s real files, which silently no-op on
+wasm32), so a `Storage` trait was threaded through `Shell::new` and every
+save call site; the web builds pass `WebStorage` (localStorage-backed),
+which already existed in `loom-engine-web` but had never been wired to
+anything. Along the way, a real, previously-undiscovered bug surfaced and
+got fixed: `EndlessHighScore.best_wave` was only ever *read* by `Shell`
+(displayed on the endless-gameover screen), never updated or saved —
+across all 4 games, since Phase 3. Verified per-game via the existing
+headless-Node smoke test, rewritten to exercise the real menu → play →
+help → quit-to-menu flow against the actual compiled `.wasm`.
+
 ### Real remaining gaps
 
-- Web frontends for match3/merge2/picross are still gameplay-loop-only
-  (no menu/campaign UI in the browser for any game yet — knit included).
-  Wiring `Shell<G>` into `web.rs` the way `tui.rs` already is would close this.
 - No pixel-level visual verification of the web builds (the pty+pyte
-  trick only covers the terminal side).
+  trick only covers the terminal side; the Node smoke test proves the
+  `.wasm` runs without throwing, not that it looks right).
 - The C ABI's C++/Go surface is intentionally just the generated header +
   docs — a polished RAII/`cgo` wrapper is deferred until a real consumer
   wants one.

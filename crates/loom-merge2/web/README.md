@@ -1,8 +1,12 @@
 # loom-merge2 web build
 
 Browser build of merge2's `WebGame` (see `../src/web.rs`), backed by
-`loom-engine-web`'s canvas `Surface` impl. See
-`../../loom-knit/web/README.md` for the full explanation.
+`loom-engine-web`'s canvas `Surface` impl. Drives the full
+`Shell<M2Game>` state machine -- same main menu (Custom Game/Campaign/
+Endless/Options, no Quick Game item), campaign, and inventory/help
+screens as the native terminal build, with saves going to `localStorage`
+instead of real files. See `../../loom-knit/web/README.md` for the full
+explanation.
 
 ## Build
 
@@ -31,5 +35,7 @@ executing the wasm did.
 python3 -m http.server 8000   # from this directory
 ```
 
-Then open `http://localhost:8000/`. Endless mode, no blessings chosen --
-no menu/campaign/blessing-selection screens yet (see `../src/web.rs`).
+Then open `http://localhost:8000/`. Same controls as the terminal build.
+`M2EngineAdapter` (in `../src/game.rs`) turned out to have no real
+native-only dependency once checked -- it's used here unchanged, not a
+separate wasm-specific implementation.

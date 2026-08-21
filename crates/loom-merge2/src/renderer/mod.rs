@@ -7,7 +7,6 @@ pub use panels::{
     render_game_over_to_surface,
     render_hud_inner, render_orders_inner, render_inventory_inner, render_key_bar_inner,
 };
-#[cfg(not(target_arch = "wasm32"))]
 pub use popups::{render_help_to_surface, render_celebration_to_surface};
 
 #[cfg(not(target_arch = "wasm32"))]

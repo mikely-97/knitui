@@ -1,9 +1,3 @@
-// merge2 is driven entirely through loom_engine::shell::Shell<M2Game>
-// (Phase 4) now, whose GameEngine trait adapter (game.rs's m2_adapter
-// module) is itself native-only -- see that module's doc comment -- so
-// this file only needs to exist on native targets too.
-#![cfg(not(target_arch = "wasm32"))]
-
 use loom_engine::render::{Attrs, Color, Style, Surface};
 
 fn fg(color: Color) -> Style {

@@ -1,6 +1,8 @@
 // Headless correctness check for the wasm build -- see
-// ../../loom-knit/web/smoke_test.mjs for the full rationale. Run after
-// regenerating pkg/ (see README.md in this directory):
+// ../../loom-knit/web/smoke_test.mjs for the full rationale. Now exercises
+// the full Shell<M3Game> state machine (main menu -> Quick Game -> play ->
+// help -> quit-to-menu), not a bare gameplay loop. Run after regenerating
+// pkg/ (see README.md in this directory):
 //   node smoke_test.mjs
 
 import { readFileSync } from 'node:fs';
@@ -35,9 +37,20 @@ async function main() {
   const ctx = makeMockCtx();
   const game = new WebGame(ctx, 100, 40, 16);
 
+  game.render(); // main menu
+  const menuDraws = ctx.draws.length;
+  if (menuDraws === 0) {
+    throw new Error('render() produced zero draw calls on the main menu -- chrome rendering is broken');
+  }
+  if (game.should_quit()) {
+    throw new Error('should_quit() must start false');
+  }
+
+  // Main menu -> Enter selects "Quick Game" (index 0) -> Playing.
+  game.handle_key(key('Enter'));
   game.render();
-  if (ctx.draws.length === 0) {
-    throw new Error('render() produced zero draw calls -- board generation or rendering is broken');
+  if (ctx.draws.length <= menuDraws) {
+    throw new Error('render() after entering Quick Game produced no new draw calls -- board generation or rendering is broken');
   }
 
   game.handle_key(key('ArrowRight'));
@@ -45,12 +58,25 @@ async function main() {
   game.handle_key(key('ArrowDown'));
   game.handle_key(key('Enter'));
 
-  // Several frames to exercise the tick()-throttled animation path too.
+  // Several ticks to exercise the match/cascade phase pipeline.
   for (let i = 0; i < 10; i++) {
+    game.tick();
     game.render();
   }
 
-  console.log(`OK: constructed, rendered ${ctx.draws.length} total draw calls across 11 frames, no exceptions.`);
+  // Help screen toggle.
+  game.handle_key(key('h'));
+  game.render();
+  game.handle_key(key(' '));
+  game.render();
+
+  // Esc from Playing -> back to main menu.
+  game.handle_key(key('Escape'));
+  game.render();
+
+  game.save_on_exit();
+
+  console.log(`OK: constructed, navigated menu -> play -> help -> menu, rendered ${ctx.draws.length} total draw calls, no exceptions.`);
 }
 
 main().catch((err) => {

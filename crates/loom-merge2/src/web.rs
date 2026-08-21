@@ -1,25 +1,28 @@
-// wasm-bindgen entry point wiring merge2's GameEngine to a canvas via
-// loom-engine-web. Deliberately minimal: drives straight into an Endless
-// run with no blessings, no menu/campaign/blessing-selection screens
-// (Phase 3+ Shell<G> territory).
+// wasm-bindgen entry point driving merge2's full Shell<M2Game> -- menus,
+// campaign, endless, options, blessings, help -- through a canvas, via
+// loom-engine-web. Full parity with the native terminal build: same
+// screens, same state machine, same saves (via WebStorage,
+// localStorage-backed, instead of FsStorage's real files).
 
-use clap::Parser;
 use wasm_bindgen::prelude::*;
 use web_sys::{CanvasRenderingContext2d, KeyboardEvent};
 
-use loom_engine::input::Key;
+use loom_engine::campaign::CampaignSaves;
+use loom_engine::endless::EndlessHighScore;
+use loom_engine::game::Game;
 use loom_engine::render::{Style, Surface};
-use loom_engine_web::{key_from_event, WasmSurface};
+use loom_engine::settings::UserSettings;
+use loom_engine::shell::Shell;
+use loom_engine_web::{key_from_event, WasmSurface, WebStorage};
 
+use crate::campaign::CampaignState;
 use crate::config::Config;
-use crate::engine::GameEngine;
-use crate::renderer::{self, LayoutGeometry};
+use crate::game::M2Game;
 
 #[wasm_bindgen]
 pub struct WebGame {
-    engine: GameEngine,
+    shell: Shell<M2Game>,
     surface: WasmSurface,
-    geo: LayoutGeometry,
 }
 
 #[wasm_bindgen]
@@ -28,29 +31,57 @@ impl WebGame {
     pub fn new(ctx: CanvasRenderingContext2d, cols: u16, rows: u16, font_px: f64) -> WebGame {
         loom_engine_web::init_panic_hook();
 
-        let config = Config::parse_from::<[&str; 0], &str>([]);
-        let engine = GameEngine::new_endless(&config, &[]);
-        let surface = WasmSurface::new(ctx, cols, rows, font_px);
-        let geo = LayoutGeometry::compute(&engine);
+        let config_dir = M2Game.config_dir();
+        let user_settings = UserSettings::load_from(&WebStorage, config_dir);
+        let mut cli_config = Config::default();
+        cli_config.scale = user_settings.scale;
+        cli_config.color_mode = user_settings.color_mode.clone();
+        let campaign_saves = CampaignSaves::<CampaignState>::load_from(&WebStorage, config_dir);
+        let endless_hs = EndlessHighScore::load_from(&WebStorage, config_dir);
 
-        WebGame { engine, surface, geo }
+        let shell = Shell::new(
+            M2Game,
+            cli_config,
+            user_settings,
+            campaign_saves,
+            endless_hs,
+            Vec::new(), // no ad quotes wired yet (matches an already-disclosed gap)
+            String::new(),
+            false, // start at the main menu
+            Box::new(WebStorage),
+        );
+
+        let surface = WasmSurface::new(ctx, cols, rows, font_px);
+        WebGame { shell, surface }
     }
 
+    /// Feed a browser `KeyboardEvent` to the shell. Unrecognized keys (per
+    /// the deliberately minimal `Key` enum) are ignored.
     pub fn handle_key(&mut self, event: KeyboardEvent) {
         let Some(key_event) = key_from_event(&event) else { return };
-        match key_event.key {
-            Key::Up => { self.engine.move_cursor(-1, 0); }
-            Key::Down => { self.engine.move_cursor(1, 0); }
-            Key::Left => { self.engine.move_cursor(0, -1); }
-            Key::Right => { self.engine.move_cursor(0, 1); }
-            Key::Enter => { self.engine.activate(); }
-            _ => {}
-        }
+        self.shell.handle_key(key_event);
     }
 
+    /// Advance background/animation state by one tick. The caller (JS
+    /// `requestAnimationFrame` loop) decides the cadence.
+    pub fn tick(&mut self) {
+        self.shell.tick();
+    }
+
+    /// True once the player has selected Quit from the main menu.
+    pub fn should_quit(&self) -> bool {
+        self.shell.should_quit()
+    }
+
+    /// Persist any in-progress campaign run. Call before the page
+    /// unloads, mirroring the native build's exit sequence.
+    pub fn save_on_exit(&mut self) {
+        self.shell.save_on_exit();
+    }
+
+    /// Redraw the full frame.
     pub fn render(&mut self) {
-        self.engine.tick_anims();
         self.surface.clear(Style::default());
-        renderer::do_render_to_surface(&mut self.surface, &self.engine, &self.geo);
+        self.shell.render(&mut self.surface);
     }
 }

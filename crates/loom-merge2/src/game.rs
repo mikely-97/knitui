@@ -19,21 +19,13 @@ impl Game for M2Game {
     fn config_dir(&self) -> &'static str { "m2tui" }
 
     fn create_engine(&self, config: &Config, _palette: &[Color]) -> Box<dyn GameEngineTrait> {
-        #[cfg(not(target_arch = "wasm32"))]
-        {
-            let engine = if config.is_endless {
-                crate::endless::new_endless_engine(&[])
-            } else {
-                crate::engine::GameEngine::new_endless(config, &[])
-            };
-            let label = if config.is_endless { "Endless".to_string() } else { "Custom Game".to_string() };
-            Box::new(m2_adapter::M2EngineAdapter::new(engine, None, label))
-        }
-        #[cfg(target_arch = "wasm32")]
-        {
-            let _ = config;
-            unimplemented!("merge2's Shell integration is native-only; web.rs drives the engine directly")
-        }
+        let engine = if config.is_endless {
+            crate::endless::new_endless_engine(&[])
+        } else {
+            crate::engine::GameEngine::new_endless(config, &[])
+        };
+        let label = if config.is_endless { "Endless".to_string() } else { "Custom Game".to_string() };
+        Box::new(m2_adapter::M2EngineAdapter::new(engine, None, label))
     }
 
     fn main_menu_items(&self) -> &'static [MenuItem] {
@@ -102,7 +94,6 @@ impl Game for M2Game {
         }
     }
 
-    #[cfg(not(target_arch = "wasm32"))]
     fn create_campaign_engine(
         &self, entry: &CampaignState, _config: &Config, _palette: &[Color],
     ) -> Box<dyn GameEngineTrait> {
@@ -114,13 +105,6 @@ impl Game for M2Game {
             entry.current_mission + 1, entry.total_missions(),
         );
         Box::new(m2_adapter::M2EngineAdapter::new(engine, Some(story_count), label))
-    }
-    #[cfg(target_arch = "wasm32")]
-    fn create_campaign_engine(
-        &self, entry: &CampaignState, config: &Config, palette: &[Color],
-    ) -> Box<dyn GameEngineTrait> {
-        let _ = (entry, config, palette);
-        unimplemented!("merge2's Shell integration is native-only; web.rs drives the engine directly")
     }
 
     /// Advance to the next mission and (unless the track just completed)
@@ -147,7 +131,6 @@ impl Game for M2Game {
         entry.load_mission_orders();
     }
 
-    #[cfg(not(target_arch = "wasm32"))]
     fn sync_campaign_entry(&self, engine: &dyn GameEngineTrait, entry: &mut CampaignState) {
         if let Some(adapter) = engine.as_any().downcast_ref::<m2_adapter::M2EngineAdapter>() {
             entry.sync_from_engine(&adapter.engine);
@@ -196,12 +179,13 @@ impl Game for M2Game {
     }
 }
 
-/// The `GameEngine` trait adapter. Native-only: merge2's Shell integration
-/// (menu/campaign/inventory/help screens) is never used from `web.rs`,
-/// which drives `crate::engine::GameEngine` directly (see its own doc
-/// comment) -- so this whole module, and the render calls it makes into
-/// the native-gated parts of `renderer::popups`, only need to exist on
-/// native targets.
+/// The `GameEngine` trait adapter. Portable: `web.rs` now drives the full
+/// `Shell<M2Game>` (not `crate::engine::GameEngine` directly, as it did
+/// before that was wired up), so this module needs to work on wasm32 too
+/// -- and does, since `renderer::popups` (which its `render_help`/
+/// `render_celebration` call into) turned out to have no actual native-only
+/// dependency once Phase 4's dead-code sweep was done; the earlier
+/// native-only gate here was leftover caution, not a real constraint.
 ///
 /// **Disclosed scope cuts from the original `tui.rs`** (890 lines,
 /// substantially larger than knit/match3's): no in-play +/-/n/p scale or
@@ -210,7 +194,6 @@ impl Game for M2Game {
 /// MissionSummary screen between campaign missions (same call as match3's
 /// dropped LevelSummary -- Shell has no generic slot for it); the
 /// inventory-expansion bonus is auto-granted instead of prompting Y/N.
-#[cfg(not(target_arch = "wasm32"))]
 mod m2_adapter {
     use loom_engine::render::Surface;
     use loom_engine::game::{Action, GameEngine as GameEngineTrait, GameStatus as EngineGameStatus, RenderArea};

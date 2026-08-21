@@ -10,7 +10,7 @@
 </head>
 <body>
 <canvas id="game"></canvas>
-<p style="text-align:center">Arrows move, Enter/Space fills, X crosses. First built-in puzzle only.</p>
+<p style="text-align:center">Same Campaign menu as the terminal build. Arrow keys navigate, Enter selects/fills, X crosses, Esc backs out.</p>
 <script type="module">
   import init, { WebGame } from './pkg/pictui.js';
 
@@ -19,8 +19,8 @@
 
     const canvas = document.getElementById('game');
     const fontPx = 16;
-    const cols = 60;
-    const rows = 30;
+    const cols = 100;
+    const rows = 40;
     canvas.width = Math.ceil(cols * fontPx * 0.6);
     canvas.height = Math.ceil(rows * fontPx * 1.2);
 
@@ -35,7 +35,12 @@
       e.preventDefault();
     });
 
+    window.addEventListener('beforeunload', () => {
+      game.save_on_exit();
+    });
+
     function frame() {
+      game.tick();
       game.render();
       requestAnimationFrame(frame);
     }

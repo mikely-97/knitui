@@ -345,7 +345,6 @@ cd crates/loom-py && maturin build --release
 
 - [ ] Puzzle editor / non-random board generation
 - [ ] Real in-browser visual verification (the terminal side has a pty+pyte capture technique; the web side has a headless Node smoke test executing the real `.wasm`, but no pixel-level check yet)
-- [ ] merge2/picross web builds still drive their concrete engine directly rather than through `Shell<G>` (no menu/campaign screens in the browser yet for any game — Phase 2 scope was gameplay-loop-only)
 - [ ] Polished C++ RAII wrapper / Go `cgo` package for the C ABI (deferred until a real consumer wants one; the generated header + docs are the whole surface today)
 
 See [PLAN.md](PLAN.md) for design history and migration notes.

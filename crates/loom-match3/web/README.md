@@ -1,7 +1,10 @@
 # loom-match3 web build
 
 Browser build of match3's `WebGame` (see `../src/web.rs`), backed by
-`loom-engine-web`'s canvas `Surface` impl. See
+`loom-engine-web`'s canvas `Surface` impl. Drives the full
+`Shell<M3Game>` state machine -- same main menu, custom game, campaign,
+endless, options, and help screens as the native terminal build, with
+saves going to `localStorage` instead of real files. See
 `../../loom-knit/web/README.md` for the full explanation.
 
 ## Build
@@ -23,8 +26,6 @@ node smoke_test.mjs
 python3 -m http.server 8000   # from this directory
 ```
 
-Then open `http://localhost:8000/`. Quick Game config only -- no menu/
-campaign/blessing screens yet (see `../src/web.rs`). Note the animation
-tick rate is a rough frame-count throttle, not calibrated against real
-elapsed time -- cascades may run faster or slower than the terminal
-version depending on your monitor's refresh rate.
+Then open `http://localhost:8000/`. Same controls as the terminal build.
+Note the tick rate is every animation frame (~60fps), not the terminal
+build's ~50ms poll cadence -- cascades/animations run faster here.

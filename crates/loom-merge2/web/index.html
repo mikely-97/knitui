@@ -10,7 +10,7 @@
 </head>
 <body>
 <canvas id="game"></canvas>
-<p style="text-align:center">Arrows move, Enter selects/merges. Endless mode, no blessings.</p>
+<p style="text-align:center">Same menus, campaign, and options as the terminal build. Arrow keys navigate, Enter selects, Esc backs out, I opens inventory.</p>
 <script type="module">
   import init, { WebGame } from './pkg/m2tui.js';
 
@@ -35,7 +35,15 @@
       e.preventDefault();
     });
 
+    window.addEventListener('beforeunload', () => {
+      game.save_on_exit();
+    });
+
+    // Ticks every animation frame (~60fps), not the native build's ~200ms
+    // tick interval -- each frontend owns its own timing (see
+    // loom-engine::shell's doc comment).
     function frame() {
+      game.tick();
       game.render();
       requestAnimationFrame(frame);
     }

@@ -10,7 +10,7 @@
 </head>
 <body>
 <canvas id="game"></canvas>
-<p style="text-align:center">Arrows move, Enter selects/swaps. Quick Game config only.</p>
+<p style="text-align:center">Same menus, campaign, and options as the terminal build. Arrow keys navigate, Enter selects, Esc backs out.</p>
 <script type="module">
   import init, { WebGame } from './pkg/m3tui.js';
 
@@ -35,7 +35,16 @@
       e.preventDefault();
     });
 
+    window.addEventListener('beforeunload', () => {
+      game.save_on_exit();
+    });
+
+    // Ticks every animation frame (~60fps), not the native build's ~50ms
+    // poll cadence -- each frontend owns its own timing (see
+    // loom-engine::shell's doc comment), so cascades/animations just run
+    // faster here than in the terminal build.
     function frame() {
+      game.tick();
       game.render();
       requestAnimationFrame(frame);
     }
