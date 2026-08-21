@@ -4,6 +4,13 @@ use loom_engine::game::GameConfig;
 pub struct Config {
     pub scale: u16,
     pub color_mode: String,
+    /// Set by `PicrossGame::campaign_config` to the selected puzzle's real
+    /// dimensions, purely for `chrome::render_level_intro`'s display -- the
+    /// engine itself is always built directly from the looked-up `Puzzle`,
+    /// never reconstructed from this `Config` (there's no way to encode a
+    /// puzzle's clues/solution as scalar config fields).
+    pub board_rows: usize,
+    pub board_cols: usize,
 }
 
 impl Default for Config {
@@ -11,13 +18,15 @@ impl Default for Config {
         Config {
             scale: 1,
             color_mode: "dark".to_string(),
+            board_rows: 10,
+            board_cols: 10,
         }
     }
 }
 
 impl GameConfig for Config {
-    fn board_width(&self) -> usize { 10 }
-    fn board_height(&self) -> usize { 10 }
+    fn board_width(&self) -> usize { self.board_cols }
+    fn board_height(&self) -> usize { self.board_rows }
     fn color_count(&self) -> usize { 2 }
     fn scale(&self) -> u16 { self.scale }
     fn color_mode(&self) -> &str { &self.color_mode }

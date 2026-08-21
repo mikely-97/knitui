@@ -1,9 +1,4 @@
-#[cfg(not(target_arch = "wasm32"))]
-use std::io::{self, Stdout};
-
 use loom_engine::render::{Color, Style, Surface};
-#[cfg(not(target_arch = "wasm32"))]
-use loom_engine_term::TermSurface;
 
 use crate::engine::{CellState, GameEngine, GameStatus};
 
@@ -17,17 +12,10 @@ fn fg(color: Color) -> Style {
 }
 
 /// Render the full picross board with clues, cursor, and status line.
-///
-/// The caller (`tui.rs`'s `render_state`) owns the frame's Clear/flush, so
-/// this only draws into a mid-frame `TermSurface` and does not clear/flush
-/// itself.
-#[cfg(not(target_arch = "wasm32"))]
-pub fn render(stdout: &mut Stdout, engine: &GameEngine, origin_x: u16, origin_y: u16) -> io::Result<()> {
-    let mut surface = TermSurface::new(stdout);
-    render_inner(&mut surface, engine, origin_x, origin_y);
-    surface.done()
-}
-
+/// picross is now driven entirely through loom_engine::shell::Shell<PicrossGame>
+/// (Phase 4, native) or web.rs (wasm), both going through this Surface-only
+/// entry point directly -- the old Stdout-owning `render` wrapper was
+/// deleted as dead code once tui.rs's hand-rolled loop was replaced.
 pub fn render_inner(surface: &mut dyn Surface, engine: &GameEngine, origin_x: u16, origin_y: u16) {
     let rows = engine.puzzle.rows;
     let _cols = engine.puzzle.cols;
