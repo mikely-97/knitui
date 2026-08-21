@@ -53,20 +53,72 @@ All features from the original knitui roadmap are implemented:
 
 ---
 
+## Completed: Portable Engine Pivot (Phases 0–5)
+
+The single-binary/multi-game workspace above was itself the starting point
+for a second, larger migration: from "4 terminal apps sharing some code"
+to one portable engine core driven by three real frontends (terminal,
+browser, FFI). All 6 phases are done.
+
+- **Phase 0** — decoupled `loom-engine` from crossterm entirely: new
+  `render`/`input`/`storage` modules (`Surface`/`Color`/`KeyEvent`/
+  `Storage` traits), crossterm itself moved to a new `loom-engine-term` crate.
+- **Phase 1** — `TermSurface` (the crossterm-backed `Surface` impl) in
+  `loom-engine-term`; all 4 games' renderers migrated to `Surface` calls.
+  Verified visually via a pty+pyte capture technique (spawn the real
+  binary in a pty, parse the raw ANSI output through the `pyte` terminal
+  emulator) rather than trusting a compile pass alone.
+- **Phase 2** — `loom-engine-web`: a wasm-bindgen `Surface` impl
+  (`WasmSurface`) and a real, playable-in-browser gameplay loop for all 4
+  games (`crates/<game>/web.rs` + `web/index.html`). Verified via a
+  headless Node smoke test that actually executes the compiled `.wasm`.
+  Scope was gameplay-loop-only — no menu/campaign screens in the browser
+  yet (that's what Phase 3/4 delivered natively; the web side hasn't
+  picked it up).
+- **Phase 3** — `loom_engine::shell::{Shell<G>, chrome}`: the generic
+  menu/campaign/endless/options/playing state machine, proven first on
+  knit (the pilot game). Each game's `create_engine()` — `unimplemented!()`
+  since the original scaffolding — got a real `GameEngine` trait adapter
+  wrapping its already-working concrete engine.
+- **Phase 4** — rolled `Shell<G>` out to the other 3 games (match3, merge2,
+  picross). Each adapter surfaced and fixed real, previously-latent bugs
+  in the process — not just mechanical porting. Two shared-infrastructure
+  additions landed along the way, both needed once a game's shape didn't
+  match the first 2 games: `Game::main_menu_items()` (not every game has
+  all of Quick/Custom/Campaign/Endless/Options) and `GameEngine::as_any()`
+  + `Game::sync_campaign_entry()` (for a game whose campaign state embeds
+  live, mutating world state, not just level-index bookkeeping).
+- **Phase 5** — FFI: `loom-engine-capi` (a thin C ABI, JSON in/out,
+  `cbindgen`-generated header) and `loom-py` (real, memory-safe PyO3
+  bindings reusing the C ABI crate's type-erasure layer directly). Both
+  verified via genuine cross-language execution, not just Rust calling
+  itself: a compiled-and-linked C program (`examples/smoke.c`) and an
+  installed Python wheel driving the real extension module.
+
+See `crates/loom-engine-capi/README.md` and `crates/loom-py/README.md`
+for the FFI surfaces' exact shape and usage.
+
 ## Next Steps
 
-### Wire up GameEngine trait (low priority)
+### Real remaining gaps
 
-`create_engine()` is currently `unimplemented!()` in both KnitGame and M3Game. This would allow the shared TUI framework to fully own the event loop rather than each game having its own `tui.rs`. Not blocking — both games work fine with their own event loops.
+- Web frontends for match3/merge2/picross are still gameplay-loop-only
+  (no menu/campaign UI in the browser for any game yet — knit included).
+  Wiring `Shell<G>` into `web.rs` the way `tui.rs` already is would close this.
+- No pixel-level visual verification of the web builds (the pty+pyte
+  trick only covers the terminal side).
+- The C ABI's C++/Go surface is intentionally just the generated header +
+  docs — a polished RAII/`cgo` wrapper is deferred until a real consumer
+  wants one.
+- Picross's campaign is now sequential-only (see its adapter's doc
+  comment) — the original let players jump to any puzzle in a track
+  freely; that's a real, permanent, disclosed loss from the Shell<G>
+  migration, not an oversight.
 
-### Further unification opportunities
-
-- Make palette pools and COLOR_MODES game-configurable in loom-engine (trait method or associated const)
-- Extract more shared menu rendering into loom-engine (main menu, options, campaign select share ~80% of code between games)
-- Unify bonus frameworks (knit and m3 both have bonus inventories with different bonus types)
-
-### Other ideas
+### Other ideas (unchanged from before the pivot)
 
 - Puzzle editor / non-random board generation
 - Online leaderboards
 - Additional game modes (time attack, daily challenge)
+- Further unify shared code (game-configurable palettes and color modes;
+  knit and m3 both have bonus inventories with different bonus types)

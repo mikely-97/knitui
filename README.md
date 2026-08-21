@@ -1,12 +1,17 @@
 # Loom
 
-A multi-game terminal puzzle engine built with Rust and crossterm. Currently ships four playable games — **Knit** (spool-knitting puzzle), **Match-3** (classic gem-matching), **Merge-2** (merge/order-fulfillment), and **Picross** (nonogram) — all selectable from a single binary.
+A portable multi-game engine built with Rust. Currently ships four playable games — **Knit** (spool-knitting puzzle), **Match-3** (classic gem-matching), **Merge-2** (merge/order-fulfillment), and **Picross** (nonogram) — sharing one generic core (`loom-engine::shell::Shell<G>`) across three frontends: a real terminal (crossterm), a browser (WASM/canvas), and any language with a C or Python FFI. Same menus, same campaigns, same saves, wherever it runs.
 
 Binaries:
-- **loom** — game selector menu → launches Knit, Match-3, Merge-2, or Picross
+- **loom** — game selector menu → launches Knit, Match-3, Merge-2, or Picross (terminal)
 - **knitui** — launch Knit directly (interactive TUI)
 - **knitui-ni** — non-interactive CLI driver for Knit (JSON in/out, for scripting and AI agents)
 - **knitui-solvcheck** — independent solvability checker for Knit (reads NDJSON, runs DFS verification)
+
+Other ways to run a game:
+- **Browser** — each game crate has a `web/` dir with a WASM build (`crates/<game>/web/index.html` + a wasm-bindgen build); see that crate's `web.rs`.
+- **C** — link against `crates/loom-engine-capi`'s generated header (`include/loom.h`) from C, C++, Go, or anything else with a C FFI.
+- **Python** — `pip install` the `loom-py` wheel (built via maturin) for a native, memory-safe `LoomGame` class.
 
 Clone and run:
 
@@ -213,7 +218,8 @@ cargo run --bin knitui -- --scale 2 --color-mode dark-rgb --layout horizontal
 
 ## Architecture
 
-Loom is a Cargo workspace with a shared engine crate and per-game crates:
+Loom is a Cargo workspace built around one portable core crate, three frontend
+crates that drive it (terminal, web, FFI), and one crate per game:
 
 ```
 Cargo.toml                  — workspace root + loom binary
@@ -221,70 +227,77 @@ src/
 └── main.rs                 — game selector menu → dispatches to game crates
 
 crates/
-├── loom-engine/            — shared framework (lib: loom_engine)
+├── loom-engine/             — portable core, no I/O (lib: loom_engine)
 │   └── src/
-│       ├── game.rs         — Game, GameEngine, GameConfig traits
-│       ├── board.rs        — generic Board<C> 2D grid
-│       ├── direction.rs    — Direction enum + offset()
-│       ├── palette.rs      — 6 palettes (Dark/Bright/Colorblind × ANSI/RGB)
-│       ├── color_serde.rs  — crossterm::Color serde helpers
-│       ├── settings.rs     — UserSettings persistence
-│       ├── campaign.rs     — CampaignSaves<E> generic campaign framework
-│       ├── endless.rs      — EndlessHighScore generic persistence
-│       ├── renderer.rs     — layout detection, box drawing, menu chrome
-│       ├── glyphs.rs       — shared glyph utilities
-│       ├── bonus.rs        — BonusInventory generic framework
-│       └── ad_content.rs   — pseudo-ad quotes
+│       ├── game.rs          — Game, GameEngine, GameConfig traits; MenuItem
+│       ├── shell/
+│       │   ├── mod.rs       — Shell<G>: the generic menu/campaign/endless/
+│       │   │                  options/playing state machine every game
+│       │   │                  drives through, single-step (handle_key/
+│       │   │                  tick/render), no blocking loop of its own
+│       │   └── chrome.rs    — generic Surface-only UI screens (main menu,
+│       │                      campaign select, options, blessing selection, ...)
+│       ├── render.rs        — Color/Style/Cell/CellGrid/Surface — the
+│       │                      universal cell-grid rendering model every
+│       │                      frontend blits from
+│       ├── input.rs         — Key/KeyEvent — portable, crossterm-free
+│       ├── campaign.rs      — CampaignEntry trait + CampaignSaves<E>
+│       ├── endless.rs       — EndlessHighScore generic persistence
+│       ├── settings.rs      — UserSettings persistence
+│       ├── storage.rs       — Storage trait (native-storage feature: FsStorage)
+│       ├── blessings.rs     — Blessing type + is_unlocked()
+│       ├── anim.rs          — AnimOverlay (merge-dissolve/rise animations)
+│       └── ad_content.rs    — pseudo-ad quotes
 │
-├── loom-knit/              — Knit game (lib: knitui)
+├── loom-engine-term/         — crossterm-backed Surface impl (TermSurface) +
+│                               terminal init/restore; the native frontend
+├── loom-engine-web/          — wasm-bindgen Surface impl (WasmSurface) +
+│                               browser key mapping; the web frontend
+├── loom-engine-capi/         — C ABI: create/handle_key/tick/render/
+│                               should_quit/save_on_exit/destroy over JSON;
+│                               generated header at include/loom.h
+├── loom-py/                  — PyO3 bindings: a real, memory-safe LoomGame
+│                               Python class, reusing loom-engine-capi's
+│                               type-erasure layer directly
+│
+├── loom-knit/                — Knit game (lib: knitui)
 │   └── src/
-│       ├── engine.rs       — KnitEngine: board + yarn + held_spools + processing
-│       ├── game_board.rs   — BoardEntity, random generation, selectability
-│       ├── yarn.rs         — Yarn, Stitch, lock/key mechanics
-│       ├── spool.rs        — Spool struct
-│       ├── solvability.rs  — 4 board validation checks
-│       ├── renderer.rs     — knit-specific TUI rendering
-│       ├── tui.rs          — knit TUI event loop + menus
-│       ├── game.rs         — impl Game for KnitGame
-│       └── ...             — config, campaign_levels, preset, glyphs, etc.
+│       ├── engine.rs         — KnitEngine: board + yarn + held_spools + processing
+│       ├── game_board.rs     — BoardEntity, random generation, selectability
+│       ├── yarn.rs           — Yarn, Stitch, lock/key mechanics
+│       ├── spool.rs          — Spool struct
+│       ├── solvability.rs    — 4 board validation checks
+│       ├── renderer/         — knit-specific Surface-only rendering
+│       ├── tui.rs            — thin: CLI parsing + crossterm event loop,
+│       │                       driving Shell<KnitGame>
+│       ├── web.rs            — wasm32-only gameplay-loop entry point
+│       ├── game.rs           — impl Game for KnitGame + the GameEngine
+│       │                       trait adapter wrapping KnitEngine
+│       └── ...                — config, campaign_levels, preset, glyphs, etc.
 │
-├── loom-match3/            — Match-3 game (lib: m3tui)
-│   └── src/
-│       ├── engine.rs       — M3Engine: phase machine (swap → cascade → refill)
-│       ├── board.rs        — Cell, CellContent, SpecialPiece, TileModifier
-│       ├── matches.rs      — match detection + shape classification
-│       ├── renderer.rs     — m3-specific TUI rendering
-│       ├── tui.rs          — match-3 TUI event loop + menus
-│       ├── game.rs         — impl Game for M3Game
-│       └── ...             — bonuses, campaign_levels, config, etc.
-│
-├── loom-merge2/            — Merge-2 game (lib: m2tui)
-│   └── src/
-│       ├── engine/          — GameEngine: merging, generators, order delivery
-│       ├── renderer/        — merge2-specific TUI rendering
-│       ├── tui.rs           — merge2 TUI event loop + menus
-│       ├── campaign.rs      — campaign state + mission progression
-│       ├── blessings.rs     — campaign blessing modifiers
-│       ├── game.rs          — impl Game for M2Game
-│       └── ...              — item, order, generator, endless, config, etc.
-│
-└── loom-picross/           — Picross/nonogram game (lib: picrosstui)
-    └── src/
-        ├── engine.rs       — GameEngine: cell fill/flag + line-solve checks
-        ├── renderer.rs     — picross-specific TUI rendering
-        ├── tui.rs          — picross TUI event loop + menus
-        ├── puzzle.rs       — puzzle/clue definitions
-        ├── game.rs         — impl Game for PicrossGame
-        └── ...              — campaign, puzzles, config
+├── loom-match3/               — Match-3 game (lib: m3tui), same shape as loom-knit
+├── loom-merge2/                — Merge-2 game (lib: m2tui), same shape
+└── loom-picross/               — Picross/nonogram game (lib: pictui), same shape
 ```
 
 ### Core traits (loom-engine)
 
-- **`Game`** — identity, config, campaign/endless level data, presets, help text
-- **`GameEngine`** — handle_key, tick, render, status, score
-- **`GameConfig`** — board_width/height, color_count, scale, color_mode
+- **`Game`** — identity, config, campaign/endless level data, presets, help
+  text, `main_menu_items()` (which of Quick/Custom/Campaign/Endless/
+  Options/Quit a game actually offers — not every game has all five)
+- **`GameEngine`** — handle_key, tick, render, status, score, `as_any()`
+  (for the rare game whose campaign state needs live-engine sync back —
+  see `Game::sync_campaign_entry`)
+- **`GameConfig`** — board_width/height, color_count, scale, color_mode,
+  custom-game field editing
 
-Each game crate implements these traits, and the shared TUI framework in each game's `tui.rs` drives the event loop, menus, campaign/endless persistence, and rendering.
+Each game crate implements these traits via a `GameEngine` trait adapter
+(in `game.rs`) that wraps its own already-working concrete engine — the
+adapter is the only place a game's specific quirks (win conditions,
+per-mode key bindings, live vs. rebuilt-per-attempt state) get reconciled
+against the generic `Shell<G>` shape. Every frontend (`tui.rs`, `web.rs`,
+the C ABI, the Python bindings) drives the *same* `Shell<G>` in single
+steps; none of them own game logic themselves.
 
 ### Knit data flow
 
@@ -311,16 +324,28 @@ Boards that fail any check are regenerated (up to 100 retries).
 cargo run                       # game selector
 cargo run --bin knitui          # play knit directly
 cargo run --bin knitui-ni       # non-interactive knit driver
-cargo test --workspace          # all tests across all crates
+cargo test --workspace          # all tests across all crates (native)
 cargo build --release           # build all binaries
+
+# Web (per game crate, from that crate's directory):
+wasm-bindgen-cli ...            # see crates/<game>/web/ for the exact build steps
+
+# C ABI:
+cargo build -p loom-engine-capi --release
+# see crates/loom-engine-capi/README.md for header regeneration + the C smoke test
+
+# Python bindings:
+cd crates/loom-py && maturin build --release
+# see crates/loom-py/README.md
 ```
 
-**Dependencies**: `crossterm 0.27`, `rand 0.9.2`, `clap 4`, `serde 1`, `serde_json 1`, `dirs 5`
+**Dependencies**: `crossterm 0.27`, `rand 0.9.2`, `clap 4`, `serde 1`, `serde_json 1`, `dirs 5`, `bitflags 2`; `wasm-bindgen` (web); `pyo3` (Python bindings)
 
 ## TODO
 
-- [ ] Wire up `GameEngine` trait implementations (currently `create_engine()` is stubbed)
 - [ ] Puzzle editor / non-random board generation
-- [ ] Further unify shared code (game-configurable palettes and color modes)
+- [ ] Real in-browser visual verification (the terminal side has a pty+pyte capture technique; the web side has a headless Node smoke test executing the real `.wasm`, but no pixel-level check yet)
+- [ ] merge2/picross web builds still drive their concrete engine directly rather than through `Shell<G>` (no menu/campaign screens in the browser yet for any game — Phase 2 scope was gameplay-loop-only)
+- [ ] Polished C++ RAII wrapper / Go `cgo` package for the C ABI (deferred until a real consumer wants one; the generated header + docs are the whole surface today)
 
 See [PLAN.md](PLAN.md) for design history and migration notes.
