@@ -1,0 +1,17 @@
+[build-system]
+requires = ["maturin>=1.0,<2.0"]
+build-backend = "maturin"
+
+[project]
+name = "loom-py"
+version = "0.1.0"
+description = "Python bindings for the loom portable game engine (knit, match3, merge2, picross)"
+requires-python = ">=3.8"
+classifiers = [
+    "Programming Language :: Rust",
+    "Programming Language :: Python :: Implementation :: CPython",
+]
+
+[tool.maturin]
+module-name = "loom_py"
+include = ["loom_py.pyi"]

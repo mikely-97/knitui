@@ -19,7 +19,10 @@
 //! behavior -- this is a thin, unsafe C ABI, not a memory-safe wrapper;
 //! see the per-language binding crates (planned: PyO3) for a safe surface.
 
-mod erased;
+/// Public so other Rust consumers (e.g. `loom-py`'s PyO3 bindings) can
+/// reuse the same type-erasure boundary instead of re-deriving it -- only
+/// the C ABI below needs `unsafe`, the erasure layer itself doesn't.
+pub mod erased;
 
 use std::cell::RefCell;
 use std::ffi::{c_char, CStr, CString};
@@ -45,7 +48,9 @@ pub const LOOM_GAME_MATCH3: u32 = 1;
 pub const LOOM_GAME_MERGE2: u32 = 2;
 pub const LOOM_GAME_PICROSS: u32 = 3;
 
-fn game_id_from_u32(id: u32) -> Option<GameId> {
+/// Public so other Rust consumers (e.g. `loom-py`) share this exact
+/// numbering rather than re-deriving their own.
+pub fn game_id_from_u32(id: u32) -> Option<GameId> {
     match id {
         LOOM_GAME_KNIT => Some(GameId::Knit),
         LOOM_GAME_MATCH3 => Some(GameId::Match3),

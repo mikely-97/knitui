@@ -71,7 +71,8 @@ third-party game authoring (defining new games from outside Rust). A
 polished C++ RAII wrapper or Go `cgo` package is intentionally not built
 here; the generated header plus this doc are the whole C/C++/Go surface
 until a real consumer wants more. Python gets a real, safe binding via
-PyO3 (planned, not yet built as of this writing) rather than raw pointers.
+PyO3 instead of raw pointers — see [`crates/loom-py`](../loom-py), which
+reuses this crate's `ErasedShell`/`create_shell` layer directly.
 
 ## Memory/safety contract
 

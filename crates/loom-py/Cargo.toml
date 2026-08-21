@@ -1,0 +1,14 @@
+[package]
+name = "loom-py"
+version = "0.1.0"
+edition = "2024"
+
+[lib]
+name = "loom_py"
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+loom-engine = { path = "../loom-engine" }
+loom-engine-capi = { path = "../loom-engine-capi" }
+serde_json = { workspace = true }
+pyo3 = { version = "0.23", features = ["extension-module"] }
