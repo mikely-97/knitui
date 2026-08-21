@@ -3,8 +3,10 @@
 // resize handling in any GameEngine impl). Extend when a real game needs a
 // real key, not before.
 
+use serde::{Deserialize, Serialize};
+
 bitflags::bitflags! {
-    #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
+    #[derive(Clone, Copy, Debug, PartialEq, Eq, Default, Serialize, Deserialize)]
     pub struct Modifiers: u8 {
         const CTRL  = 0b001;
         const SHIFT = 0b010;
@@ -12,7 +14,7 @@ bitflags::bitflags! {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Key {
     Char(char),
     Up,
@@ -23,7 +25,10 @@ pub enum Key {
     Esc,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+/// Also the FFI key-input payload (`loom-engine-capi` deserializes this
+/// directly from JSON) -- `derive(Serialize, Deserialize)` here is load-
+/// bearing for that boundary, not just a convenience.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct KeyEvent {
     pub key: Key,
     pub mods: Modifiers,

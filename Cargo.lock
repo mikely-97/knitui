@@ -63,6 +63,9 @@ name = "bitflags"
 version = "2.9.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2261d10cca569e4643e526d8dc2e62e433cc8aba21ab764233731f8d369bf394"
+dependencies = [
+ "serde",
+]
 
 [[package]]
 name = "bumpalo"
@@ -307,6 +310,18 @@ dependencies = [
  "dirs",
  "rand",
  "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "loom-engine-capi"
+version = "0.1.0"
+dependencies = [
+ "loom-engine",
+ "loom-knit",
+ "loom-match3",
+ "loom-merge2",
+ "loom-picross",
  "serde_json",
 ]
 

@@ -37,7 +37,7 @@ impl Default for Color {
 }
 
 bitflags::bitflags! {
-    #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
+    #[derive(Clone, Copy, Debug, PartialEq, Eq, Default, Serialize, Deserialize)]
     pub struct Attrs: u8 {
         const BOLD      = 0b0001;
         const UNDERLINE = 0b0010;
@@ -46,14 +46,14 @@ bitflags::bitflags! {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default, Serialize, Deserialize)]
 pub struct Style {
     pub fg: Color,
     pub bg: Color,
     pub attrs: Attrs,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Cell {
     pub glyph: char,
     pub style: Style,
@@ -82,7 +82,10 @@ pub trait Surface {
 
 /// An owned, in-memory `Surface`. Frontends blit this to the real output
 /// (terminal escape sequences, canvas draw calls, ...) after a render pass.
-#[derive(Clone)]
+/// Also the FFI render-frame payload (`loom-engine-capi` serializes this
+/// directly to JSON) -- `derive(Serialize, Deserialize)` here is load-
+/// bearing for that boundary, not just a convenience.
+#[derive(Clone, Serialize, Deserialize)]
 pub struct CellGrid {
     width: u16,
     height: u16,

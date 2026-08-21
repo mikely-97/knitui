@@ -1,0 +1,19 @@
+[package]
+name = "loom-engine-capi"
+version = "0.1.0"
+edition = "2024"
+
+[lib]
+name = "loom_engine_capi"
+crate-type = ["cdylib", "staticlib", "rlib"]
+
+[dependencies]
+loom-engine = { path = "../loom-engine" }
+loom-knit = { path = "../loom-knit" }
+loom-match3 = { path = "../loom-match3" }
+loom-merge2 = { path = "../loom-merge2" }
+loom-picross = { path = "../loom-picross" }
+serde_json = { workspace = true }
+
+[dev-dependencies]
+serde_json = { workspace = true }
