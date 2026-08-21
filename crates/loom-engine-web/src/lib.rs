@@ -1,8 +1,9 @@
-// wasm-bindgen browser frontend: a canvas-backed `Surface`, a browser
-// `KeyboardEvent` -> `KeyEvent` mapper, and a `localStorage`-backed
-// `Storage` impl. This is Phase 2 scaffolding -- it gets the engine
-// compiling and drawable in a browser tab; it does not yet wire up a
-// requestAnimationFrame outer loop or an HTML page (later work).
+// wasm-bindgen browser frontend building blocks: a canvas-backed
+// `Surface`, a browser `KeyboardEvent` -> `KeyEvent` mapper, and a
+// `localStorage`-backed `Storage` impl. Each game crate's `web.rs` uses
+// these to drive its full `Shell<G>` (menus, campaign, endless, options,
+// help) from a `requestAnimationFrame` loop -- see e.g.
+// `crates/loom-knit/web/index.html`.
 
 use wasm_bindgen::prelude::*;
 use web_sys::CanvasRenderingContext2d;
