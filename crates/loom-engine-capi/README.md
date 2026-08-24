@@ -50,6 +50,14 @@ API:
 cbindgen --config cbindgen.toml --crate loom-engine-capi --output include/loom.h
 ```
 
+Always go through `cbindgen.toml` (not a bare `cbindgen --crate ...`) —
+it sets `cpp_compat = true`, which wraps the declarations in `extern "C"
+{ ... }` guarded by `#ifdef __cplusplus`. Without that, a C++ compiler
+mangles the declared names and every symbol fails to link against the
+`extern "C"` functions Rust actually exports (found the hard way while
+building the C++ wrapper below — the previously-committed header had
+never actually been usable from C++).
+
 ## Verifying
 
 - `cargo test -p loom-engine-capi` — calls the real `extern "C"` functions
@@ -67,12 +75,19 @@ cbindgen --config cbindgen.toml --crate loom-engine-capi --output include/loom.h
 ## Scope
 
 This delivers "drive the 4 existing games from other languages" — not
-third-party game authoring (defining new games from outside Rust). A
-polished C++ RAII wrapper or Go `cgo` package is intentionally not built
-here; the generated header plus this doc are the whole C/C++/Go surface
-until a real consumer wants more. Python gets a real, safe binding via
-PyO3 instead of raw pointers — see [`crates/loom-py`](../loom-py), which
-reuses this crate's `ErasedShell`/`create_shell` layer directly.
+third-party game authoring (defining new games from outside Rust).
+Python gets a real, safe binding via PyO3 instead of raw pointers — see
+[`crates/loom-py`](../loom-py), which reuses this crate's
+`ErasedShell`/`create_shell` layer directly. C and C++ share the raw C
+ABI plus two convenience layers on top of it:
+
+- [`bindings/cpp`](bindings/cpp) — `loom.hpp`, a single-header RAII
+  wrapper (`loom::Game`, exceptions instead of error codes).
+- [`bindings/go`](bindings/go) — a `cgo` package (`loom.Game`, a `Close`
+  method plus a finalizer safety net).
+
+Both are real, compiled-and-run cross-language proofs, not just
+documentation — see each directory's README.
 
 ## Memory/safety contract
 

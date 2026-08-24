@@ -29,6 +29,10 @@
  */
 typedef struct LoomHandle LoomHandle;
 
+#ifdef __cplusplus
+extern "C" {
+#endif // __cplusplus
+
 /**
  * Create a new game instance. `game_id` is one of the `LOOM_GAME_*`
  * constants. Loads real persisted settings/campaign/high-score state from
@@ -129,5 +133,9 @@ typedef struct LoomHandle LoomHandle;
  * `loom_last_error` and not already freed. Passing null is safe (no-op).
  */
  void loom_free_string(char *s);
+
+#ifdef __cplusplus
+}  // extern "C"
+#endif  // __cplusplus
 
 #endif  /* LOOM_ENGINE_CAPI_H */
