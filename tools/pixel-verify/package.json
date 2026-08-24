@@ -1,0 +1,9 @@
+{
+  "name": "pixel-verify",
+  "private": true,
+  "type": "module",
+  "description": "Real-browser pixel-level verification for loom's 4 web builds. See README.md.",
+  "devDependencies": {
+    "playwright": "^1.62.1"
+  }
+}

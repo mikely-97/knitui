@@ -117,14 +117,28 @@ across all 4 games, since Phase 3. Verified per-game via the existing
 headless-Node smoke test, rewritten to exercise the real menu → play →
 help → quit-to-menu flow against the actual compiled `.wasm`.
 
+### Closed since: pixel-level web verification + C++/Go bindings (2026-08-24)
+
+- **Pixel-level browser verification**: `tools/pixel-verify` drives all 4
+  games' real `index.html` in actual headless Chromium (Playwright),
+  dispatching real keydown events and screenshotting the canvas at each
+  meaningful state — menus (including each game's customized menu
+  subset), gameplay boards, help overlays, game-specific sub-states
+  (merge2's inventory, picross's fill/cross), and quit-to-menu round
+  trips. All 4 confirmed correct by eye; see the tool's README for the
+  last-verified note and how to re-run it.
+- **C++ RAII wrapper + Go `cgo` package**: `crates/loom-engine-capi/bindings/{cpp,go}`,
+  each with a real compiled-and-run example against the actual built
+  library (not just docs, and not just Rust calling itself). Building
+  the C++ wrapper surfaced a real, previously-latent bug: the committed
+  `include/loom.h` was never actually linkable from C++ (cbindgen only
+  wraps declarations in `extern "C" { ... }` when `cpp_compat = true`,
+  which `cbindgen.toml` never set) — every C++ symbol reference was
+  silently getting C++-mangled names that don't exist in the `.so`. Fixed
+  by setting `cpp_compat = true` and regenerating.
+
 ### Real remaining gaps
 
-- No pixel-level visual verification of the web builds (the pty+pyte
-  trick only covers the terminal side; the Node smoke test proves the
-  `.wasm` runs without throwing, not that it looks right).
-- The C ABI's C++/Go surface is intentionally just the generated header +
-  docs — a polished RAII/`cgo` wrapper is deferred until a real consumer
-  wants one.
 - Picross's campaign is now sequential-only (see its adapter's doc
   comment) — the original let players jump to any puzzle in a track
   freely; that's a real, permanent, disclosed loss from the Shell<G>
