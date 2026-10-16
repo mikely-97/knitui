@@ -5,7 +5,6 @@ use knitui::config::Config;
 use knitui::board_entity::Direction;
 use knitui::campaign::CampaignState;
 use knitui::campaign_levels::{self, TRACK_COUNT};
-use knitui::endless::EndlessState;
 
 // ── CLI types ─────────────────────────────────────────────────────────────────
 
@@ -197,18 +196,15 @@ fn resolve_config(args: &Args) -> Config {
         let config = state.to_config(&base_config());
         // Allow remaining CLI overrides (e.g. max_solutions)
         config_from_args_limited(args, config)
-    } else if let Some(wave) = args.endless_wave {
-        let mut state = EndlessState::new();
-        for _ in 1..wave {
-            state.advance();
-        }
-        // Override wave to target
-        state.wave = wave;
-        let mut config = state.to_config(&base_config());
-        // Force bonuses to 0 for the base endless config (banked comes from advance)
-        // Allow CLI overrides
-        config = config_from_args(args, config);
-        config
+    } else if let Some(_wave) = args.endless_wave {
+        // TEMPORARY compile-fix left uncommitted for Task 6 (this file's owner per
+        // task-2-brief.md): EndlessState (wave-scaled Config) was removed in Task 5's
+        // continuous-endless rework. Continuous endless no longer scales Config by
+        // wave — it's a fixed-size board driven by GameEngine::new_endless's internal
+        // row buffer. This just falls back to the base config so the crate builds;
+        // Task 6 should properly rewire --endless-wave / DescribeWave onto the new
+        // continuous engine (or remove them), mirroring how Task 5 rewired tui.rs.
+        config_from_args(args, base_config())
     } else {
         config_from_args(args, base_config())
     }
@@ -286,12 +282,10 @@ fn handle_list_campaign() {
 }
 
 fn handle_describe_wave(wave: usize) {
-    let mut state = EndlessState::new();
-    for _ in 1..wave {
-        state.advance();
-    }
-    state.wave = wave;
-    let config = state.to_config(&base_config());
+    // TEMPORARY compile-fix left uncommitted for Task 6 — see the comment in
+    // resolve_config(). Continuous endless has no wave-scaled Config anymore,
+    // so this just describes the fixed base config for now.
+    let config = base_config();
     let desc = serde_json::json!({
         "wave": wave,
         "board_height": config.board_height,
